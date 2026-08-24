@@ -111,3 +111,7 @@ screenshots/*.webm
 
 replays/
 results/
+agent_code/research_agent/artifacts/*.npz
+agent_code/research_agent/artifacts/checkpoints/
+agent_code/research_agent/artifacts/logs/
+runs/

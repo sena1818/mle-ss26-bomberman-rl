@@ -7,7 +7,7 @@ from typing import Iterable
 
 import numpy as np
 
-from .config import ACTIONS
+from .config import ACTIONS, BOMB_POWER, BOMB_TIMER, FEATURE_DIMENSION, MAX_STEPS
 
 
 _DIRECTIONS = {
@@ -16,8 +16,22 @@ _DIRECTIONS = {
     "DOWN": (0, 1),
     "LEFT": (-1, 0),
 }
-_BOMB_TIMER = 4
-_DANGER_HORIZON = 4
+_BLAST_DIRECTIONS = ((1, 0), (-1, 0), (0, 1), (0, -1))
+_DANGER_HORIZON = BOMB_TIMER
+
+# Stable slices make the 44-dimensional contract inspectable in tests and in
+# experiment notebooks without leaking a recommended action into the state.
+HANDCRAFTED_V1_LAYOUT = {
+    "own_global": slice(0, 5),
+    "legal_actions": slice(5, 11),
+    "danger_current_and_neighbors": slice(11, 21),
+    "coin_target": slice(21, 25),
+    "crate_target": slice(25, 29),
+    "opponent_target": slice(29, 33),
+    "nearest_bomb": slice(33, 38),
+    "local_counts": slice(38, 42),
+    "bomb_escape": slice(42, 44),
+}
 
 
 def legal_action_mask(game_state: dict) -> np.ndarray:
@@ -73,7 +87,7 @@ def handcrafted_v1(game_state: dict) -> np.ndarray:
             x / (field.shape[0] - 1),
             y / (field.shape[1] - 1),
             float(can_bomb),
-            min(game_state["step"], 400) / 400.0,
+            min(game_state["step"], MAX_STEPS) / MAX_STEPS,
             len(game_state["others"]) / 3.0,
         ],
         dtype=np.float32,
@@ -95,12 +109,16 @@ def handcrafted_v1(game_state: dict) -> np.ndarray:
     features = np.concatenate(
         [own, legal, danger_features, coin, crate, opponent, bomb, local, escape]
     ).astype(np.float32)
-    assert features.shape == (44,)
+    assert features.shape == (FEATURE_DIMENSION,)
     return features
 
 
 def encode_board_channels_v1(game_state: dict) -> np.ndarray:
-    """Return the agreed eight $8\\times17\\times17$ CNN input channels."""
+    """Return the already-agreed spatial representation; R01 never calls it.
+
+    This is a state-definition boundary only, not a CNN implementation.  It is
+    retained so later spatial experiments use the frozen channel contract.
+    """
     field = game_state["field"]
     channels = np.zeros((8, *field.shape), dtype=np.float32)
     channels[0] = field == -1  # stone walls
@@ -112,7 +130,7 @@ def encode_board_channels_v1(game_state: dict) -> np.ndarray:
     for coin in game_state["coins"]:
         channels[4][coin] = 1.0
     for position, timer in game_state["bombs"]:
-        channels[5][position] = 1.0 - min(max(timer, 0), _BOMB_TIMER) / _BOMB_TIMER
+        channels[5][position] = 1.0 - min(max(timer, 0), BOMB_TIMER) / BOMB_TIMER
     channels[6] = np.clip(game_state["explosion_map"], 0.0, 1.0)
     danger = future_danger_times(game_state)
     channels[7] = np.where(
@@ -124,12 +142,12 @@ def encode_board_channels_v1(game_state: dict) -> np.ndarray:
 
 
 def global_features_v1(game_state: dict) -> np.ndarray:
-    """The four non-spatial scalars concatenated after the CNN branch."""
+    """Return the agreed four non-spatial values; R01 never calls them."""
     _, score, can_bomb, _ = game_state["self"]
     return np.array(
         [
             float(can_bomb),
-            min(game_state["step"], 400) / 400.0,
+            min(game_state["step"], MAX_STEPS) / MAX_STEPS,
             np.clip(score / 10.0, 0.0, 1.0),
             len(game_state["others"]) / 3.0,
         ],
@@ -142,7 +160,8 @@ def future_danger_times(game_state: dict) -> np.ndarray:
 
     This mirrors the SS26 framework's current `Bomb.get_blast_coords`: stone
     walls stop a blast, whereas crates are destroyed but do not stop it. The
-    public framework has no bomb-chain reaction in this code path.
+    public framework has no bomb-chain reaction in this code path.  A timer of
+    zero explodes after the action currently being chosen, hence danger time 1.
     """
     field = game_state["field"]
     danger = np.full(field.shape, _DANGER_HORIZON + 1, dtype=np.int8)
@@ -262,7 +281,7 @@ def _bomb_escape_features(
     blast = set(_blast_coordinates(origin, game_state["field"]))
     safe_cells = [
         position for position, distance in distances.items()
-        if 1 <= distance <= _BOMB_TIMER and position not in blast and danger[position] > distance
+        if 1 <= distance <= BOMB_TIMER and position not in blast and danger[position] > distance
     ]
     return np.array([float(bool(safe_cells)), min(len(safe_cells), 4) / 4.0], dtype=np.float32)
 
@@ -284,7 +303,7 @@ def _nearest_target_features(
     values = [np.sign(tx - x), np.sign(ty - y), distance / 32.0, 1.0]
     if include_timer:
         timers = dict(timed_items)
-        values.append(timers[(tx, ty)] / _BOMB_TIMER)
+        values.append(timers[(tx, ty)] / BOMB_TIMER)
     return np.asarray(values, dtype=np.float32)
 
 
@@ -292,8 +311,10 @@ def _blast_coordinates(origin: tuple[int, int], field: np.ndarray) -> list[tuple
     """Match the official fixed-power blast geometry for the current framework."""
     x, y = origin
     coordinates = [origin]
-    for dx, dy in _DIRECTIONS.values():
-        for distance in range(1, 4):
+    # Keep the framework's order too.  It does not affect gameplay, but makes
+    # this helper exactly comparable with Bomb.get_blast_coords in unit tests.
+    for dx, dy in _BLAST_DIRECTIONS:
+        for distance in range(1, BOMB_POWER + 1):
             nx, ny = x + dx * distance, y + dy * distance
             if not (0 <= nx < field.shape[0] and 0 <= ny < field.shape[1]) or field[nx, ny] == -1:
                 break
