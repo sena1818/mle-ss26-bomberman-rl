@@ -4,6 +4,15 @@ This repository has no checked-in Slurm, PBS, LSF, Kubernetes, or institutional 
 
 Run from `Final Project/bomberman_rl/`. Long runs require a clean committed checkout so `provenance.json` contains the exact git commit; a local smoke run may add `--allow-dirty` and is marked as such. `prepare` freezes the external config, resolved runtime hyperparameters, commit and job list. A worker verifies that its own checkout is still exactly that clean commit before it starts.
 
+The runner's private job copy is deliberately **not** a Python environment. On a fresh Hetzner checkout, create one shared environment once at the repository root before preparing jobs. The R01 E01 run was verified with Python 3.12.3, NumPy 2.5.2 and tqdm 4.70.0:
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install "numpy==2.5.2" "tqdm==4.70.0"
+```
+
+On Hetzner, replace the `conda run -n ml_homework python` prefix in the examples below with `.venv/bin/python` (or use another already verified environment). Do not put `.venv` below a job artifact: the runtime allowlist excludes it by design.
+
 ```bash
 conda run -n ml_homework python scripts/run_experiment.py prepare \
   --config experiments/r01_a00_smoke.json --run-id r01_cluster_001
