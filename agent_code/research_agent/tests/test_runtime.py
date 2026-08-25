@@ -12,7 +12,13 @@ from unittest.mock import Mock, patch
 
 import numpy as np
 
-from agent_code.research_agent.config import REWARD_VERSIONS, active_config
+from agent_code.research_agent.config import (
+    EXPLORATION_VERSIONS,
+    REWARD_VERSIONS,
+    active_config,
+    epsilon_for_training_round,
+    exploration_specification,
+)
 from agent_code.research_agent.learners import OnlineQLearner
 from agent_code.research_agent.models import LinearQModel, build_model
 from agent_code.research_agent.runtime import ExperimentRuntime
@@ -48,6 +54,28 @@ class ExperimentRuntimeTest(unittest.TestCase):
         with patch.dict(os.environ, {"BOMBERMAN_EXPERIMENT": "R99"}, clear=False):
             with self.assertRaises(ValueError):
                 active_config()
+
+    def test_e01_schedule_is_predeclared_and_evaluation_stays_greedy(self):
+        config = replace(active_config(), exploration_version="E01")
+        self.assertEqual(EXPLORATION_VERSIONS, frozenset({"E00", "E01"}))
+        self.assertEqual(exploration_specification("E01")["hold_fraction"], 0.20)
+        # 500 rounds: 1--100 at 0.30, then decay to exactly 0.05 at round 500.
+        self.assertEqual(epsilon_for_training_round(config, 1, 500), 0.30)
+        self.assertEqual(epsilon_for_training_round(config, 100, 500), 0.30)
+        self.assertAlmostEqual(epsilon_for_training_round(config, 101, 500), 0.299375)
+        self.assertEqual(epsilon_for_training_round(config, 500, 500), 0.05)
+        with self.assertRaises(ValueError):
+            epsilon_for_training_round(config, 501, 500)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            environment = {
+                "BOMBERMAN_ARTIFACT_DIR": str(Path(temporary) / "agent"),
+                "BOMBERMAN_RUN_ID": "e01_eval_test",
+                "BOMBERMAN_TRAINING_ROUNDS": "500",
+            }
+            with patch.dict(os.environ, environment, clear=False):
+                runtime = ExperimentRuntime(config, train=False, agent_seed=3, logger=Mock())
+                self.assertEqual(runtime._epsilon_for_game_state(game_state()), 0.0)
 
     def test_versioned_rewards_keep_one_death_penalty_and_a02_auxiliary_events(self):
         events = ["COIN_COLLECTED", "KILLED_SELF", "GOT_KILLED", "CRATE_DESTROYED", "COIN_FOUND"]

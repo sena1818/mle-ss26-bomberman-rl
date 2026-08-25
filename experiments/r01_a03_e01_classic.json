@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "experiment_id": "R01_0_A03_E01_C00_T03",
+  "route": "R01",
+  "agent": {
+    "name": "research_agent",
+    "model": "linear_q",
+    "algorithm": "q_learning",
+    "state_representation": "handcrafted_v1"
+  },
+  "reward_version": "A03",
+  "exploration_version": "E01",
+  "_design_note": "Controlled exploration comparison against r01_a03_dose_response_classic: the sole learning change is E00 fixed epsilon=0.15 to E01 epsilon=0.30 for training rounds 1-100, then linearly decayed by training round to exactly 0.05 at round 500. R01.0, A03 event and death rewards, state, model, Q-learning, alpha, gamma, legality mask, fresh initialization, training seeds, scenarios, budgets, checkpoint policy and greedy evaluation are byte-for-byte-equivalent declarations. Evaluation always uses epsilon=0.",
+  "_predeclared_design_numbers": {
+    "p_star": 0.689,
+    "p_ref_at_epsilon_0_15": 0.62,
+    "p_ref_at_epsilon_0_05": 0.858,
+    "e01_initial_epsilon": 0.3,
+    "e01_hold_rounds": 100,
+    "e01_final_epsilon": 0.05,
+    "note": "E01 is a falsifiable exploration schedule, not a universal optimum. The primary comparison is fixed checkpoint round 500 on the six held-out classic seeds; validation seeds only select a checkpoint for the separate selected-checkpoint report."
+  },
+  "training": {
+    "scenario": "classic",
+    "opponents": [],
+    "seeds": [1001, 1002, 1003, 1004, 1005],
+    "budget": {
+      "rounds": 500,
+      "checkpoint_every": 50
+    }
+  },
+  "evaluation": {
+    "scenario": "classic",
+    "opponents": [],
+    "seeds": [2001, 2002, 2003],
+    "budget": {
+      "rounds": 30,
+      "checkpoint_every": 50
+    }
+  },
+  "checkpoint_evaluation": {
+    "mode": "all",
+    "validation_seeds": [2001, 2002, 2003],
+    "holdout_seeds": [3001, 3002, 3003]
+  },
+  "evaluation_suites": {
+    "coin_heaven_diagnostic": {
+      "scenario": "coin-heaven",
+      "opponents": [],
+      "seeds": [2001, 2002, 2003],
+      "budget": {
+        "rounds": 30,
+        "checkpoint_every": 50
+      },
+      "checkpoint_evaluation": {
+        "mode": "latest",
+        "validation_seeds": [2001, 2002, 2003],
+        "holdout_seeds": [3001, 3002, 3003]
+      }
+    },
+    "loot_crate_diagnostic": {
+      "scenario": "loot-crate",
+      "opponents": [],
+      "seeds": [2001, 2002, 2003],
+      "budget": {
+        "rounds": 30,
+        "checkpoint_every": 50
+      },
+      "checkpoint_evaluation": {
+        "mode": "latest",
+        "validation_seeds": [2001, 2002, 2003],
+        "holdout_seeds": [3001, 3002, 3003]
+      }
+    }
+  },
+  "promotion": {
+    "primary_metric": "score"
+  }
+}

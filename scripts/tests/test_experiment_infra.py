@@ -22,13 +22,14 @@ from experiment_lib import ConfigError, Experiment, resolved_runtime_config, ver
 from run_experiment import _archive_failed_attempt, build_jobs, load_context  # noqa: E402
 
 
-def config(route: str = "R01", reward_version: str = "A00") -> dict:
+def config(route: str = "R01", reward_version: str = "A00", exploration_version: str = "E00") -> dict:
     return {
         "schema_version": 1,
         "experiment_id": "test_r01",
         "route": route,
         "agent": {"name": "research_agent", "model": "linear_q", "algorithm": "q_learning", "state_representation": "handcrafted_v1"},
         "reward_version": reward_version,
+        "exploration_version": exploration_version,
         "training": {"scenario": "coin-heaven", "opponents": [], "seeds": [11, 12], "budget": {"rounds": 2, "checkpoint_every": 1}},
         "evaluation": {"scenario": "classic", "opponents": [], "seeds": [21, 22], "budget": {"rounds": 2, "checkpoint_every": 1}},
         "promotion": {"primary_metric": "score"},
@@ -111,6 +112,7 @@ class ExperimentInfrastructureTest(unittest.TestCase):
             self.assertEqual(runtime["config"]["learning_rate"], 0.02)
             self.assertEqual(runtime["config"]["discount"], 0.95)
             self.assertEqual(runtime["config"]["epsilon"], 0.15)
+            self.assertEqual(runtime["config"]["exploration_version"], "E00")
             self.assertEqual(runtime["config"]["safety_filter"], "legality_only")
 
     def test_provenance_rejects_a_worker_on_the_wrong_commit(self):
@@ -224,6 +226,25 @@ class ExperimentInfrastructureTest(unittest.TestCase):
                 runtime = resolved_runtime_config(experiment)
                 self.assertEqual(runtime["config"]["reward_version"], version)
                 self.assertEqual(runtime["reward_specification"]["death_penalty"], death_penalty)
+
+    def test_e01_is_a_versioned_single_variable_schedule(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "config.json"
+            write_json(path, config(reward_version="A03", exploration_version="E01"))
+            experiment = Experiment.load(path)
+            experiment.require_implemented()
+            runtime = resolved_runtime_config(experiment)
+            self.assertEqual(runtime["config"]["reward_version"], "A03")
+            self.assertEqual(runtime["config"]["exploration_version"], "E01")
+            self.assertEqual(runtime["exploration_specification"]["initial_epsilon"], 0.30)
+            self.assertEqual(runtime["exploration_specification"]["final_epsilon"], 0.05)
+
+    def test_unregistered_exploration_version_is_rejected_before_any_job_runs(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "config.json"
+            write_json(path, config(exploration_version="E99"))
+            with self.assertRaises(ConfigError):
+                Experiment.load(path).require_implemented()
 
     def test_unregistered_reward_version_is_rejected_before_any_job_runs(self):
         with tempfile.TemporaryDirectory() as temporary:

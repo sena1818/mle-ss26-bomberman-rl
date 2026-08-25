@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "experiment_id": "R01_0_A03_E01_smoke",
+  "route": "R01",
+  "agent": {
+    "name": "research_agent",
+    "model": "linear_q",
+    "algorithm": "q_learning",
+    "state_representation": "handcrafted_v1"
+  },
+  "reward_version": "A03",
+  "exploration_version": "E01",
+  "_design_note": "Local integration smoke only. Its five training rounds exercise both E01 endpoints (round 1 epsilon=0.30; round 5 epsilon=0.05); it is not a performance result.",
+  "training": {
+    "scenario": "classic",
+    "opponents": [],
+    "seeds": [101],
+    "budget": {
+      "rounds": 5,
+      "checkpoint_every": 5
+    }
+  },
+  "evaluation": {
+    "scenario": "classic",
+    "opponents": [],
+    "seeds": [201],
+    "budget": {
+      "rounds": 2,
+      "checkpoint_every": 1
+    }
+  },
+  "promotion": {
+    "primary_metric": "score"
+  }
+}

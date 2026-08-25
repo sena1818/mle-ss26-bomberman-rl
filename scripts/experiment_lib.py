@@ -26,6 +26,11 @@ SUPPORTED_REWARD_VERSIONS = {
     # is specified in docs/01 but not implemented, so it is not listed here.
     "R01": {"A00", "A01", "A02", "A03", "A05"},
 }
+SUPPORTED_EXPLORATION_VERSIONS = {
+    # E00 is the historical fixed epsilon=0.15 baseline. E01 is its only
+    # currently implemented, predeclared single-variable comparison.
+    "R01": {"E00", "E01"},
+}
 CHECKPOINT_MODES = {"latest", "all"}
 SEED_ROLES = ("validation", "holdout")
 # The only repository directories a running job imports from.  See copy_runtime.
@@ -217,6 +222,7 @@ class Experiment:
     model: str
     algorithm: str
     reward_version: str
+    exploration_version: str
     state_representation: str
     training: Phase
     evaluation: Phase
@@ -291,6 +297,7 @@ class Experiment:
                 model=agent["model"],
                 algorithm=agent["algorithm"],
                 reward_version=safe_identifier(raw["reward_version"], "reward_version"),
+                exploration_version=safe_identifier(raw.get("exploration_version", "E00"), "exploration_version"),
                 state_representation=agent["state_representation"],
                 training=training,
                 evaluation=evaluation,
@@ -315,15 +322,24 @@ class Experiment:
                 raise ConfigError(f"agent.{name} is not a declared R01-R07 value")
         if experiment.promotion_primary_metric != "score":
             raise ConfigError("promotion.primary_metric is currently fixed to 'score'")
+        if experiment.curriculum is not None and experiment.exploration_version != "E00":
+            raise ConfigError(
+                "A non-constant exploration schedule currently requires standalone fresh training; "
+                "declare exploration_version E00 for a curriculum experiment."
+            )
         return experiment
 
     def require_implemented(self) -> None:
         expected = SUPPORTED_DECLARATIONS.get(self.route)
         declared = (self.model, self.algorithm, self.state_representation)
-        if expected != declared or self.reward_version not in SUPPORTED_REWARD_VERSIONS.get(self.route, set()):
+        if (
+            expected != declared
+            or self.reward_version not in SUPPORTED_REWARD_VERSIONS.get(self.route, set())
+            or self.exploration_version not in SUPPORTED_EXPLORATION_VERSIONS.get(self.route, set())
+        ):
             raise ConfigError(
                 f"{self.route} is declared for the shared infrastructure but is not implemented. "
-                "Only the existing R01 linear Q-learning agent with A00, A01, A02, A03, or A05 may be run."
+                "Only the existing R01 linear Q-learning agent with A00, A01, A02, A03, or A05 and E00 or E01 may be run."
             )
 
     def snapshot(self) -> dict[str, Any]:
@@ -339,6 +355,7 @@ class Experiment:
                 "state_representation": self.state_representation,
             },
             "reward_version": self.reward_version,
+            "exploration_version": self.exploration_version,
             "training": asdict(self.training),
             "evaluation": asdict(self.evaluation),
             "checkpoint_evaluation": asdict(self.checkpoint_evaluation),
@@ -406,7 +423,14 @@ def resolved_runtime_config(experiment: Experiment) -> dict[str, Any]:
         raise ConfigError(f"No runtime config resolver is registered for {experiment.agent_name!r}")
     if str(ROOT) not in sys.path:
         sys.path.insert(0, str(ROOT))
-    from agent_code.research_agent.config import ACTIONS, EXPERIMENTS, FEATURE_DIMENSION, REWARD_VERSIONS
+    from agent_code.research_agent.config import (
+        ACTIONS,
+        EXPERIMENTS,
+        EXPLORATION_VERSIONS,
+        FEATURE_DIMENSION,
+        REWARD_VERSIONS,
+        exploration_specification,
+    )
     from agent_code.research_agent.runtime.experiment import reward_specification
 
     try:
@@ -415,9 +439,27 @@ def resolved_runtime_config(experiment: Experiment) -> dict[str, Any]:
         raise ConfigError(f"No runtime config is registered for route {experiment.route!r}") from exc
     if experiment.reward_version not in REWARD_VERSIONS:
         raise ConfigError(f"No runtime config is registered for reward version {experiment.reward_version!r}")
-    config = replace(config, reward_version=experiment.reward_version)
-    declared = (experiment.model, experiment.algorithm, experiment.state_representation, experiment.reward_version)
-    resolved = (config.network, config.algorithm, config.state_encoder, config.reward_version)
+    if experiment.exploration_version not in EXPLORATION_VERSIONS:
+        raise ConfigError(f"No runtime config is registered for exploration version {experiment.exploration_version!r}")
+    config = replace(
+        config,
+        reward_version=experiment.reward_version,
+        exploration_version=experiment.exploration_version,
+    )
+    declared = (
+        experiment.model,
+        experiment.algorithm,
+        experiment.state_representation,
+        experiment.reward_version,
+        experiment.exploration_version,
+    )
+    resolved = (
+        config.network,
+        config.algorithm,
+        config.state_encoder,
+        config.reward_version,
+        config.exploration_version,
+    )
     if declared != resolved:
         raise ConfigError(
             f"Experiment declaration {declared} does not match runtime configuration {resolved}."
@@ -429,6 +471,7 @@ def resolved_runtime_config(experiment: Experiment) -> dict[str, Any]:
         # Freezing the exact weights, not just the version label, means a run
         # directory stays interpretable even if a later commit edits the table.
         "reward_specification": reward_specification(experiment.reward_version),
+        "exploration_specification": exploration_specification(experiment.exploration_version),
     }
 
 

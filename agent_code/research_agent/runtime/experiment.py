@@ -10,7 +10,7 @@ from typing import Any
 import numpy as np
 
 from ..artifacts import append_jsonl, checkpoint_interval, checkpoint_path, latest_model_path, model_path, run_id
-from ..config import ACTIONS, ExperimentConfig
+from ..config import ACTIONS, ExperimentConfig, epsilon_for_training_round, exploration_specification
 from ..learners import Learner, Transition, build_learner
 from ..models import QModel, build_model, load_model
 from ..state import encode_state, legal_action_mask
@@ -136,6 +136,9 @@ class ExperimentRuntime:
             "feature_version": config.feature_version,
             "reward_version": config.reward_version,
             "reward_specification": reward_specification(config.reward_version),
+            "exploration_version": config.exploration_version,
+            "exploration_specification": exploration_specification(config.exploration_version),
+            "training_rounds": self._training_rounds() if train else None,
             "agent_seed": agent_seed,
             "training": train,
         })
@@ -147,7 +150,8 @@ class ExperimentRuntime:
         self._ensure_initialized(state.shape[0])
         assert self.learner is not None
         mask = legal_action_mask(game_state)
-        action_index = self.learner.select_action(state, mask, self.config.epsilon if self.train else 0.0, self.rng)
+        epsilon = self._epsilon_for_game_state(game_state)
+        action_index = self.learner.select_action(state, mask, epsilon, self.rng)
         action = ACTIONS[action_index]
         position = game_state["self"][3]
         append_jsonl("action", {
@@ -159,6 +163,7 @@ class ExperimentRuntime:
             # jobs receive no events, so this is the only positional record.
             "position": [int(position[0]), int(position[1])],
             "selected_action_was_legal": bool(mask[action_index]),
+            "epsilon": epsilon,
             "inference_seconds": perf_counter() - started,
         })
         return action
@@ -200,6 +205,7 @@ class ExperimentRuntime:
             "experiment": self.config.name,
             "feature_version": self.config.feature_version,
             "reward_version": self.config.reward_version,
+            "exploration_version": self.config.exploration_version,
             "runtime_config": asdict(self.config),
             "agent_seed": self.agent_seed,
             "round": round_number,
@@ -247,3 +253,32 @@ class ExperimentRuntime:
         self.round_reward = 0.0
         self.round_abs_td_error = 0.0
         self.round_event_counts: dict[str, int] = {}
+
+    def _training_rounds(self) -> int:
+        """Read the immutable budget supplied by the experiment runner.
+
+        E00 does not mathematically need the value, but recording it for all
+        jobs makes action-level exploration logs self-describing.  A manual
+        historical E00 invocation remains supported through its fixed epsilon.
+        """
+        raw = os.environ.get("BOMBERMAN_TRAINING_ROUNDS")
+        if raw is None:
+            if self.config.exploration_version == "E00":
+                return 1
+            raise ValueError("BOMBERMAN_TRAINING_ROUNDS is required for a non-constant exploration schedule.")
+        try:
+            rounds = int(raw)
+        except ValueError as exc:
+            raise ValueError("BOMBERMAN_TRAINING_ROUNDS must be a positive integer.") from exc
+        if rounds < 1:
+            raise ValueError("BOMBERMAN_TRAINING_ROUNDS must be a positive integer.")
+        return rounds
+
+    def _epsilon_for_game_state(self, game_state: dict) -> float:
+        if not self.train:
+            return 0.0
+        return epsilon_for_training_round(
+            self.config,
+            round_number=int(game_state["round"]),
+            training_rounds=self._training_rounds(),
+        )

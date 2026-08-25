@@ -135,3 +135,10 @@ For a local sequential run (training, evaluation, aggregation), use:
 conda run -n ml_homework python scripts/run_experiment.py run \
   --config experiments/r01_a00_smoke.json --allow-dirty
 ```
+
+This command writes an `evaluation_summary.json` but **does not promote** a
+model. That is intentional: a tiny smoke can produce a noisy one-seed score
+that must never replace a real experiment's scenario pointer. Promotion always
+requires a deliberate extra `--promote`, and normal long-run practice remains
+to run `aggregate_results.py --promote` only after all declared evaluation jobs
+have completed.

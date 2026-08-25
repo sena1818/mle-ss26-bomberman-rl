@@ -40,6 +40,11 @@ def parse_args() -> argparse.Namespace:
     run.add_argument("--config", type=Path, required=True)
     run.add_argument("--run-id")
     run.add_argument("--allow-dirty", action="store_true")
+    run.add_argument(
+        "--promote",
+        action="store_true",
+        help="Explicitly update the scenario promotion pointer after local aggregation.",
+    )
     job = subparsers.add_parser("job", help="Run exactly one already-prepared job parameter file.")
     job.add_argument("--job-file", type=Path, required=True)
     job.add_argument("--retry", action="store_true", help="Archive one completed failed attempt, then retry this job.")
@@ -284,6 +289,8 @@ def _run_curriculum_segment(
         "BOMBERMAN_RUN_ID": f"{run_dir.name}_{job['job_id']}_{segment_id}",
         "BOMBERMAN_EXPERIMENT": experiment.route,
         "BOMBERMAN_REWARD_VERSION": experiment.reward_version,
+        "BOMBERMAN_EXPLORATION_VERSION": experiment.exploration_version,
+        "BOMBERMAN_TRAINING_ROUNDS": str(experiment.training.budget.rounds),
         "BOMBERMAN_ARTIFACT_DIR": str(agent_dir.resolve()),
         "BOMBERMAN_SCENARIO": segment["scenario"],
         "BOMBERMAN_SEED": str(segment_seed),
@@ -427,6 +434,8 @@ def execute_job(job_file: Path, *, retry: bool = False, keep_runtime: bool = Fal
         "BOMBERMAN_RUN_ID": f"{run_dir.name}_{job['job_id']}",
         "BOMBERMAN_EXPERIMENT": experiment.route,
         "BOMBERMAN_REWARD_VERSION": experiment.reward_version,
+        "BOMBERMAN_EXPLORATION_VERSION": experiment.exploration_version,
+        "BOMBERMAN_TRAINING_ROUNDS": str(experiment.training.budget.rounds),
         "BOMBERMAN_ARTIFACT_DIR": str(agent_dir.resolve()),
         "BOMBERMAN_SCENARIO": job["scenario"],
         "BOMBERMAN_SEED": str(job["seed"]),
@@ -456,14 +465,17 @@ def execute_job(job_file: Path, *, retry: bool = False, keep_runtime: bool = Fal
     print(f"completed {job['job_id']}: {job_dir}")
 
 
-def execute_all(config_path: Path, requested_run_id: str | None, allow_dirty: bool) -> None:
+def execute_all(config_path: Path, requested_run_id: str | None, allow_dirty: bool, *, promote: bool = False) -> None:
     run_dir = prepare(config_path, requested_run_id, allow_dirty)
     jobs = json.loads((run_dir / "jobs.json").read_text(encoding="utf-8"))
     for mode in ("train", "eval"):
         for payload in jobs:
             if payload["mode"] == mode:
                 execute_job(run_dir / "job_parameters" / f"{payload['job_id']}.json")
-    subprocess.run([sys.executable, "scripts/aggregate_results.py", "--run-dir", str(run_dir), "--promote"], cwd=ROOT, check=True)
+    aggregate_command = [sys.executable, "scripts/aggregate_results.py", "--run-dir", str(run_dir)]
+    if promote:
+        aggregate_command.append("--promote")
+    subprocess.run(aggregate_command, cwd=ROOT, check=True)
 
 
 def main() -> None:
@@ -474,7 +486,7 @@ def main() -> None:
         elif args.command == "job":
             execute_job(args.job_file, retry=args.retry, keep_runtime=args.keep_runtime)
         else:
-            execute_all(args.config, args.run_id, args.allow_dirty)
+            execute_all(args.config, args.run_id, args.allow_dirty, promote=args.promote)
     except (ConfigError, FileExistsError, FileNotFoundError, RuntimeError, subprocess.CalledProcessError) as exc:
         raise SystemExit(f"error: {exc}") from exc
 
