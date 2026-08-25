@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import asdict
+from dataclasses import asdict, dataclass, field
 from time import perf_counter
 from typing import Any
 
@@ -110,6 +110,34 @@ def reward_for_events(reward_version: str, events: list[str]) -> float:
     return reward
 
 
+def _is_unusable_action(action: str | None) -> bool:
+    """Report an action the framework substituted rather than the agent chose.
+
+    ``Agent.last_action`` is ``None`` before the first act, and the world
+    records ``"ERROR"`` for a silenced agent exception.  Neither has a
+    six-action index, so neither may become a learning target.
+    """
+    return action not in ACTIONS
+
+
+@dataclass
+class _PendingTransition:
+    """One encoded transition held back until its terminality is known.
+
+    The official framework decides whether a round ends *after* it has already
+    delivered the step through ``game_events_occurred``, so terminality is not
+    knowable at delivery time.  Holding one transition back is what lets the
+    runtime commit each transition exactly once, with the right target.
+    """
+
+    key: tuple[int, int]
+    state: np.ndarray
+    action_index: int
+    next_state: np.ndarray | None
+    next_legal_mask: np.ndarray | None
+    events: list[str] = field(default_factory=list)
+
+
 class ExperimentRuntime:
     """Deep module hiding route-specific model and learner adapters.
 
@@ -129,10 +157,13 @@ class ExperimentRuntime:
         self.learner: Learner | None = None
         self.training_updates = 0
         self.round_number: int | None = None
+        self._pending: _PendingTransition | None = None
         self._reset_round_metrics()
         append_jsonl("agent_setup", {
             "experiment": config.name,
             "runtime_config": asdict(config),
+            "terminal_on_truncation": config.terminal_on_truncation,
+            "round_offset": self._round_offset(),
             "feature_version": config.feature_version,
             "reward_version": config.reward_version,
             "reward_specification": reward_specification(config.reward_version),
@@ -168,37 +199,77 @@ class ExperimentRuntime:
         })
         return action
 
-    def observe(self, old_game_state: dict | None, action: str, new_game_state: dict | None, events: list[str], *, terminal: bool) -> None:
+    def observe(self, old_game_state: dict | None, action: str, new_game_state: dict | None, events: list[str]) -> None:
+        """Official ``game_events_occurred`` adapter.
+
+        The transition is stashed rather than learned from immediately.  The
+        framework calls this hook before it evaluates ``time_to_stop``, so at
+        this moment it is still unknown whether the step just reported is the
+        last one of the round.  Deferring by exactly one transition is what
+        removes that ambiguity; terminality is decided in ``end_round``.
+        """
         if old_game_state is None or self.model is None or self.learner is None:
             return
         round_number = int(old_game_state["round"])
         if self.round_number != round_number:
             self.round_number = round_number
             self._reset_round_metrics()
-        state = encode_state(old_game_state, self.config.state_encoder)
-        next_state = None if terminal else encode_state(new_game_state, self.config.state_encoder)
-        next_mask = None if terminal else legal_action_mask(new_game_state)
-        reward = reward_for_events(self.config.reward_version, events)
-        td_error = self.learner.observe(Transition(
-            state=state,
+        # The previous transition is now known to be non-terminal: the round
+        # continued far enough to report another step.
+        self._commit_pending(terminal=False)
+        if _is_unusable_action(action):
+            # A timeout or a silenced agent error has no six-action index.  The
+            # step is skipped rather than mapped onto an action never chosen.
+            self.logger.warning("Skipping a transition with unusable action %r", action)
+            return
+        self._pending = _PendingTransition(
+            key=(round_number, int(old_game_state["step"])),
+            state=encode_state(old_game_state, self.config.state_encoder),
             action_index=ACTIONS.index(action),
-            reward=reward,
-            next_state=next_state,
-            next_legal_mask=next_mask,
-            terminal=terminal,
-        ))
-        self.training_updates += 1
-        self.round_updates += 1
-        self.round_reward += reward
-        self.round_abs_td_error += abs(td_error)
-        for event in events:
-            self.round_event_counts[event] = self.round_event_counts.get(event, 0) + 1
-        self.logger.debug("reward=%+.2f td_error=%+.4f", reward, td_error)
+            next_state=encode_state(new_game_state, self.config.state_encoder),
+            next_legal_mask=legal_action_mask(new_game_state) if new_game_state is not None else None,
+            events=list(events),
+        )
 
     def end_round(self, last_game_state: dict | None, last_action: str, events: list[str]) -> None:
+        """Official ``end_of_round`` adapter; resolves the final transition once.
+
+        Two framework paths reach this hook and they are not symmetric.  A
+        surviving agent has *already* had this exact step delivered through
+        ``game_events_occurred``, because ``send_game_events`` runs before
+        ``time_to_stop``.  A dead agent has not: ``send_game_events`` skips a
+        dead agent, so its final -- and only fatal -- transition arrives here
+        for the first time.  Committing unconditionally double-counts the first
+        case; ignoring this payload drops the death penalty in the second.
+        """
         if last_game_state is None or self.model is None or self.learner is None:
             return
-        self.observe(last_game_state, last_action, None, events, terminal=True)
+        if _is_unusable_action(last_action):
+            self._commit_pending(terminal=False)
+        else:
+            key = (int(last_game_state["round"]), int(last_game_state["step"]))
+            if self._pending is not None and self._pending.key == key:
+                # Survived: the redelivered step is the still-uncommitted pending
+                # transition.  ``events`` here is a superset of the stashed copy
+                # (it also carries SURVIVED_ROUND), so it replaces it.
+                self._commit(self._pending, terminal=self.config.terminal_on_truncation, events=list(events))
+                self._pending = None
+            else:
+                # Died: flush the last reported step, then learn from the fatal
+                # transition that was never delivered to game_events_occurred.
+                self._commit_pending(terminal=False)
+                self._commit(
+                    _PendingTransition(
+                        key=key,
+                        state=encode_state(last_game_state, self.config.state_encoder),
+                        action_index=ACTIONS.index(last_action),
+                        next_state=None,
+                        next_legal_mask=None,
+                        events=list(events),
+                    ),
+                    terminal=True,
+                )
+        self._pending = None
         self.learner.end_round()
         round_number = int(last_game_state["round"])
         metadata = {
@@ -227,6 +298,34 @@ class ExperimentRuntime:
             "latest_model": str(latest_path),
         })
         self.logger.info("%s round=%d updates=%d official_reward=%+.1f checkpoint=%s", self.config.name, round_number, self.training_updates, self.round_reward, saved_checkpoint)
+
+    def _commit_pending(self, *, terminal: bool) -> None:
+        """Learn from the held-back transition, if there is one."""
+        if self._pending is None:
+            return
+        pending, self._pending = self._pending, None
+        self._commit(pending, terminal=terminal)
+
+    def _commit(self, pending: _PendingTransition, *, terminal: bool, events: list[str] | None = None) -> None:
+        """Perform the one learner update this transition is entitled to."""
+        assert self.learner is not None
+        resolved_events = pending.events if events is None else events
+        reward = reward_for_events(self.config.reward_version, resolved_events)
+        td_error = self.learner.observe(Transition(
+            state=pending.state,
+            action_index=pending.action_index,
+            reward=reward,
+            next_state=None if terminal else pending.next_state,
+            next_legal_mask=None if terminal else pending.next_legal_mask,
+            terminal=terminal,
+        ))
+        self.training_updates += 1
+        self.round_updates += 1
+        self.round_reward += reward
+        self.round_abs_td_error += abs(td_error)
+        for event in resolved_events:
+            self.round_event_counts[event] = self.round_event_counts.get(event, 0) + 1
+        self.logger.debug("reward=%+.2f td_error=%+.4f terminal=%s", reward, td_error, terminal)
 
     def _ensure_initialized(self, input_dim: int) -> None:
         if self.model is not None:
@@ -274,11 +373,28 @@ class ExperimentRuntime:
             raise ValueError("BOMBERMAN_TRAINING_ROUNDS must be a positive integer.")
         return rounds
 
+    def _round_offset(self) -> int:
+        """Return how many training rounds preceded this process.
+
+        Every curriculum segment is a separate game process whose round counter
+        restarts at 1.  Without an offset a segmented run would silently sit in
+        the first, highest-epsilon part of the schedule forever.  A standalone
+        job has no preceding rounds and therefore an offset of zero.
+        """
+        raw = os.environ.get("BOMBERMAN_ROUND_OFFSET", "0")
+        try:
+            offset = int(raw)
+        except ValueError as exc:
+            raise ValueError("BOMBERMAN_ROUND_OFFSET must be a non-negative integer.") from exc
+        if offset < 0:
+            raise ValueError("BOMBERMAN_ROUND_OFFSET must be a non-negative integer.")
+        return offset
+
     def _epsilon_for_game_state(self, game_state: dict) -> float:
         if not self.train:
             return 0.0
         return epsilon_for_training_round(
             self.config,
-            round_number=int(game_state["round"]),
+            round_number=self._round_offset() + int(game_state["round"]),
             training_rounds=self._training_rounds(),
         )

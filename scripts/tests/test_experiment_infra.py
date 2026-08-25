@@ -7,7 +7,9 @@ import shutil
 import statistics
 import sys
 import tempfile
+import threading
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -19,8 +21,12 @@ import aggregate_results  # noqa: E402
 import compare_runs  # noqa: E402
 import experiment_lib  # noqa: E402
 import prune_runs  # noqa: E402
+from agent_code.research_agent.config import (  # noqa: E402
+    active_config as resolved_config,
+    epsilon_for_training_round,
+)
 from experiment_lib import ConfigError, Experiment, resolved_runtime_config, verify_job_provenance, write_json  # noqa: E402
-from run_experiment import _archive_failed_attempt, build_jobs, load_context  # noqa: E402
+from run_experiment import _archive_failed_attempt, build_jobs, execute_phase, load_context  # noqa: E402
 
 
 def config(route: str = "R01", reward_version: str = "A00", exploration_version: str = "E00") -> dict:
@@ -558,6 +564,156 @@ class ExperimentInfrastructureTest(unittest.TestCase):
     def _write_config(path: Path) -> Path:
         write_json(path, config())
         return path
+
+
+class CurriculumAnnealTest(unittest.TestCase):
+    """A curriculum segment is its own process with its own round counter.
+
+    Regression cover: the runner used to pass the whole training budget as the
+    schedule denominator while each segment restarted at round 1, so a decaying
+    exploration schedule silently sat in its opening high-epsilon hold forever.
+    """
+
+    def _curriculum(self, anneal_mode: str | None = None) -> tuple[Experiment, object]:
+        payload = curriculum_config()
+        payload["exploration_version"] = "E01"
+        if anneal_mode is not None:
+            payload["curriculum"]["anneal_mode"] = anneal_mode
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "config.json"
+            write_json(path, payload)
+            experiment = Experiment.load(path)
+        assert experiment.curriculum is not None
+        return experiment, experiment.curriculum
+
+    def test_global_offset_is_the_default_and_spans_the_whole_budget(self):
+        experiment, curriculum = self._curriculum()
+        self.assertEqual(curriculum.anneal_mode, "global_round_offset")
+        self.assertEqual(curriculum.segment_round_offset(1), 0)
+        self.assertEqual(curriculum.segment_round_offset(2), 2)
+        for index in (1, 2):
+            with self.subTest(segment=index):
+                self.assertEqual(
+                    curriculum.segment_schedule_rounds(index, experiment.training),
+                    experiment.training.budget.rounds,
+                )
+
+    def test_per_segment_mode_restarts_the_schedule_inside_every_segment(self):
+        experiment, curriculum = self._curriculum("per_segment")
+        for index in (1, 2):
+            with self.subTest(segment=index):
+                self.assertEqual(curriculum.segment_round_offset(index), 0)
+                self.assertEqual(curriculum.segment_schedule_rounds(index, experiment.training), 2)
+
+    def test_an_undeclared_anneal_mode_is_rejected(self):
+        with self.assertRaises(ConfigError):
+            self._curriculum("whatever_feels_right")
+
+    def test_offsets_cover_every_declared_round_exactly_once(self):
+        experiment, curriculum = self._curriculum()
+        covered: list[int] = []
+        for index, segment in enumerate(curriculum.segments, start=1):
+            offset = curriculum.segment_round_offset(index)
+            covered.extend(offset + local for local in range(1, segment.rounds + 1))
+        self.assertEqual(covered, list(range(1, experiment.training.budget.rounds + 1)))
+
+    def test_a_decaying_schedule_actually_decays_across_segments(self):
+        """The end-to-end property the offset exists to guarantee."""
+        experiment, curriculum = self._curriculum()
+        agent_config = replace(
+            resolved_config(), exploration_version="E01",
+        )
+        epsilons = []
+        for index, segment in enumerate(curriculum.segments, start=1):
+            offset = curriculum.segment_round_offset(index)
+            denominator = curriculum.segment_schedule_rounds(index, experiment.training)
+            for local_round in range(1, segment.rounds + 1):
+                epsilons.append(epsilon_for_training_round(agent_config, offset + local_round, denominator))
+        self.assertEqual(epsilons[0], 0.30)
+        self.assertEqual(epsilons[-1], 0.05)
+        self.assertTrue(all(later <= earlier for earlier, later in zip(epsilons, epsilons[1:])))
+        self.assertGreater(epsilons[0], epsilons[-1], "a segmented run must not freeze at the initial epsilon")
+
+    def test_curriculum_snapshot_records_the_declared_mode(self):
+        experiment, _ = self._curriculum("per_segment")
+        self.assertEqual(experiment.snapshot()["curriculum"]["anneal_mode"], "per_segment")
+
+
+class TerminalOnTruncationDeclarationTest(unittest.TestCase):
+    def test_the_flag_defaults_to_false_and_reaches_the_runtime_snapshot(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "config.json"
+            write_json(path, config())
+            experiment = Experiment.load(path)
+            self.assertFalse(experiment.terminal_on_truncation)
+            self.assertFalse(experiment.snapshot()["terminal_on_truncation"])
+            self.assertFalse(resolved_runtime_config(experiment)["config"]["terminal_on_truncation"])
+
+    def test_declaring_it_true_is_carried_into_the_resolved_runtime_config(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "config.json"
+            payload = config()
+            payload["terminal_on_truncation"] = True
+            write_json(path, payload)
+            experiment = Experiment.load(path)
+            self.assertTrue(experiment.snapshot()["terminal_on_truncation"])
+            self.assertTrue(resolved_runtime_config(experiment)["config"]["terminal_on_truncation"])
+
+    def test_the_snapshot_round_trips_through_the_same_parser(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "config.json"
+            payload = config()
+            payload["terminal_on_truncation"] = True
+            write_json(path, payload)
+            experiment = Experiment.load(path)
+            snapshot_path = Path(temporary) / "snapshot.json"
+            write_json(snapshot_path, experiment.snapshot())
+            self.assertEqual(Experiment.load(snapshot_path), experiment)
+
+
+class ParallelPhaseTest(unittest.TestCase):
+    """Jobs inside one phase are independent; the phases themselves are not."""
+
+    @staticmethod
+    def _jobs() -> list[dict]:
+        return [
+            {"job_id": "train_seed11", "mode": "train"},
+            {"job_id": "train_seed12", "mode": "train"},
+            {"job_id": "eval_a", "mode": "eval"},
+            {"job_id": "eval_b", "mode": "eval"},
+            {"job_id": "eval_c", "mode": "eval"},
+        ]
+
+    def test_only_the_requested_phase_runs_and_every_job_runs_once(self):
+        for workers in (1, 4):
+            with self.subTest(workers=workers):
+                executed: list[str] = []
+                lock = threading.Lock()
+
+                def record(job_file, **kwargs):
+                    with lock:
+                        executed.append(Path(job_file).stem)
+
+                with patch("run_experiment.execute_job", side_effect=record):
+                    execute_phase(Path("/runs/x"), self._jobs(), "eval", workers)
+                self.assertEqual(sorted(executed), ["eval_a", "eval_b", "eval_c"])
+
+    def test_every_failure_in_a_phase_is_reported_not_just_the_first(self):
+        def sometimes_fail(job_file, **kwargs):
+            if Path(job_file).stem in {"eval_a", "eval_c"}:
+                raise RuntimeError("boom")
+
+        with patch("run_experiment.execute_job", side_effect=sometimes_fail):
+            with self.assertRaises(RuntimeError) as raised:
+                execute_phase(Path("/runs/x"), self._jobs(), "eval", 4)
+        message = str(raised.exception)
+        self.assertIn("eval_a", message)
+        self.assertIn("eval_c", message)
+        self.assertIn("2 eval job(s) failed", message)
+
+    def test_a_phase_with_no_jobs_is_a_no_op(self):
+        with patch("run_experiment.execute_job", side_effect=AssertionError("must not run")):
+            execute_phase(Path("/runs/x"), [], "train", 4)
 
 
 if __name__ == "__main__":

@@ -30,13 +30,13 @@ from agent_code.research_agent.runtime.experiment import (
 )
 
 
-def game_state() -> dict:
+def game_state(step: int = 1, round_number: int = 1) -> dict:
     field = np.zeros((9, 9), dtype=int)
     field[[0, -1], :] = -1
     field[:, [0, -1]] = -1
     return {
-        "round": 1,
-        "step": 1,
+        "round": round_number,
+        "step": step,
         "field": field,
         "self": ("research_agent", 0, True, (3, 3)),
         "others": [],
@@ -45,6 +45,172 @@ def game_state() -> dict:
         "explosion_map": np.zeros_like(field),
         "user_input": None,
     }
+
+
+class RecordingLearner:
+    """Wraps the real learner so a test can see every committed transition."""
+
+    def __init__(self, inner):
+        self.inner = inner
+        self.transitions = []
+
+    def select_action(self, *args, **kwargs):
+        return self.inner.select_action(*args, **kwargs)
+
+    def observe(self, transition):
+        self.transitions.append(transition)
+        return self.inner.observe(transition)
+
+    def end_round(self):
+        return self.inner.end_round()
+
+
+def started_runtime(temporary: str, config=None, *, train: bool = True) -> ExperimentRuntime:
+    """Return a runtime whose model and recording learner are initialized."""
+    runtime = ExperimentRuntime(config or active_config(), train=train, agent_seed=3, logger=Mock())
+    runtime.select_action(game_state())
+    runtime.learner = RecordingLearner(runtime.learner)
+    return runtime
+
+
+def drive_round(runtime, *, steps: int, died: bool, final_events: list[str], round_number: int = 1) -> None:
+    """Reproduce the official per-round callback sequence exactly.
+
+    ``environment.do_step`` calls ``send_game_events`` -- which skips an agent
+    that just died -- and only afterwards evaluates ``time_to_stop`` and calls
+    ``end_of_round`` with the same stored state, action and event list.  A
+    surviving agent therefore has its last step delivered twice; a dead agent
+    never has its fatal step delivered through ``game_events_occurred``.
+    """
+    delivered = steps - 1 if died else steps
+    for step in range(1, delivered + 1):
+        events = final_events if (not died and step == steps) else []
+        runtime.observe(
+            game_state(step, round_number), "WAIT", game_state(step + 1, round_number), list(events)
+        )
+    runtime.end_round(game_state(steps, round_number), "WAIT", list(final_events))
+
+
+class OfficialLifecycleTest(unittest.TestCase):
+    """Each transition must reach the learner exactly once, with the right target.
+
+    Regression cover for the terminal-transition defect: ``end_round`` used to
+    commit unconditionally, so a surviving agent's last step was learned twice --
+    once bootstrapped and once as a terminal target -- and its rewards were
+    counted twice.  A ``coin-heaven`` round logged 51 COIN_COLLECTED events on a
+    map that contains 50 coins.
+    """
+
+    def _environment(self, temporary: str, **extra: str) -> dict:
+        return {
+            "BOMBERMAN_ARTIFACT_DIR": str(Path(temporary) / "agent"),
+            "BOMBERMAN_RUN_ID": "lifecycle_test",
+            "BOMBERMAN_SCENARIO": "classic",
+            "BOMBERMAN_SEED": "3",
+            "BOMBERMAN_CHECKPOINT_EVERY": "1",
+            **extra,
+        }
+
+    def test_surviving_round_learns_its_last_step_exactly_once(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            with patch.dict(os.environ, self._environment(temporary), clear=False):
+                runtime = started_runtime(temporary)
+                drive_round(runtime, steps=5, died=False, final_events=["COIN_COLLECTED", "SURVIVED_ROUND"])
+
+            transitions = runtime.learner.transitions
+            self.assertEqual(len(transitions), 5, "one update per step, never two for the last one")
+            self.assertEqual(runtime.round_updates, 5)
+            # The decisive symptom: the final coin must be counted once.
+            self.assertEqual(runtime.round_event_counts["COIN_COLLECTED"], 1)
+            self.assertEqual(runtime.round_reward, 1.0)
+
+    def test_time_limit_truncation_bootstraps_instead_of_cutting_the_return(self):
+        """Surviving to the step limit is a truncation, not a terminal state."""
+        with tempfile.TemporaryDirectory() as temporary:
+            with patch.dict(os.environ, self._environment(temporary), clear=False):
+                runtime = started_runtime(temporary)
+                self.assertFalse(runtime.config.terminal_on_truncation)
+                drive_round(runtime, steps=4, died=False, final_events=["SURVIVED_ROUND"])
+
+            final = runtime.learner.transitions[-1]
+            self.assertFalse(final.terminal)
+            self.assertIsNotNone(final.next_state)
+            self.assertIsNotNone(final.next_legal_mask)
+
+    def test_terminal_on_truncation_is_a_declared_switch(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            config = replace(active_config(), terminal_on_truncation=True)
+            with patch.dict(os.environ, self._environment(temporary), clear=False):
+                runtime = started_runtime(temporary, config)
+                drive_round(runtime, steps=4, died=False, final_events=["SURVIVED_ROUND"])
+
+            final = runtime.learner.transitions[-1]
+            self.assertTrue(final.terminal)
+            self.assertIsNone(final.next_state)
+            self.assertEqual(len(runtime.learner.transitions), 4)
+
+    def test_environment_variable_selects_the_truncation_target(self):
+        with patch.dict(os.environ, {"BOMBERMAN_TERMINAL_ON_TRUNCATION": "1"}, clear=False):
+            self.assertTrue(active_config().terminal_on_truncation)
+        with patch.dict(os.environ, {"BOMBERMAN_TERMINAL_ON_TRUNCATION": "0"}, clear=False):
+            self.assertFalse(active_config().terminal_on_truncation)
+        with patch.dict(os.environ, {"BOMBERMAN_TERMINAL_ON_TRUNCATION": "maybe"}, clear=False):
+            with self.assertRaises(ValueError):
+                active_config()
+
+    def test_fatal_step_is_learned_once_as_a_real_terminal_transition(self):
+        """A dead agent's last step never reaches game_events_occurred."""
+        with tempfile.TemporaryDirectory() as temporary:
+            config = replace(active_config(), reward_version="A03")
+            with patch.dict(os.environ, self._environment(temporary), clear=False):
+                runtime = started_runtime(temporary, config)
+                drive_round(runtime, steps=5, died=True, final_events=["KILLED_SELF", "GOT_KILLED"])
+
+            transitions = runtime.learner.transitions
+            self.assertEqual(len(transitions), 5, "the fatal step must not be dropped")
+            self.assertTrue(transitions[-1].terminal)
+            self.assertIsNone(transitions[-1].next_state)
+            self.assertFalse(any(transition.terminal for transition in transitions[:-1]))
+            # One death, one penalty, even though two death events fire.
+            self.assertEqual(transitions[-1].reward, DEATH_PENALTIES["A03"])
+            self.assertEqual(runtime.round_reward, DEATH_PENALTIES["A03"])
+
+    def test_agent_killed_on_the_first_step_still_learns_that_step(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            config = replace(active_config(), reward_version="A03")
+            with patch.dict(os.environ, self._environment(temporary), clear=False):
+                runtime = started_runtime(temporary, config)
+                drive_round(runtime, steps=1, died=True, final_events=["KILLED_SELF", "GOT_KILLED"])
+
+            self.assertEqual(len(runtime.learner.transitions), 1)
+            self.assertTrue(runtime.learner.transitions[0].terminal)
+            self.assertEqual(runtime.round_reward, DEATH_PENALTIES["A03"])
+
+    def test_no_transition_leaks_across_round_boundaries(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            with patch.dict(os.environ, self._environment(temporary), clear=False):
+                runtime = started_runtime(temporary)
+                drive_round(runtime, steps=3, died=False, final_events=["SURVIVED_ROUND"], round_number=1)
+                self.assertIsNone(runtime._pending)
+                drive_round(runtime, steps=2, died=True, final_events=["KILLED_SELF"], round_number=2)
+                self.assertIsNone(runtime._pending)
+
+            self.assertEqual(len(runtime.learner.transitions), 5)
+            self.assertEqual(runtime.round_updates, 2, "per-round metrics reset on a new round")
+            self.assertEqual(runtime.training_updates, 5)
+
+    def test_unusable_action_is_skipped_without_dropping_the_previous_step(self):
+        """A timeout or silenced agent error has no six-action index."""
+        with tempfile.TemporaryDirectory() as temporary:
+            with patch.dict(os.environ, self._environment(temporary), clear=False):
+                runtime = started_runtime(temporary)
+                runtime.observe(game_state(1), "WAIT", game_state(2), [])
+                runtime.observe(game_state(2), "ERROR", game_state(3), [])
+                runtime.end_round(game_state(3), None, ["SURVIVED_ROUND"])
+
+            # Step 1 is still learned; the unusable step 2 is not invented.
+            self.assertEqual(len(runtime.learner.transitions), 1)
+            self.assertFalse(runtime.learner.transitions[0].terminal)
 
 
 class ExperimentRuntimeTest(unittest.TestCase):
@@ -148,8 +314,8 @@ class ExperimentRuntimeTest(unittest.TestCase):
                 self.assertIn(action, ("UP", "RIGHT", "DOWN", "LEFT", "WAIT", "BOMB"))
                 self.assertIsInstance(runtime.model, LinearQModel)
                 self.assertIsInstance(runtime.learner, OnlineQLearner)
-                runtime.observe(game_state(), action, game_state(), [], terminal=False)
-                runtime.end_round(game_state(), action, [])
+                runtime.observe(game_state(1), action, game_state(2), [])
+                runtime.end_round(game_state(2), action, [])
             self.assertTrue((artifacts / "latest_model.npz").is_file())
             self.assertTrue(any((artifacts / "checkpoints").glob("*.npz")))
             records = [json.loads(line) for line in (artifacts / "agent.jsonl").read_text(encoding="utf-8").splitlines()]

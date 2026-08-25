@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import sys
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -44,6 +45,11 @@ def parse_args() -> argparse.Namespace:
         "--promote",
         action="store_true",
         help="Explicitly update the scenario promotion pointer after local aggregation.",
+    )
+    run.add_argument(
+        "--jobs", type=int, default=1, metavar="N",
+        help="Run up to N jobs of the same phase concurrently (default 1). "
+             "Jobs within a phase are independent; training always finishes before evaluation starts.",
     )
     job = subparsers.add_parser("job", help="Run exactly one already-prepared job parameter file.")
     job.add_argument("--job-file", type=Path, required=True)
@@ -276,6 +282,13 @@ def _run_curriculum_segment(
 ) -> tuple[int, Path, Path]:
     """Run one scenario segment and return its exit code, model, and stats paths."""
     segment_id = f"segment{segment_index:02d}_{segment['scenario'].replace('-', '_')}"
+    curriculum = experiment.curriculum
+    assert curriculum is not None
+    # Each segment is its own process with its own round counter.  Passing the
+    # declared offset and denominator is what keeps a decaying exploration
+    # schedule from restarting inside every segment.
+    round_offset = curriculum.segment_round_offset(segment_index)
+    schedule_rounds = curriculum.segment_schedule_rounds(segment_index, experiment.training)
     runtime = segment_dir / "runtime"
     copy_runtime(runtime)
     (runtime / "logs").mkdir()
@@ -290,7 +303,9 @@ def _run_curriculum_segment(
         "BOMBERMAN_EXPERIMENT": experiment.route,
         "BOMBERMAN_REWARD_VERSION": experiment.reward_version,
         "BOMBERMAN_EXPLORATION_VERSION": experiment.exploration_version,
-        "BOMBERMAN_TRAINING_ROUNDS": str(experiment.training.budget.rounds),
+        "BOMBERMAN_TERMINAL_ON_TRUNCATION": "1" if experiment.terminal_on_truncation else "0",
+        "BOMBERMAN_TRAINING_ROUNDS": str(schedule_rounds),
+        "BOMBERMAN_ROUND_OFFSET": str(round_offset),
         "BOMBERMAN_ARTIFACT_DIR": str(agent_dir.resolve()),
         "BOMBERMAN_SCENARIO": segment["scenario"],
         "BOMBERMAN_SEED": str(segment_seed),
@@ -435,7 +450,9 @@ def execute_job(job_file: Path, *, retry: bool = False, keep_runtime: bool = Fal
         "BOMBERMAN_EXPERIMENT": experiment.route,
         "BOMBERMAN_REWARD_VERSION": experiment.reward_version,
         "BOMBERMAN_EXPLORATION_VERSION": experiment.exploration_version,
+        "BOMBERMAN_TERMINAL_ON_TRUNCATION": "1" if experiment.terminal_on_truncation else "0",
         "BOMBERMAN_TRAINING_ROUNDS": str(experiment.training.budget.rounds),
+        "BOMBERMAN_ROUND_OFFSET": "0",
         "BOMBERMAN_ARTIFACT_DIR": str(agent_dir.resolve()),
         "BOMBERMAN_SCENARIO": job["scenario"],
         "BOMBERMAN_SEED": str(job["seed"]),
@@ -465,13 +482,57 @@ def execute_job(job_file: Path, *, retry: bool = False, keep_runtime: bool = Fal
     print(f"completed {job['job_id']}: {job_dir}")
 
 
-def execute_all(config_path: Path, requested_run_id: str | None, allow_dirty: bool, *, promote: bool = False) -> None:
+def execute_phase(run_dir: Path, jobs: list[dict], mode: str, workers: int) -> None:
+    """Run one phase's jobs, optionally concurrently.
+
+    Jobs inside a phase are independent by construction: each owns a private
+    artifact directory and a private framework copy, and communicates only
+    through files.  The phases themselves are ordered, because evaluation reads
+    checkpoints that training produces.
+
+    Concurrency is thread-based on purpose.  Every job's real work happens in a
+    ``subprocess.run`` that releases the GIL; the in-process part is a few
+    milliseconds of file copying.
+    """
+    job_files = [
+        run_dir / "job_parameters" / f"{payload['job_id']}.json"
+        for payload in jobs
+        if payload["mode"] == mode
+    ]
+    if not job_files:
+        return
+    if workers <= 1:
+        for job_file in job_files:
+            execute_job(job_file)
+        return
+    failures: list[str] = []
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        submitted = {pool.submit(execute_job, job_file): job_file for job_file in job_files}
+        for future in as_completed(submitted):
+            try:
+                future.result()
+            except Exception as exc:  # noqa: BLE001 - reported, then re-raised below
+                failures.append(f"{submitted[future].stem}: {exc}")
+    if failures:
+        # Every failure is reported rather than only the first, because a shared
+        # cause (a missing dependency, a full disk) shows up as a pattern.
+        raise RuntimeError(
+            f"{len(failures)} {mode} job(s) failed:\n  " + "\n  ".join(sorted(failures))
+        )
+
+
+def execute_all(
+    config_path: Path,
+    requested_run_id: str | None,
+    allow_dirty: bool,
+    *,
+    promote: bool = False,
+    workers: int = 1,
+) -> None:
     run_dir = prepare(config_path, requested_run_id, allow_dirty)
     jobs = json.loads((run_dir / "jobs.json").read_text(encoding="utf-8"))
     for mode in ("train", "eval"):
-        for payload in jobs:
-            if payload["mode"] == mode:
-                execute_job(run_dir / "job_parameters" / f"{payload['job_id']}.json")
+        execute_phase(run_dir, jobs, mode, workers)
     aggregate_command = [sys.executable, "scripts/aggregate_results.py", "--run-dir", str(run_dir)]
     if promote:
         aggregate_command.append("--promote")
@@ -486,7 +547,7 @@ def main() -> None:
         elif args.command == "job":
             execute_job(args.job_file, retry=args.retry, keep_runtime=args.keep_runtime)
         else:
-            execute_all(args.config, args.run_id, args.allow_dirty, promote=args.promote)
+            execute_all(args.config, args.run_id, args.allow_dirty, promote=args.promote, workers=args.jobs)
     except (ConfigError, FileExistsError, FileNotFoundError, RuntimeError, subprocess.CalledProcessError) as exc:
         raise SystemExit(f"error: {exc}") from exc
 

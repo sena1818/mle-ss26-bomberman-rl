@@ -32,6 +32,10 @@ SUPPORTED_EXPLORATION_VERSIONS = {
     "R01": {"E00", "E01"},
 }
 CHECKPOINT_MODES = {"latest", "all"}
+# Mirrors agent_code.research_agent.config.CURRICULUM_ANNEAL_MODES.  A curriculum
+# segment is a separate process with its own round counter, so the way the
+# exploration schedule spans segments has to be declared rather than inferred.
+CURRICULUM_ANNEAL_MODES = {"global_round_offset", "per_segment"}
 SEED_ROLES = ("validation", "holdout")
 # The only repository directories a running job imports from.  See copy_runtime.
 RUNTIME_ROOT_DIRECTORIES = ("assets", "agent_code")
@@ -110,6 +114,21 @@ class Curriculum:
 
     source_run_id: str
     segments: tuple[CurriculumSegment, ...]
+    # How the exploration schedule is indexed across segments.  Declared, never
+    # inferred: each segment is its own process with its own round counter.
+    anneal_mode: str = "global_round_offset"
+
+    def segment_round_offset(self, segment_index: int) -> int:
+        """Rounds completed before a 1-based segment, under the declared mode."""
+        if self.anneal_mode == "per_segment":
+            return 0
+        return sum(segment.rounds for segment in self.segments[: segment_index - 1])
+
+    def segment_schedule_rounds(self, segment_index: int, training: Phase) -> int:
+        """The schedule denominator a 1-based segment must anneal against."""
+        if self.anneal_mode == "per_segment":
+            return self.segments[segment_index - 1].rounds
+        return training.budget.rounds
 
     @classmethod
     def parse(cls, value: dict[str, Any], training: Phase) -> "Curriculum":
@@ -118,6 +137,11 @@ class Curriculum:
             raw_segments = value["segments"]
         except (KeyError, TypeError) as exc:
             raise ConfigError("curriculum must contain source_run_id and segments") from exc
+        anneal_mode = value.get("anneal_mode", "global_round_offset")
+        if anneal_mode not in CURRICULUM_ANNEAL_MODES:
+            raise ConfigError(
+                f"curriculum.anneal_mode must be one of {sorted(CURRICULUM_ANNEAL_MODES)}, got {anneal_mode!r}"
+            )
         if not isinstance(raw_segments, list) or not raw_segments:
             raise ConfigError("curriculum.segments must be a non-empty list")
         segments: list[CurriculumSegment] = []
@@ -136,7 +160,7 @@ class Curriculum:
             segments.append(CurriculumSegment(scenario, rounds))
         if sum(segment.rounds for segment in segments) != training.budget.rounds:
             raise ConfigError("curriculum segment rounds must sum exactly to training.budget.rounds")
-        return cls(source_run_id, tuple(segments))
+        return cls(source_run_id, tuple(segments), anneal_mode)
 
 
 @dataclass(frozen=True)
@@ -232,6 +256,9 @@ class Experiment:
     checkpoint_evaluation: CheckpointEvaluation = CheckpointEvaluation()
     design_note: str = ""
     predeclared_design_numbers: dict[str, Any] = field(default_factory=dict)
+    # A surviving agent's last step is a time-limit truncation, not a terminal
+    # state.  Declared here so the choice is snapshotted and ablatable.
+    terminal_on_truncation: bool = False
 
     def suite_checkpoints(self, suite: str) -> CheckpointEvaluation:
         """Return the checkpoint policy for one suite name.
@@ -309,6 +336,7 @@ class Experiment:
                 ),
                 design_note=design_note,
                 predeclared_design_numbers=predeclared_design_numbers,
+                terminal_on_truncation=bool(raw.get("terminal_on_truncation", False)),
             )
         except (KeyError, TypeError) as exc:
             raise ConfigError("agent and promotion sections have invalid fields") from exc
@@ -322,11 +350,6 @@ class Experiment:
                 raise ConfigError(f"agent.{name} is not a declared R01-R07 value")
         if experiment.promotion_primary_metric != "score":
             raise ConfigError("promotion.primary_metric is currently fixed to 'score'")
-        if experiment.curriculum is not None and experiment.exploration_version != "E00":
-            raise ConfigError(
-                "A non-constant exploration schedule currently requires standalone fresh training; "
-                "declare exploration_version E00 for a curriculum experiment."
-            )
         return experiment
 
     def require_implemented(self) -> None:
@@ -359,6 +382,7 @@ class Experiment:
             "training": asdict(self.training),
             "evaluation": asdict(self.evaluation),
             "checkpoint_evaluation": asdict(self.checkpoint_evaluation),
+            "terminal_on_truncation": self.terminal_on_truncation,
             "promotion": {"primary_metric": self.promotion_primary_metric},
         }
         if self.design_note:
@@ -368,6 +392,7 @@ class Experiment:
         if self.curriculum is not None:
             snapshot["curriculum"] = {
                 "source_run_id": self.curriculum.source_run_id,
+                "anneal_mode": self.curriculum.anneal_mode,
                 "segments": [asdict(segment) for segment in self.curriculum.segments],
             }
         if self.evaluation_suites:
@@ -445,6 +470,7 @@ def resolved_runtime_config(experiment: Experiment) -> dict[str, Any]:
         config,
         reward_version=experiment.reward_version,
         exploration_version=experiment.exploration_version,
+        terminal_on_truncation=experiment.terminal_on_truncation,
     )
     declared = (
         experiment.model,
