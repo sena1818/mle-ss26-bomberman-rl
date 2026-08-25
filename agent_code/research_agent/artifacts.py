@@ -16,11 +16,16 @@ from .config import ExperimentConfig
 
 
 _LEGACY_ARTIFACT_ROOT = Path(__file__).resolve().parent / "artifacts"
+_PACKAGED_MODEL_NAME = "model.npz"
+_MANUAL_RUN_ID = f"manual_{os.getpid()}"
 
 
 def run_id() -> str:
     """Return a filesystem-safe identifier supplied by the reproducible runner."""
-    value = os.environ.get("BOMBERMAN_RUN_ID", "manual")
+    # A direct framework invocation has no runner to allocate a job directory.
+    # Keep that convenience path process-private instead of letting every manual
+    # invocation overwrite ``artifacts/manual/manual``.
+    value = os.environ.get("BOMBERMAN_RUN_ID", _MANUAL_RUN_ID)
     if not value.replace("-", "").replace("_", "").isalnum():
         raise ValueError("BOMBERMAN_RUN_ID may contain only letters, digits, '-' and '_'.")
     return value
@@ -40,13 +45,16 @@ def artifact_root() -> Path:
 
 
 def model_path() -> Path:
-    """Return the explicit model requested by an evaluation job."""
+    """Return an explicit job model, or the model packaged with this agent.
+
+    Experiment jobs must set ``BOMBERMAN_MODEL_PATH`` so evaluation is tied to
+    one exact checkpoint.  The fallback makes an exported final agent work with
+    the unmodified official framework, which provides no experiment variables.
+    """
     selected = os.environ.get("BOMBERMAN_MODEL_PATH")
-    if not selected:
-        raise RuntimeError(
-            "BOMBERMAN_MODEL_PATH is required for evaluation; evaluation never reads a shared active model."
-        )
-    return Path(selected).expanduser().resolve()
+    if selected:
+        return Path(selected).expanduser().resolve()
+    return Path(__file__).resolve().parent / _PACKAGED_MODEL_NAME
 
 
 def checkpoint_path(config: ExperimentConfig, round_number: int, updates: int) -> Path:

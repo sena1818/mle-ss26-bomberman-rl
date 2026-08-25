@@ -67,6 +67,17 @@ def one_evaluation(job_dir: Path, agent_name: str) -> dict[str, float]:
     }
 
 
+def job_artifact_dir(run_dir: Path, job: dict) -> Path:
+    """Resolve the portable job artifact path without trusting host paths."""
+    relative = Path(job["artifact_relpath"])
+    if relative.is_absolute() or ".." in relative.parts:
+        raise RuntimeError(f"Invalid artifact_relpath for {job.get('job_id')}: {relative}")
+    path = (run_dir / relative).resolve()
+    if not path.is_relative_to(run_dir):
+        raise RuntimeError(f"artifact_relpath escapes run directory for {job.get('job_id')}")
+    return path
+
+
 def aggregate(run_dir: Path) -> dict:
     run_dir = run_dir.resolve()
     experiment = Experiment.load(run_dir / "experiment_config.snapshot.json")
@@ -77,7 +88,7 @@ def aggregate(run_dir: Path) -> dict:
     for job in jobs:
         if job["mode"] != "eval":
             continue
-        job_dir = Path(job["artifact_dir"])
+        job_dir = job_artifact_dir(run_dir, job)
         if not (job_dir / "official_stats.json").is_file():
             missing.append(job["job_id"])
             continue

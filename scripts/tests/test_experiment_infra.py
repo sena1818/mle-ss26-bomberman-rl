@@ -3,18 +3,20 @@
 from __future__ import annotations
 
 import json
+import shutil
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 SCRIPTS = Path(__file__).resolve().parents[1]
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
 import aggregate_results  # noqa: E402
-from experiment_lib import ConfigError, Experiment, write_json  # noqa: E402
-from run_experiment import build_jobs  # noqa: E402
+from experiment_lib import ConfigError, Experiment, resolved_runtime_config, verify_job_provenance, write_json  # noqa: E402
+from run_experiment import _archive_failed_attempt, build_jobs, load_context  # noqa: E402
 
 
 def config(route: str = "R01") -> dict:
@@ -42,8 +44,54 @@ class ExperimentInfrastructureTest(unittest.TestCase):
             self.assertEqual(Experiment.load(snapshot_path), experiment)
             jobs = build_jobs(experiment, tmp / "run")
             self.assertEqual(len(jobs), 6)
-            self.assertEqual(len({job["artifact_dir"] for job in jobs}), len(jobs))
+            self.assertEqual(len({job["artifact_relpath"] for job in jobs}), len(jobs))
+            self.assertTrue(all(not Path(job["artifact_relpath"]).is_absolute() for job in jobs))
+            self.assertTrue(all(job["model_relpath"] is None or not Path(job["model_relpath"]).is_absolute() for job in jobs))
             self.assertEqual({job["mode"] for job in jobs}, {"train", "eval"})
+
+    def test_job_files_relocate_with_the_run_directory(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source_run = root / "mac" / "run_a"
+            source_run.mkdir(parents=True)
+            experiment = Experiment.load(self._write_config(source_run / "input.json"))
+            write_json(source_run / "experiment_config.snapshot.json", experiment.snapshot())
+            job = build_jobs(experiment, source_run)[0]
+            write_json(source_run / "job_parameters" / "train_seed11.json", job)
+            moved_run = root / "hetzner" / "run_a"
+            shutil.copytree(source_run, moved_run)
+            run_dir, resolved, _ = load_context(moved_run / "job_parameters" / "train_seed11.json")
+            self.assertEqual(run_dir, moved_run.resolve())
+            self.assertEqual(Path(resolved["artifact_dir"]), (moved_run / "jobs" / "train_seed11").resolve())
+
+    def test_runtime_snapshot_records_r01_hyperparameters(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            experiment = Experiment.load(self._write_config(Path(temporary) / "config.json"))
+            runtime = resolved_runtime_config(experiment)
+            self.assertEqual(runtime["config"]["learning_rate"], 0.02)
+            self.assertEqual(runtime["config"]["discount"], 0.95)
+            self.assertEqual(runtime["config"]["epsilon"], 0.15)
+            self.assertEqual(runtime["config"]["safety_filter"], "legality_only")
+
+    def test_provenance_rejects_a_worker_on_the_wrong_commit(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            run_dir = Path(temporary)
+            write_json(run_dir / "provenance.json", {"git_commit": "expected", "worktree_dirty": False})
+            with patch("experiment_lib.git_provenance", return_value={"git_commit": "different", "worktree_dirty": False}):
+                with self.assertRaises(RuntimeError):
+                    verify_job_provenance(run_dir)
+
+    def test_retry_archives_only_a_completed_failure(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            run_dir = Path(temporary) / "run_a"
+            job_dir = run_dir / "jobs" / "train_seed11"
+            job_dir.mkdir(parents=True)
+            write_json(job_dir / "completion.json", {"exit_code": 1})
+            (job_dir / "stderr.log").write_text("failure\n", encoding="utf-8")
+            _archive_failed_attempt(run_dir, job_dir)
+            archived = run_dir / "failed_attempts" / "train_seed11" / "attempt01"
+            self.assertTrue((archived / "stderr.log").is_file())
+            self.assertFalse(job_dir.exists())
 
     def test_declared_but_unimplemented_route_is_not_silently_run(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -63,12 +111,12 @@ class ExperimentInfrastructureTest(unittest.TestCase):
             jobs = build_jobs(experiment, run_dir)
             write_json(run_dir / "jobs.json", jobs)
             for job in jobs:
+                job_dir = run_dir / job["artifact_relpath"]
                 if job["mode"] != "eval":
-                    checkpoint = Path(job["artifact_dir"]) / "agent" / "latest_model.npz"
+                    checkpoint = job_dir / "agent" / "latest_model.npz"
                     checkpoint.parent.mkdir(parents=True)
                     checkpoint.write_bytes(b"model")
                     continue
-                job_dir = Path(job["artifact_dir"])
                 (job_dir / "agent").mkdir(parents=True)
                 write_json(job_dir / "official_stats.json", {
                     "by_agent": {"research_agent": {"score": 6, "coins": 3, "kills": 1, "suicides": 1, "invalid": 0, "steps": 10}},

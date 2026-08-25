@@ -31,10 +31,10 @@ class ArtifactIsolationTest(unittest.TestCase):
             records = (job_artifacts / "agent.jsonl").read_text(encoding="utf-8").splitlines()
             self.assertEqual(json.loads(records[0])["run_id"], "run_a_job_a")
 
-    def test_evaluation_refuses_an_implicit_shared_active_model(self):
+    def test_evaluation_uses_a_packaged_model_when_a_job_did_not_select_one(self):
         with patch.dict(os.environ, {"BOMBERMAN_MODEL_PATH": ""}, clear=False):
-            with self.assertRaises(RuntimeError):
-                model_path()
+            self.assertEqual(model_path().name, "model.npz")
+            self.assertEqual(model_path().parent.name, "research_agent")
 
 
 if __name__ == "__main__":

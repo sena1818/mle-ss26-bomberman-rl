@@ -6,6 +6,7 @@ import json
 import re
 import shutil
 import subprocess
+import sys
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -171,6 +172,54 @@ def git_provenance() -> dict[str, Any]:
     except (OSError, subprocess.CalledProcessError) as exc:
         raise RuntimeError("A git checkout is required for experiment provenance") from exc
     return {"git_commit": commit, "worktree_dirty": bool(status), "prepared_at_utc": utc_now()}
+
+
+def verify_job_provenance(run_dir: Path) -> None:
+    """Reject a worker whose source checkout differs from the prepared run."""
+    try:
+        expected = json.loads((run_dir / "provenance.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"Run provenance is unavailable or invalid: {run_dir / 'provenance.json'}") from exc
+    current = git_provenance()
+    if current["git_commit"] != expected.get("git_commit"):
+        raise RuntimeError(
+            "Worker checkout does not match the prepared experiment: "
+            f"expected {expected.get('git_commit')}, found {current['git_commit']}."
+        )
+    if not expected.get("worktree_dirty", False) and current["worktree_dirty"]:
+        raise RuntimeError(
+            "Prepared experiment requires a clean checkout, but this worker has uncommitted changes."
+        )
+
+
+def resolved_runtime_config(experiment: Experiment) -> dict[str, Any]:
+    """Freeze the full runtime configuration alongside the external JSON plan.
+
+    The current runner supports only ``research_agent``/R01.  Importing its
+    dependency-free config here records the values actually consumed by the
+    callback runtime (including values not duplicated in experiment JSON).
+    """
+    if experiment.agent_name != "research_agent":
+        raise ConfigError(f"No runtime config resolver is registered for {experiment.agent_name!r}")
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    from agent_code.research_agent.config import ACTIONS, EXPERIMENTS, FEATURE_DIMENSION
+
+    try:
+        config = EXPERIMENTS[experiment.route]
+    except KeyError as exc:
+        raise ConfigError(f"No runtime config is registered for route {experiment.route!r}") from exc
+    declared = (experiment.model, experiment.algorithm, experiment.state_representation, experiment.reward_version)
+    resolved = (config.network, config.algorithm, config.state_encoder, config.reward_version)
+    if declared != resolved:
+        raise ConfigError(
+            f"Experiment declaration {declared} does not match runtime configuration {resolved}."
+        )
+    return {
+        "actions": list(ACTIONS),
+        "feature_dimension": FEATURE_DIMENSION,
+        "config": asdict(config),
+    }
 
 
 def copy_runtime(destination: Path) -> None:

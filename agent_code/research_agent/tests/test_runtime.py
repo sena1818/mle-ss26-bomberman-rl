@@ -13,7 +13,7 @@ import numpy as np
 
 from agent_code.research_agent.config import active_config
 from agent_code.research_agent.learners import OnlineQLearner
-from agent_code.research_agent.models import LinearQModel
+from agent_code.research_agent.models import LinearQModel, build_model
 from agent_code.research_agent.runtime import ExperimentRuntime
 
 
@@ -70,6 +70,14 @@ class ExperimentRuntimeTest(unittest.TestCase):
                 runtime = ExperimentRuntime(config, train=True, agent_seed=1, logger=Mock())
                 with self.assertRaises(NotImplementedError):
                     runtime.select_action(game_state())
+
+    def test_model_initialization_is_reproducible_per_agent_seed(self):
+        config = active_config()
+        first = build_model(config, input_dim=44, seed=7)
+        same_seed = build_model(config, input_dim=44, seed=7)
+        other_seed = build_model(config, input_dim=44, seed=8)
+        np.testing.assert_array_equal(first.weights, same_seed.weights)
+        self.assertFalse(np.array_equal(first.weights, other_seed.weights))
 
 
 if __name__ == "__main__":

@@ -14,9 +14,9 @@ from .base import QModel
 from .linear_q import LinearQModel
 
 
-def build_model(config: ExperimentConfig, input_dim: int) -> QModel:
+def build_model(config: ExperimentConfig, input_dim: int, *, seed: int) -> QModel:
     if config.network == "linear_q":
-        return LinearQModel(input_dim)
+        return LinearQModel(input_dim, seed=seed)
     raise NotImplementedError(f"QModel adapter {config.network!r} has not been implemented yet.")
 
 

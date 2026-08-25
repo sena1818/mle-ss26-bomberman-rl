@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from dataclasses import asdict
 from time import perf_counter
 from typing import Any
 
@@ -35,6 +36,7 @@ class ExperimentRuntime:
         self.train = train
         self.logger = logger
         self.rng = np.random.default_rng(agent_seed)
+        self.agent_seed = agent_seed
         self.model: QModel | None = None
         self.learner: Learner | None = None
         self.training_updates = 0
@@ -42,8 +44,10 @@ class ExperimentRuntime:
         self._reset_round_metrics()
         append_jsonl("agent_setup", {
             "experiment": config.name,
+            "runtime_config": asdict(config),
             "feature_version": config.feature_version,
             "reward_version": config.reward_version,
+            "agent_seed": agent_seed,
             "training": train,
         })
 
@@ -102,6 +106,8 @@ class ExperimentRuntime:
             "experiment": self.config.name,
             "feature_version": self.config.feature_version,
             "reward_version": self.config.reward_version,
+            "runtime_config": asdict(self.config),
+            "agent_seed": self.agent_seed,
             "round": round_number,
             "updates": self.training_updates,
         }
@@ -133,10 +139,13 @@ class ExperimentRuntime:
             if self.model.q_values(np.zeros(input_dim, dtype=np.float32)).shape != (len(ACTIONS),):
                 raise ValueError(f"Checkpoint {selected_path} is incompatible with the frozen six-action interface.")
         elif not self.train:
-            raise FileNotFoundError(f"No model found at {selected_path}; evaluation requires BOMBERMAN_MODEL_PATH.")
+            raise FileNotFoundError(
+                f"No evaluation model found at {selected_path}. Set BOMBERMAN_MODEL_PATH for an experiment job, "
+                "or package model.npz beside this agent's callbacks.py."
+            )
         else:
             self.logger.info("Creating a fresh %s QModel adapter", self.config.network)
-            self.model = build_model(self.config, input_dim)
+            self.model = build_model(self.config, input_dim, seed=self.agent_seed)
         self.learner = build_learner(self.config, self.model)
 
     def _reset_round_metrics(self) -> None:

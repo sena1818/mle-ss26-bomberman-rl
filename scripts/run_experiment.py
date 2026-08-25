@@ -13,7 +13,18 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from experiment_lib import ConfigError, Experiment, ROOT, RUNS_ROOT, copy_runtime, git_provenance, safe_identifier, write_json
+from experiment_lib import (
+    ConfigError,
+    Experiment,
+    ROOT,
+    RUNS_ROOT,
+    copy_runtime,
+    git_provenance,
+    resolved_runtime_config,
+    safe_identifier,
+    verify_job_provenance,
+    write_json,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -29,6 +40,7 @@ def parse_args() -> argparse.Namespace:
     run.add_argument("--allow-dirty", action="store_true")
     job = subparsers.add_parser("job", help="Run exactly one already-prepared job parameter file.")
     job.add_argument("--job-file", type=Path, required=True)
+    job.add_argument("--retry", action="store_true", help="Archive one completed failed attempt, then retry this job.")
     return parser.parse_args()
 
 
@@ -45,17 +57,17 @@ def build_jobs(experiment: Experiment, run_dir: Path) -> list[dict]:
             "job_id": job_id, "mode": "train", "seed": seed,
             "phase": "training", "scenario": experiment.training.scenario,
             "opponents": list(experiment.training.opponents), "budget": experiment.training.budget.__dict__,
-            "artifact_dir": str((run_dir / "jobs" / job_id).resolve()), "model_path": None,
+            "artifact_relpath": str(Path("jobs") / job_id), "model_relpath": None,
         })
     for train_seed in experiment.training.seeds:
-        model_path = run_dir / "jobs" / f"train_seed{train_seed}" / "agent" / "latest_model.npz"
+        model_relpath = Path("jobs") / f"train_seed{train_seed}" / "agent" / "latest_model.npz"
         for seed in experiment.evaluation.seeds:
             job_id = f"eval_train{train_seed}_seed{seed}"
             jobs.append({
                 "job_id": job_id, "mode": "eval", "seed": seed, "train_seed": train_seed,
                 "phase": "evaluation", "scenario": experiment.evaluation.scenario,
                 "opponents": list(experiment.evaluation.opponents), "budget": experiment.evaluation.budget.__dict__,
-                "artifact_dir": str((run_dir / "jobs" / job_id).resolve()), "model_path": str(model_path.resolve()),
+                "artifact_relpath": str(Path("jobs") / job_id), "model_relpath": str(model_relpath),
             })
     return jobs
 
@@ -71,7 +83,9 @@ def prepare(config_path: Path, requested_run_id: str | None, allow_dirty: bool) 
     if run_dir.exists():
         raise FileExistsError(f"Run directory already exists: {run_dir}")
     run_dir.mkdir(parents=True)
-    write_json(run_dir / "experiment_config.snapshot.json", experiment.snapshot())
+    snapshot = experiment.snapshot()
+    snapshot["resolved_runtime_config"] = resolved_runtime_config(experiment)
+    write_json(run_dir / "experiment_config.snapshot.json", snapshot)
     write_json(run_dir / "provenance.json", {**provenance, "config_source": str(config_path.resolve())})
     jobs = build_jobs(experiment, run_dir)
     write_json(run_dir / "jobs.json", jobs)
@@ -81,22 +95,58 @@ def prepare(config_path: Path, requested_run_id: str | None, allow_dirty: bool) 
     return run_dir
 
 
+def _resolve_run_relative(run_dir: Path, value: str | None, label: str) -> Path | None:
+    if value is None:
+        return None
+    relative = Path(value)
+    if relative.is_absolute() or ".." in relative.parts:
+        raise RuntimeError(f"{label} must be a path relative to the run directory: {value!r}")
+    resolved = (run_dir / relative).resolve()
+    if not resolved.is_relative_to(run_dir):
+        raise RuntimeError(f"{label} escapes the run directory: {value!r}")
+    return resolved
+
+
 def load_context(job_file: Path) -> tuple[Path, dict, Experiment]:
     job = json.loads(job_file.read_text(encoding="utf-8"))
-    artifact_dir = Path(job["artifact_dir"]).resolve()
-    run_dir = artifact_dir.parents[1]
+    job_file = job_file.resolve()
+    if job_file.parent.name != "job_parameters":
+        raise RuntimeError("Job file must belong to its run's job_parameters directory")
+    run_dir = job_file.parent.parent
+    artifact_dir = _resolve_run_relative(run_dir, job.get("artifact_relpath"), "artifact_relpath")
+    if artifact_dir is None:
+        raise RuntimeError("Job file is missing artifact_relpath")
+    model_path = _resolve_run_relative(run_dir, job.get("model_relpath"), "model_relpath")
     experiment = Experiment.load(run_dir / "experiment_config.snapshot.json")
     experiment.require_implemented()
-    if job_file.resolve().parent != (run_dir / "job_parameters").resolve():
-        raise RuntimeError("Job file must belong to its run's job_parameters directory")
+    job = {**job, "artifact_dir": str(artifact_dir), "model_path": str(model_path) if model_path else None}
     return run_dir, job, experiment
 
 
-def execute_job(job_file: Path) -> None:
+def _archive_failed_attempt(run_dir: Path, job_dir: Path) -> None:
+    completion_path = job_dir / "completion.json"
+    if not completion_path.is_file():
+        raise RuntimeError("Cannot retry a job without completion.json; it may still be running or was interrupted.")
+    completion = json.loads(completion_path.read_text(encoding="utf-8"))
+    if int(completion.get("exit_code", 1)) == 0:
+        raise RuntimeError("Cannot retry a completed successful job.")
+    archive_root = run_dir / "failed_attempts" / job_dir.name
+    attempt = 1
+    while (archive_root / f"attempt{attempt:02d}").exists():
+        attempt += 1
+    destination = archive_root / f"attempt{attempt:02d}"
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(job_dir), str(destination))
+
+
+def execute_job(job_file: Path, *, retry: bool = False) -> None:
     run_dir, job, experiment = load_context(job_file)
+    verify_job_provenance(run_dir)
     job_dir = Path(job["artifact_dir"])
     if job_dir.exists():
-        raise FileExistsError(f"Job artifact directory already exists (refusing overwrite): {job_dir}")
+        if not retry:
+            raise FileExistsError(f"Job artifact directory already exists (refusing overwrite): {job_dir}")
+        _archive_failed_attempt(run_dir, job_dir)
     if job["mode"] == "eval" and not Path(job["model_path"]).is_file():
         raise FileNotFoundError(f"Evaluation checkpoint is unavailable: {job['model_path']}")
     job_dir.mkdir(parents=True)
@@ -157,7 +207,7 @@ def main() -> None:
         if args.command == "prepare":
             prepare(args.config, args.run_id, args.allow_dirty)
         elif args.command == "job":
-            execute_job(args.job_file)
+            execute_job(args.job_file, retry=args.retry)
         else:
             execute_all(args.config, args.run_id, args.allow_dirty)
     except (ConfigError, FileExistsError, FileNotFoundError, RuntimeError, subprocess.CalledProcessError) as exc:
