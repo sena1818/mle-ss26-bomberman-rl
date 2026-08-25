@@ -43,6 +43,8 @@ def parse_args() -> argparse.Namespace:
     job = subparsers.add_parser("job", help="Run exactly one already-prepared job parameter file.")
     job.add_argument("--job-file", type=Path, required=True)
     job.add_argument("--retry", action="store_true", help="Archive one completed failed attempt, then retry this job.")
+    job.add_argument("--keep-runtime", action="store_true",
+                     help="Keep the private framework copy after success. Only for debugging: it is the dominant disk cost.")
     return parser.parse_args()
 
 
@@ -265,6 +267,7 @@ def _run_curriculum_segment(
     segment_index: int,
     segment: dict,
     input_model: Path,
+    keep_runtime: bool = False,
 ) -> tuple[int, Path, Path]:
     """Run one scenario segment and return its exit code, model, and stats paths."""
     segment_id = f"segment{segment_index:02d}_{segment['scenario'].replace('-', '_')}"
@@ -313,6 +316,10 @@ def _run_curriculum_segment(
         "segment_index": segment_index,
         "segment_seed": segment_seed,
     })
+    if not result.returncode:
+        # A curriculum job copies the runtime once per segment, so keeping them
+        # multiplied the waste by the number of segments.
+        _discard_runtime(runtime, keep_runtime)
     return result.returncode, output_model, stats_path
 
 
@@ -330,7 +337,7 @@ def _combine_training_stats(segment_stats: list[tuple[str, Path]], agent_name: s
     return {"by_agent": {agent_name: by_agent}, "by_round": by_round}
 
 
-def execute_curriculum_job(run_dir: Path, job: dict, experiment: Experiment, job_dir: Path) -> None:
+def execute_curriculum_job(run_dir: Path, job: dict, experiment: Experiment, job_dir: Path, *, keep_runtime: bool = False) -> None:
     """Continue one model through a frozen sequence of private scenario segments."""
     input_model = Path(job["input_model_path"])
     if not input_model.is_file():
@@ -345,6 +352,7 @@ def execute_curriculum_job(run_dir: Path, job: dict, experiment: Experiment, job
             result, output_model, stats_path = _run_curriculum_segment(
                 run_dir=run_dir, job=job, experiment=experiment, segment_dir=segment_dir,
                 segment_index=index, segment=segment, input_model=previous_model,
+                keep_runtime=keep_runtime,
             )
             record = {
                 "segment_index": index,
@@ -375,7 +383,21 @@ def execute_curriculum_job(run_dir: Path, job: dict, experiment: Experiment, job
     write_json(job_dir / "completion.json", {"exit_code": 0, "job_id": job["job_id"]})
 
 
-def execute_job(job_file: Path, *, retry: bool = False) -> None:
+def _discard_runtime(runtime: Path, keep_runtime: bool) -> None:
+    """Delete a succeeded job's private framework copy.
+
+    Nothing reads it afterwards: the two framework logs were already copied into
+    the job directory, aggregation reads only ``official_stats.json`` and the
+    agent JSONL, and ``provenance.json`` plus ``command.json`` record exactly
+    which commit and command produced the result.  Keeping it multiplied one
+    repository checkout by the number of jobs.
+    """
+    if keep_runtime or not runtime.exists():
+        return
+    shutil.rmtree(runtime, ignore_errors=True)
+
+
+def execute_job(job_file: Path, *, retry: bool = False, keep_runtime: bool = False) -> None:
     run_dir, job, experiment = load_context(job_file)
     verify_job_provenance(run_dir)
     job_dir = Path(job["artifact_dir"])
@@ -388,7 +410,7 @@ def execute_job(job_file: Path, *, retry: bool = False) -> None:
     job_dir.mkdir(parents=True)
     write_json(job_dir / "job.snapshot.json", job)
     if job["mode"] == "train" and "curriculum" in job:
-        execute_curriculum_job(run_dir, job, experiment, job_dir)
+        execute_curriculum_job(run_dir, job, experiment, job_dir, keep_runtime=keep_runtime)
         print(f"completed {job['job_id']}: {job_dir}")
         return
     runtime = job_dir / "runtime"
@@ -428,7 +450,9 @@ def execute_job(job_file: Path, *, retry: bool = False) -> None:
         shutil.copy2(game_log, job_dir / "framework_game.log")
     write_json(job_dir / "completion.json", {"exit_code": result.returncode, "job_id": job["job_id"]})
     if result.returncode:
+        # A failed job keeps its runtime so the exact tree can be inspected.
         raise subprocess.CalledProcessError(result.returncode, command)
+    _discard_runtime(runtime, keep_runtime)
     print(f"completed {job['job_id']}: {job_dir}")
 
 
@@ -448,7 +472,7 @@ def main() -> None:
         if args.command == "prepare":
             prepare(args.config, args.run_id, args.allow_dirty)
         elif args.command == "job":
-            execute_job(args.job_file, retry=args.retry)
+            execute_job(args.job_file, retry=args.retry, keep_runtime=args.keep_runtime)
         else:
             execute_all(args.config, args.run_id, args.allow_dirty)
     except (ConfigError, FileExistsError, FileNotFoundError, RuntimeError, subprocess.CalledProcessError) as exc:

@@ -80,6 +80,46 @@ summary still retains validation-selected checkpoint results for a later final
 performance claim, while its `*_checkpoint_curve` records preserve the full
 learning curve.
 
+## Disk footprint and retention
+
+A job's private framework copy exists only so the official framework's fixed log
+paths cannot collide between concurrent jobs. It is not a result. Two rules keep
+it from dominating the disk:
+
+1. `copy_runtime` is an **allowlist**: every top-level `*.py`, plus `assets/` and
+   `agent_code/`. It used to be a deny-list, which meant each job copied whatever
+   new thing appeared in the repository root — including a `.venv`, at 154 MiB
+   per job and 95 GiB across one three-arm study. The trained model those jobs
+   produce is 3.5 KiB.
+2. A job **deletes its own runtime on success**. Both framework logs are copied
+   into the job directory first, aggregation reads only `official_stats.json`
+   and the agent JSONL, and `provenance.json` plus `command.json` record which
+   commit and command produced the result. A failed job keeps its runtime;
+   `--keep-runtime` forces it for debugging.
+
+For run directories created before those rules, reclaim space explicitly. The
+script never touches `evaluation_summary.json`, `official_stats.json` or any
+`.npz` model, and only prunes jobs whose `completion.json` records exit code 0:
+
+```bash
+conda run -n ml_homework python scripts/prune_runs.py --run-dir runs/<run_id> --drop-runtime
+```
+
+It is a dry run until `--apply` is passed. `--compress-logs` additionally gzips
+the framework logs and the agent JSONL; the aggregator reads `agent.jsonl.gz`
+transparently, so a compressed run can still be re-summarized.
+
+To keep a result without keeping the run, write a minimal archive. It holds the
+config snapshot, provenance, job list, evaluation summary, every trained model
+including periodic checkpoints, and each job's official statistics:
+
+```bash
+conda run -n ml_homework python scripts/prune_runs.py --run-dir runs/<run_id> --slim-copy archive/ --apply
+```
+
+Measured on existing runs, a slim copy is 600x to 7500x smaller than its source.
+This is the form to keep on a laptop or commit to long-term storage.
+
 If a job finished with a non-zero exit code, retry it explicitly. The failed attempt is preserved below `runs/<run_id>/failed_attempts/<job_id>/attemptNN/`; a successful job is never overwritten:
 
 ```bash

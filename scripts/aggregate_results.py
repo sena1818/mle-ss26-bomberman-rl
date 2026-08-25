@@ -24,6 +24,7 @@ Three groups of metrics are reported, and they are *not* interchangeable:
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 import os
 import re
@@ -145,9 +146,15 @@ def agent_round_actions(path: Path) -> tuple[dict[int, Counter], dict[int, set],
     visited: dict[int, set] = {}
     timings: list[float] = []
     illegal = 0
+    # A pruned run stores this file gzipped; re-summarizing it must still work.
+    opener = path.open
     if not path.exists():
-        return actions, visited, timings, illegal
-    with path.open(encoding="utf-8") as handle:
+        compressed = path.with_suffix(path.suffix + ".gz")
+        if not compressed.exists():
+            return actions, visited, timings, illegal
+        path = compressed
+        opener = lambda **kwargs: gzip.open(compressed, "rt", **kwargs)  # noqa: E731
+    with opener(encoding="utf-8") as handle:
         for line in handle:
             event = json.loads(line)
             if event.get("kind") != "action":

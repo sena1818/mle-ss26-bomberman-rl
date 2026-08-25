@@ -16,6 +16,8 @@ if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
 import aggregate_results  # noqa: E402
+import experiment_lib  # noqa: E402
+import prune_runs  # noqa: E402
 from experiment_lib import ConfigError, Experiment, resolved_runtime_config, verify_job_provenance, write_json  # noqa: E402
 from run_experiment import _archive_failed_attempt, build_jobs, load_context  # noqa: E402
 
@@ -442,6 +444,79 @@ class ExperimentInfrastructureTest(unittest.TestCase):
             self.assertEqual(summary["selected_checkpoint"]["checkpoint_round"], 2)
             self.assertEqual(summary["holdout_metrics"]["score"]["mean"], 4.0)
             self.assertEqual(summary["evaluation_suites"]["primary"]["all_checkpoint_holdout_metrics"]["score"]["mean"], 52.0)
+
+    def test_runtime_copy_is_an_allowlist_not_a_deny_list(self):
+        """A stray directory in the repo root must never reach a job."""
+        with tempfile.TemporaryDirectory() as temporary:
+            destination = Path(temporary) / "runtime"
+            intruder = experiment_lib.ROOT / ".allowlist_probe"
+            intruder.mkdir(exist_ok=True)
+            (intruder / "blob.bin").write_bytes(b"0" * 4096)
+            try:
+                experiment_lib.copy_runtime(destination)
+            finally:
+                shutil.rmtree(intruder, ignore_errors=True)
+            self.assertFalse((destination / ".allowlist_probe").exists())
+            # What the framework actually imports must still be there.
+            self.assertTrue((destination / "main.py").is_file())
+            self.assertTrue((destination / "environment.py").is_file())
+            self.assertTrue((destination / "settings.py").is_file())
+            self.assertTrue((destination / "assets").is_dir())
+            self.assertTrue((destination / "agent_code" / "research_agent" / "callbacks.py").is_file())
+
+    def test_prune_only_touches_runtime_of_succeeded_jobs(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            run_dir = Path(temporary) / "run"
+            for name, exit_code in (("done", 0), ("failed", 1), ("running", None)):
+                job_dir = run_dir / "jobs" / name
+                (job_dir / "runtime" / "assets").mkdir(parents=True)
+                (job_dir / "runtime" / "assets" / "x.png").write_bytes(b"0" * 128)
+                write_json(job_dir / "official_stats.json", {"by_agent": {}})
+                if exit_code is not None:
+                    write_json(job_dir / "completion.json", {"exit_code": exit_code})
+            targets = prune_runs.runtime_directories(run_dir)
+            self.assertEqual([path.parent.name for path in targets], ["done"])
+            for path in targets:
+                shutil.rmtree(path)
+            self.assertFalse((run_dir / "jobs" / "done" / "runtime").exists())
+            # A failure keeps its runtime for debugging; a live job is untouched.
+            self.assertTrue((run_dir / "jobs" / "failed" / "runtime").is_dir())
+            self.assertTrue((run_dir / "jobs" / "running" / "runtime").is_dir())
+            self.assertTrue((run_dir / "jobs" / "done" / "official_stats.json").is_file())
+
+    def test_slim_copy_keeps_every_model_including_curriculum_segments(self):
+        """A curriculum job stores its models one level down, per segment."""
+        with tempfile.TemporaryDirectory() as temporary:
+            run_dir = Path(temporary) / "run"
+            destination = Path(temporary) / "archive"
+            write_json(run_dir / "evaluation_summary.json", {"run_id": "run"})
+            write_json(run_dir / "provenance.json", {"git_commit": "abc"})
+            (run_dir / "inputs" / "initial_models").mkdir(parents=True)
+            (run_dir / "inputs" / "initial_models" / "train_seed11.npz").write_bytes(b"warm")
+            job_dir = run_dir / "jobs" / "train_seed11"
+            (job_dir / "agent").mkdir(parents=True)
+            (job_dir / "agent" / "latest_model.npz").write_bytes(b"final")
+            write_json(job_dir / "official_stats.json", {"by_agent": {}})
+            write_json(job_dir / "curriculum_manifest.json", {"segments": []})
+            for index in (1, 2):
+                segment = job_dir / "segments" / f"segment{index:02d}"
+                (segment / "agent" / "checkpoints").mkdir(parents=True)
+                (segment / "agent" / "latest_model.npz").write_bytes(b"seg")
+                (segment / "agent" / "checkpoints" / f"round{index}.npz").write_bytes(b"ckpt")
+                write_json(segment / "official_stats.json", {"by_agent": {}})
+            # Runtime copies must never be archived, even though they can hold a
+            # packaged model.npz beside the agent.
+            (job_dir / "runtime" / "agent_code" / "research_agent").mkdir(parents=True)
+            (job_dir / "runtime" / "agent_code" / "research_agent" / "model.npz").write_bytes(b"junk")
+
+            prune_runs.slim_copy(run_dir, destination, apply=True)
+            archived = destination / "run"
+            models = sorted(path.name for path in archived.rglob("*.npz"))
+            self.assertEqual(models, ["latest_model.npz", "latest_model.npz", "latest_model.npz",
+                                      "round1.npz", "round2.npz", "train_seed11.npz"])
+            self.assertEqual(len(list(archived.rglob("official_stats.json"))), 3)
+            self.assertTrue((archived / "jobs" / "train_seed11" / "curriculum_manifest.json").is_file())
+            self.assertFalse(any("runtime" in path.parts for path in archived.rglob("*")))
 
     @staticmethod
     def _write_config(path: Path) -> Path:

@@ -28,6 +28,9 @@ SUPPORTED_REWARD_VERSIONS = {
 }
 CHECKPOINT_MODES = {"latest", "all"}
 SEED_ROLES = ("validation", "holdout")
+# The only repository directories a running job imports from.  See copy_runtime.
+RUNTIME_ROOT_DIRECTORIES = ("assets", "agent_code")
+_RUNTIME_IGNORED = shutil.ignore_patterns("__pycache__", "*.pyc", "tests", "artifacts", "logs")
 DECLARATIVE_ROUTE_VALUES = {
     "model": {"linear_q", "mlp_q", "cnn_q", "cnn_mlp_q", "dueling_cnn_mlp_q"},
     "algorithm": {"q_learning", "sarsa", "dqn", "double_dqn"},
@@ -430,11 +433,29 @@ def resolved_runtime_config(experiment: Experiment) -> dict[str, Any]:
 
 
 def copy_runtime(destination: Path) -> None:
-    """Make a private framework copy so its fixed logger paths cannot collide."""
-    ignored = shutil.ignore_patterns(
-        ".git", "runs", "logs", "__pycache__", "*.pyc", "artifacts", "screenshots", "replays", "results"
-    )
-    shutil.copytree(ROOT, destination, ignore=ignored)
+    """Make a private framework copy so its fixed logger paths cannot collide.
+
+    This is an allowlist, deliberately.  It used to be a deny-list, which meant
+    every job silently copied whatever new thing appeared in the repository
+    root.  A single ``.venv`` there cost 154 MiB per job and 95 GiB across one
+    three-arm study, while the artifact those jobs exist to produce -- the
+    trained linear model -- is 3.5 KiB.  A deny-list cannot be kept correct by
+    review; an allowlist fails closed.
+
+    The framework needs only the top-level modules it imports, ``assets`` (image
+    files are loaded at import time), and ``agent_code``.  Nothing under
+    ``scripts``, ``docs``, ``experiments`` or a virtualenv is ever imported by a
+    running job.
+    """
+    destination.mkdir(parents=True, exist_ok=True)
+    # Every top-level module, so a new framework file is picked up automatically
+    # without anyone having to remember to extend this list.
+    for module in sorted(ROOT.glob("*.py")):
+        shutil.copy2(module, destination / module.name)
+    for name in RUNTIME_ROOT_DIRECTORIES:
+        source = ROOT / name
+        if source.is_dir():
+            shutil.copytree(source, destination / name, ignore=_RUNTIME_IGNORED)
 
 
 def write_json(path: Path, payload: Any) -> None:
