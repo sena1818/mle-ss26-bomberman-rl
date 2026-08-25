@@ -1,0 +1,118 @@
+{
+  "schema_version": 1,
+  "experiment_id": "R01_A02_dose_response_classic",
+  "route": "R01",
+  "agent": {
+    "name": "research_agent",
+    "model": "linear_q",
+    "algorithm": "q_learning",
+    "state_representation": "handcrafted_v1"
+  },
+  "reward_version": "A02",
+  "_design_note": "Arm of the death-penalty dose-response study. Death penalty D = 5.0 (control arm, re-run under the new protocol). The other two arms differ in reward_version only; training seeds, budgets, evaluation seeds, suites and checkpoint policy are identical by construction. Read bomb_rate / crates_per_round / approximate_safe_bomb_rate across the three arms, not official score: the model predicts score may stay near zero for all of them. See docs/01 section 4.3 and docs/02 section 5.",
+  "_predeclared_design_numbers": {
+    "p_star": 0.938,
+    "p_ref_at_epsilon_0_15": 0.62,
+    "kappa_at_classic": 1.57,
+    "rho_plus_at_classic": 4.76,
+    "note": "p_star is the escape success rate this reward version needs before dropping a bomb has positive expected value under the mean-field model; A05 has no threshold because its expected value is positive for any p. These are approximations, not bounds."
+  },
+  "training": {
+    "scenario": "classic",
+    "opponents": [],
+    "seeds": [
+      1001,
+      1002,
+      1003,
+      1004,
+      1005
+    ],
+    "budget": {
+      "rounds": 500,
+      "checkpoint_every": 50
+    }
+  },
+  "evaluation": {
+    "scenario": "classic",
+    "opponents": [],
+    "seeds": [
+      2001,
+      2002,
+      2003
+    ],
+    "budget": {
+      "rounds": 30,
+      "checkpoint_every": 50
+    }
+  },
+  "checkpoint_evaluation": {
+    "mode": "all",
+    "validation_seeds": [
+      2001,
+      2002,
+      2003
+    ],
+    "holdout_seeds": [
+      3001,
+      3002,
+      3003
+    ]
+  },
+  "evaluation_suites": {
+    "coin_heaven_diagnostic": {
+      "scenario": "coin-heaven",
+      "opponents": [],
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ],
+      "budget": {
+        "rounds": 30,
+        "checkpoint_every": 50
+      },
+      "checkpoint_evaluation": {
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ],
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ]
+      }
+    },
+    "loot_crate_diagnostic": {
+      "scenario": "loot-crate",
+      "opponents": [],
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ],
+      "budget": {
+        "rounds": 30,
+        "checkpoint_every": 50
+      },
+      "checkpoint_evaluation": {
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ],
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ]
+      }
+    }
+  },
+  "promotion": {
+    "primary_metric": "score"
+  }
+}

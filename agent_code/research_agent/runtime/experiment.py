@@ -35,6 +35,21 @@ REWARD_TABLES = {
         "CRATE_DESTROYED": 0.1,
         "COIN_FOUND": 0.2,
     },
+    # A03 and A05 are the other two levels of the death-penalty dose-response
+    # study.  Their event tables are byte-identical to A02 on purpose: the only
+    # thing that varies across A02/A03/A05 is DEATH_PENALTIES.
+    "A03": {
+        "COIN_COLLECTED": 1.0,
+        "KILLED_OPPONENT": 5.0,
+        "CRATE_DESTROYED": 0.1,
+        "COIN_FOUND": 0.2,
+    },
+    "A05": {
+        "COIN_COLLECTED": 1.0,
+        "KILLED_OPPONENT": 5.0,
+        "CRATE_DESTROYED": 0.1,
+        "COIN_FOUND": 0.2,
+    },
 }
 DEATH_PENALTIES = {
     "A00": 0.0,
@@ -43,7 +58,43 @@ DEATH_PENALTIES = {
     # one penalty per event label.
     "A01": -5.0,
     "A02": -5.0,
+    # Dose-response levels.  D = 1.0 comes from inverting the mean-field design
+    # model at p_target = 0.55; D = 0.0 is the no-risk-term control arm that
+    # separates "signal starvation" from "risk term too large".
+    "A03": -1.0,
+    "A05": 0.0,
 }
+# Frozen, human-readable provenance for every registered reward version.  The
+# runner copies this into the run snapshot so a result can always be traced back
+# to the exact weights that produced it, without re-reading this source file.
+REWARD_DESIGN_NOTES = {
+    "A00": "official events only; frozen baseline",
+    "A01": "A00 + one death penalty of 5.0 per death",
+    "A02": "A01 + CRATE_DESTROYED 0.1 + COIN_FOUND 0.2",
+    "A03": "A02 with the death penalty lowered from 5.0 to 1.0; nothing else changes",
+    "A05": "A02 with the death penalty removed; control arm of the D dose-response study",
+}
+
+
+def reward_specification(reward_version: str) -> dict:
+    """Return the full, serializable definition of one reward version.
+
+    This is the single source of truth consumed by the runtime, the run
+    snapshot, and the tests, so a registered version can never be described in
+    one place and implemented differently in another.
+    """
+    try:
+        return {
+            "reward_version": reward_version,
+            "event_weights": dict(REWARD_TABLES[reward_version]),
+            # Reported as the signed value actually added to the reward.
+            "death_penalty": DEATH_PENALTIES[reward_version],
+            "death_penalty_events": ["KILLED_SELF", "GOT_KILLED"],
+            "death_penalty_applications_per_death": 1,
+            "notes": REWARD_DESIGN_NOTES.get(reward_version, ""),
+        }
+    except KeyError as exc:
+        raise ValueError(f"No reward table is registered for {reward_version!r}") from exc
 
 
 def reward_for_events(reward_version: str, events: list[str]) -> float:
@@ -84,6 +135,7 @@ class ExperimentRuntime:
             "runtime_config": asdict(config),
             "feature_version": config.feature_version,
             "reward_version": config.reward_version,
+            "reward_specification": reward_specification(config.reward_version),
             "agent_seed": agent_seed,
             "training": train,
         })
@@ -97,10 +149,15 @@ class ExperimentRuntime:
         mask = legal_action_mask(game_state)
         action_index = self.learner.select_action(state, mask, self.config.epsilon if self.train else 0.0, self.rng)
         action = ACTIONS[action_index]
+        position = game_state["self"][3]
         append_jsonl("action", {
             "round": int(game_state["round"]),
             "step": int(game_state["step"]),
             "action": action,
+            # The pre-action cell.  Recorded so an offline summary can count
+            # distinct visited cells and detect a two-cycle policy; evaluation
+            # jobs receive no events, so this is the only positional record.
+            "position": [int(position[0]), int(position[1])],
             "selected_action_was_legal": bool(mask[action_index]),
             "inference_seconds": perf_counter() - started,
         })

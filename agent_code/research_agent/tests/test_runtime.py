@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import tempfile
 import unittest
@@ -11,11 +12,16 @@ from unittest.mock import Mock, patch
 
 import numpy as np
 
-from agent_code.research_agent.config import active_config
+from agent_code.research_agent.config import REWARD_VERSIONS, active_config
 from agent_code.research_agent.learners import OnlineQLearner
 from agent_code.research_agent.models import LinearQModel, build_model
 from agent_code.research_agent.runtime import ExperimentRuntime
-from agent_code.research_agent.runtime.experiment import reward_for_events
+from agent_code.research_agent.runtime.experiment import (
+    DEATH_PENALTIES,
+    REWARD_TABLES,
+    reward_for_events,
+    reward_specification,
+)
 
 
 def game_state() -> dict:
@@ -48,8 +54,55 @@ class ExperimentRuntimeTest(unittest.TestCase):
         self.assertEqual(reward_for_events("A00", events), 1.0)
         self.assertEqual(reward_for_events("A01", events), -4.0)
         self.assertAlmostEqual(reward_for_events("A02", events), -3.7)
+        # A00-A02 are published baselines; these numbers may never drift.
+        self.assertEqual(DEATH_PENALTIES["A00"], 0.0)
+        self.assertEqual(DEATH_PENALTIES["A01"], -5.0)
+        self.assertEqual(DEATH_PENALTIES["A02"], -5.0)
         with patch.dict(os.environ, {"BOMBERMAN_EXPERIMENT": "R01", "BOMBERMAN_REWARD_VERSION": "A02"}, clear=False):
             self.assertEqual(active_config().reward_version, "A02")
+
+    def test_dose_response_arms_change_only_the_death_penalty(self):
+        """A02, A03 and A05 must differ in exactly one number."""
+        self.assertEqual(REWARD_TABLES["A03"], REWARD_TABLES["A02"])
+        self.assertEqual(REWARD_TABLES["A05"], REWARD_TABLES["A02"])
+        self.assertEqual(DEATH_PENALTIES["A03"], -1.0)
+        self.assertEqual(DEATH_PENALTIES["A05"], 0.0)
+
+        survived = ["COIN_COLLECTED", "CRATE_DESTROYED", "COIN_FOUND"]
+        for version in ("A02", "A03", "A05"):
+            with self.subTest(version=version):
+                self.assertAlmostEqual(reward_for_events(version, survived), 1.3)
+
+        died = ["CRATE_DESTROYED", "KILLED_SELF", "GOT_KILLED"]
+        self.assertAlmostEqual(reward_for_events("A02", died), -4.9)
+        self.assertAlmostEqual(reward_for_events("A03", died), -0.9)
+        # The control arm carries no risk term at all, which is the point of it.
+        self.assertAlmostEqual(reward_for_events("A05", died), 0.1)
+
+    def test_one_death_is_penalised_once_even_though_two_events_fire(self):
+        for version in ("A01", "A02", "A03"):
+            with self.subTest(version=version):
+                both = reward_for_events(version, ["KILLED_SELF", "GOT_KILLED"])
+                self.assertEqual(both, reward_for_events(version, ["KILLED_SELF"]))
+                self.assertEqual(both, DEATH_PENALTIES[version])
+
+    def test_a04_is_specified_but_not_registered(self):
+        """Do not let a documented-but-unimplemented version look runnable."""
+        self.assertNotIn("A04", REWARD_VERSIONS)
+        with self.assertRaises(ValueError):
+            reward_for_events("A04", [])
+
+    def test_every_declared_reward_version_is_fully_registered(self):
+        for version in sorted(REWARD_VERSIONS):
+            with self.subTest(version=version):
+                specification = reward_specification(version)
+                self.assertEqual(specification["reward_version"], version)
+                self.assertEqual(specification["event_weights"], REWARD_TABLES[version])
+                self.assertEqual(specification["death_penalty"], DEATH_PENALTIES[version])
+                self.assertTrue(specification["notes"])
+                self.assertEqual(specification["death_penalty_applications_per_death"], 1)
+                with patch.dict(os.environ, {"BOMBERMAN_REWARD_VERSION": version}, clear=False):
+                    self.assertEqual(active_config().reward_version, version)
 
     def test_r01_behaviour_is_hidden_behind_the_shared_runtime_interface(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -71,6 +124,14 @@ class ExperimentRuntimeTest(unittest.TestCase):
                 runtime.end_round(game_state(), action, [])
             self.assertTrue((artifacts / "latest_model.npz").is_file())
             self.assertTrue(any((artifacts / "checkpoints").glob("*.npz")))
+            records = [json.loads(line) for line in (artifacts / "agent.jsonl").read_text(encoding="utf-8").splitlines()]
+            # Evaluation jobs receive no game events, so the action record is the
+            # only place a trajectory can be reconstructed from.
+            action_records = [record for record in records if record["kind"] == "action"]
+            self.assertTrue(action_records)
+            self.assertEqual(action_records[0]["position"], [3, 3])
+            setup = next(record for record in records if record["kind"] == "agent_setup")
+            self.assertEqual(setup["reward_specification"]["reward_version"], setup["reward_version"])
 
     def test_unimplemented_route_adapter_fails_at_the_internal_seam(self):
         with tempfile.TemporaryDirectory() as temporary:

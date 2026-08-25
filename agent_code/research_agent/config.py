@@ -9,7 +9,11 @@ ACTIVE_EXPERIMENT = "R01"
 FEATURE_DIMENSION = 44
 FEATURE_VERSION = "handcrafted_v1"
 REWARD_VERSION = "A00"
-REWARD_VERSIONS = frozenset({"A00", "A01", "A02"})
+# A03 and A05 are the two additional death-penalty levels of the D dose-response
+# study (A02 = 5.0, A03 = 1.0, A05 = 0.0).  They change nothing else.  A04
+# (SAFE_BOMB) is deliberately absent: it needs per-step runtime state and is
+# specified but not implemented.  See docs/01 section 4.2.
+REWARD_VERSIONS = frozenset({"A00", "A01", "A02", "A03", "A05"})
 
 # Verified against the unmodified SS26 settings.py.  They are deliberately
 # local constants: a submitted agent cannot rely on imports outside its folder.

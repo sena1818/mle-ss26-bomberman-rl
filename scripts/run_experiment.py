@@ -11,6 +11,7 @@ import secrets
 import shutil
 import subprocess
 import sys
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -69,21 +70,49 @@ def build_jobs(experiment: Experiment, run_dir: Path) -> list[dict]:
         jobs.append(job)
 
     def add_evaluations(phase, suite: str) -> None:
+        policy = experiment.suite_checkpoints(suite)
+        checkpoint_rounds = policy.checkpoint_rounds(experiment.training)
+        seed_roles = [("validation", policy.validation_seeds)]
+        if policy.holdout_seeds:
+            seed_roles.append(("holdout", policy.holdout_seeds))
         for train_seed in experiment.training.seeds:
-            model_relpath = Path("jobs") / f"train_seed{train_seed}" / "agent" / "latest_model.npz"
-            for seed in phase.seeds:
-                suffix = "" if suite == "primary" else f"_{suite}"
-                job_id = f"eval{suffix}_train{train_seed}_seed{seed}"
-                jobs.append({
-                    "job_id": job_id, "mode": "eval", "seed": seed, "train_seed": train_seed,
-                    "phase": "evaluation", "suite": suite, "scenario": phase.scenario,
-                    "opponents": list(phase.opponents), "budget": phase.budget.__dict__,
-                    "artifact_relpath": str(Path("jobs") / job_id), "model_relpath": str(model_relpath),
-                })
+            agent_dir = Path("jobs") / f"train_seed{train_seed}" / "agent"
+            for checkpoint_round in checkpoint_rounds:
+                # ``latest`` keeps the historical job id and model_relpath byte
+                # for byte, so existing runs stay reproducible and comparable.
+                if checkpoint_round is None:
+                    model_relpath: str | None = str(agent_dir / "latest_model.npz")
+                    round_tag = ""
+                else:
+                    # The saved file name also encodes an update count that is
+                    # unknown until training has run, so the job addresses the
+                    # checkpoint by round and the worker resolves the file.
+                    model_relpath = None
+                    round_tag = f"_round{checkpoint_round:05d}"
+                for role, seeds in seed_roles:
+                    for seed in seeds:
+                        suffix = "" if suite == "primary" else f"_{suite}"
+                        job_id = f"eval{suffix}{round_tag}_train{train_seed}_seed{seed}"
+                        payload = {
+                            "job_id": job_id, "mode": "eval", "seed": seed, "train_seed": train_seed,
+                            "phase": "evaluation", "suite": suite, "scenario": phase.scenario,
+                            "opponents": list(phase.opponents), "budget": phase.budget.__dict__,
+                            "artifact_relpath": str(Path("jobs") / job_id),
+                            "model_relpath": model_relpath,
+                            "checkpoint_round": checkpoint_round,
+                            "seed_role": role,
+                        }
+                        if checkpoint_round is not None:
+                            payload["checkpoint_search_relpath"] = str(agent_dir / "checkpoints")
+                        jobs.append(payload)
 
     add_evaluations(experiment.evaluation, "primary")
     for suite in experiment.evaluation_suites:
         add_evaluations(suite.phase, suite.name)
+    counts = Counter(job["job_id"] for job in jobs)
+    duplicates = sorted(job_id for job_id, count in counts.items() if count > 1)
+    if duplicates:
+        raise ConfigError(f"Job expansion produced duplicate job ids: {', '.join(duplicates)}")
     return jobs
 
 
@@ -161,6 +190,32 @@ def _resolve_run_relative(run_dir: Path, value: str | None, label: str) -> Path 
     return resolved
 
 
+def _resolve_checkpoint_by_round(run_dir: Path, job: dict) -> Path:
+    """Find the one saved checkpoint for a round number.
+
+    Checkpoint file names embed an update count that only exists after the
+    training job has run, so a prepared evaluation job can only name the round.
+    Requiring exactly one match keeps a retried or duplicated training job from
+    silently changing which weights an evaluation used.
+    """
+    search_dir = _resolve_run_relative(run_dir, job.get("checkpoint_search_relpath"), "checkpoint_search_relpath")
+    if search_dir is None:
+        raise RuntimeError(f"Job {job.get('job_id')} requests a checkpoint round without a search directory")
+    round_number = int(job["checkpoint_round"])
+    matches = sorted(search_dir.glob(f"*_round{round_number:05d}_*.npz"))
+    if not matches:
+        raise FileNotFoundError(
+            f"No checkpoint for round {round_number} under {search_dir}. "
+            "Run the training job first and synchronize its artifacts."
+        )
+    if len(matches) > 1:
+        raise RuntimeError(
+            f"Ambiguous checkpoint for round {round_number} under {search_dir}: "
+            + ", ".join(match.name for match in matches)
+        )
+    return matches[0]
+
+
 def load_context(job_file: Path) -> tuple[Path, dict, Experiment]:
     job = json.loads(job_file.read_text(encoding="utf-8"))
     job_file = job_file.resolve()
@@ -171,6 +226,8 @@ def load_context(job_file: Path) -> tuple[Path, dict, Experiment]:
     if artifact_dir is None:
         raise RuntimeError("Job file is missing artifact_relpath")
     model_path = _resolve_run_relative(run_dir, job.get("model_relpath"), "model_relpath")
+    if model_path is None and job.get("checkpoint_round") is not None:
+        model_path = _resolve_checkpoint_by_round(run_dir, job)
     input_model_path = _resolve_run_relative(run_dir, job.get("input_model_relpath"), "input_model_relpath")
     experiment = Experiment.load(run_dir / "experiment_config.snapshot.json")
     experiment.require_implemented()

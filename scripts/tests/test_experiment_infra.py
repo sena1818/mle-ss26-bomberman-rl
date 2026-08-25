@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import statistics
 import sys
 import tempfile
 import unittest
@@ -209,6 +210,238 @@ class ExperimentInfrastructureTest(unittest.TestCase):
                 self.assertFalse(aggregate_results.maybe_promote(weaker))
             finally:
                 aggregate_results.PROMOTION_ROOT = original_root
+
+    def test_dose_response_reward_versions_are_registered_end_to_end(self):
+        """A03/A05 must pass config validation and reach the runtime config."""
+        for version, death_penalty in (("A03", -1.0), ("A05", 0.0)):
+            with self.subTest(version=version), tempfile.TemporaryDirectory() as temporary:
+                path = Path(temporary) / "config.json"
+                write_json(path, config(reward_version=version))
+                experiment = Experiment.load(path)
+                experiment.require_implemented()
+                runtime = resolved_runtime_config(experiment)
+                self.assertEqual(runtime["config"]["reward_version"], version)
+                self.assertEqual(runtime["reward_specification"]["death_penalty"], death_penalty)
+
+    def test_unregistered_reward_version_is_rejected_before_any_job_runs(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "config.json"
+            write_json(path, config(reward_version="A04"))
+            with self.assertRaises(ConfigError):
+                Experiment.load(path).require_implemented()
+
+    def test_checkpoint_evaluation_defaults_to_the_historical_latest_only_mode(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "config.json"
+            write_json(path, config())
+            experiment = Experiment.load(path)
+            self.assertEqual(experiment.checkpoint_evaluation.mode, "latest")
+            self.assertEqual(experiment.checkpoint_evaluation.holdout_seeds, ())
+            jobs = build_jobs(experiment, Path(temporary) / "run")
+            eval_jobs = [job for job in jobs if job["mode"] == "eval"]
+            self.assertTrue(all(job["model_relpath"].endswith("latest_model.npz") for job in eval_jobs))
+            self.assertTrue(all(job["checkpoint_round"] is None for job in eval_jobs))
+            self.assertTrue(all(job["seed_role"] == "validation" for job in eval_jobs))
+
+    def test_checkpoint_mode_all_expands_one_job_per_saved_round(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "config.json"
+            payload = config()
+            # 4 rounds, checkpointed every 2 -> rounds 2 and 4; round 4 is also
+            # latest_model.npz, so 'all' must not add a redundant latest job.
+            payload["training"]["budget"] = {"rounds": 4, "checkpoint_every": 2}
+            payload["checkpoint_evaluation"] = {"mode": "all"}
+            write_json(path, payload)
+            experiment = Experiment.load(path)
+            jobs = [job for job in build_jobs(experiment, Path(temporary) / "run") if job["mode"] == "eval"]
+            self.assertEqual({job["checkpoint_round"] for job in jobs}, {2, 4})
+            self.assertEqual(len(jobs), 2 * 2 * 2)  # train seeds x checkpoints x eval seeds
+            self.assertTrue(all(job["model_relpath"] is None for job in jobs))
+            self.assertTrue(all(job["checkpoint_search_relpath"].endswith("checkpoints") for job in jobs))
+
+    def test_holdout_seeds_are_separate_jobs_and_never_overlap_validation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "config.json"
+            payload = config()
+            payload["checkpoint_evaluation"] = {"validation_seeds": [21], "holdout_seeds": [31]}
+            write_json(path, payload)
+            experiment = Experiment.load(path)
+            jobs = [job for job in build_jobs(experiment, Path(temporary) / "run") if job["mode"] == "eval"]
+            roles = {job["seed_role"] for job in jobs}
+            self.assertEqual(roles, {"validation", "holdout"})
+            self.assertEqual({job["seed"] for job in jobs if job["seed_role"] == "holdout"}, {31})
+            self.assertEqual(len({job["job_id"] for job in jobs}), len(jobs))
+
+            payload["checkpoint_evaluation"] = {"validation_seeds": [21], "holdout_seeds": [21]}
+            write_json(path, payload)
+            with self.assertRaises(ConfigError):
+                Experiment.load(path)
+
+    def test_snapshot_round_trips_the_checkpoint_policy(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "config.json"
+            payload = config()
+            payload["checkpoint_evaluation"] = {"mode": "all", "validation_seeds": [21], "holdout_seeds": [31]}
+            payload["evaluation_suites"] = {
+                "coin_regression": {
+                    "scenario": "coin-heaven", "opponents": [], "seeds": [21],
+                    "budget": {"rounds": 2, "checkpoint_every": 1},
+                    "checkpoint_evaluation": {"mode": "latest", "validation_seeds": [21]},
+                }
+            }
+            write_json(path, payload)
+            experiment = Experiment.load(path)
+            snapshot_path = Path(temporary) / "snapshot.json"
+            write_json(snapshot_path, experiment.snapshot())
+            self.assertEqual(Experiment.load(snapshot_path), experiment)
+            # A diagnostic suite stays on 'latest' while the primary sweeps all.
+            self.assertEqual(experiment.suite_checkpoints("primary").mode, "all")
+            self.assertEqual(experiment.suite_checkpoints("coin_regression").mode, "latest")
+
+    def test_snapshot_preserves_predeclared_design_metadata(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "config.json"
+            payload = config(reward_version="A03")
+            payload["_design_note"] = "Death-penalty dose-response arm."
+            payload["_predeclared_design_numbers"] = {"p_star": 0.689, "model": "mean-field"}
+            write_json(path, payload)
+            experiment = Experiment.load(path)
+            snapshot_path = Path(temporary) / "snapshot.json"
+            write_json(snapshot_path, experiment.snapshot())
+            reloaded = Experiment.load(snapshot_path)
+            self.assertEqual(reloaded.design_note, payload["_design_note"])
+            self.assertEqual(reloaded.predeclared_design_numbers, payload["_predeclared_design_numbers"])
+
+    def test_ratio_metrics_are_averaged_per_round_not_pooled(self):
+        """A pooled ratio of sums is not the mean of per-round ratios."""
+        with tempfile.TemporaryDirectory() as temporary:
+            job_dir = Path(temporary) / "job"
+            (job_dir / "agent").mkdir(parents=True)
+            write_json(job_dir / "official_stats.json", {
+                "by_agent": {"a": {"score": 0, "coins": 2, "kills": 0, "suicides": 1,
+                                   "invalid": 0, "steps": 6, "bombs": 3, "crates": 6, "moves": 2}},
+                "by_round": {"Round 01": {"coins": 2, "kills": 0, "suicides": 0, "steps": 2},
+                             "Round 02": {"coins": 0, "kills": 0, "suicides": 1, "steps": 4}},
+            })
+            records = [
+                # Round 1: 2 actions, 1 bomb, survived  -> bomb_rate .5, safe 1.0
+                {"kind": "action", "round": 1, "action": "BOMB", "position": [1, 1],
+                 "selected_action_was_legal": True, "inference_seconds": 0.01},
+                {"kind": "action", "round": 1, "action": "WAIT", "position": [1, 1],
+                 "selected_action_was_legal": True, "inference_seconds": 0.01},
+                # Round 2: 4 actions, 2 bombs, died once -> bomb_rate .5, safe .5
+                {"kind": "action", "round": 2, "action": "BOMB", "position": [1, 1],
+                 "selected_action_was_legal": True, "inference_seconds": 0.01},
+                {"kind": "action", "round": 2, "action": "BOMB", "position": [2, 1],
+                 "selected_action_was_legal": True, "inference_seconds": 0.01},
+                {"kind": "action", "round": 2, "action": "WAIT", "position": [2, 1],
+                 "selected_action_was_legal": True, "inference_seconds": 0.01},
+                {"kind": "action", "round": 2, "action": "UP", "position": [2, 1],
+                 "selected_action_was_legal": True, "inference_seconds": 0.01},
+            ]
+            (job_dir / "agent" / "agent.jsonl").write_text(
+                "\n".join(json.dumps(record) for record in records) + "\n", encoding="utf-8")
+            sample = aggregate_results.one_evaluation(job_dir, "a")
+
+            self.assertAlmostEqual(sample["bomb_rate"], 0.5)
+            self.assertAlmostEqual(sample["wait_fraction"], (0.5 + 0.25) / 2)
+            self.assertAlmostEqual(sample["approximate_safe_bomb_rate"], (1.0 + 0.5) / 2)
+            self.assertAlmostEqual(sample["distinct_cells"], (1 + 2) / 2)
+            self.assertEqual(sample["rounds_with_bombs"], 2)
+            # Job-level, because official by_round carries no crate counter.
+            self.assertAlmostEqual(sample["crates_per_round"], 3.0)
+            self.assertAlmostEqual(sample["crates_per_bomb"], 2.0)
+            self.assertAlmostEqual(sample["coins_per_crate"], 2 / 6)
+            self.assertAlmostEqual(sample["official_wait_fraction"], (6 - 2 - 3 - 0) / 6)
+
+    def test_undefined_ratios_are_omitted_rather_than_counted_as_zero(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            job_dir = Path(temporary) / "job"
+            (job_dir / "agent").mkdir(parents=True)
+            write_json(job_dir / "official_stats.json", {
+                "by_agent": {"a": {"score": 0, "coins": 0, "kills": 0, "suicides": 0,
+                                   "invalid": 0, "steps": 2, "bombs": 0, "crates": 0, "moves": 0}},
+                "by_round": {"Round 01": {"coins": 0, "kills": 0, "suicides": 0, "steps": 2}},
+            })
+            (job_dir / "agent" / "agent.jsonl").write_text(
+                json.dumps({"kind": "action", "round": 1, "action": "WAIT", "position": [1, 1],
+                            "selected_action_was_legal": True, "inference_seconds": 0.01}) + "\n",
+                encoding="utf-8")
+            sample = aggregate_results.one_evaluation(job_dir, "a")
+            # A policy that never bombs has no safe-bomb rate; calling it 0.0
+            # would claim it bombed and died.
+            self.assertIsNone(sample["approximate_safe_bomb_rate"])
+            self.assertIsNone(sample["crates_per_bomb"])
+            self.assertIsNone(sample["coins_per_crate"])
+            self.assertEqual(sample["bomb_rate"], 0.0)
+            block = aggregate_results._metric_block([sample, sample])
+            self.assertEqual(block["approximate_safe_bomb_rate"]["count"], 0)
+            self.assertEqual(block["bomb_rate"]["count"], 2)
+
+    def test_variance_is_reported_separately_for_training_and_evaluation_seeds(self):
+        decomposition = aggregate_results._variance_decomposition({
+            1: [{metric: 1.0 for metric in aggregate_results.ALL_METRICS},
+                {metric: 3.0 for metric in aggregate_results.ALL_METRICS}],
+            2: [{metric: 5.0 for metric in aggregate_results.ALL_METRICS},
+                {metric: 7.0 for metric in aggregate_results.ALL_METRICS}],
+        })
+        score = decomposition["score"]
+        self.assertEqual(score["train_seeds"], 2)
+        # Seed means are 2 and 6; within-seed spread is identical for both.
+        self.assertAlmostEqual(score["across_train_seeds_std"], statistics.stdev([2.0, 6.0]))
+        self.assertAlmostEqual(score["mean_within_train_seed_std"], statistics.stdev([1.0, 3.0]))
+
+    def test_checkpoint_holdout_reports_only_the_validation_selected_model(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            run_dir = Path(temporary) / "run"
+            run_dir.mkdir()
+            payload = config()
+            payload["training"]["seeds"] = [11]
+            payload["training"]["budget"] = {"rounds": 2, "checkpoint_every": 1}
+            payload["evaluation"]["seeds"] = [21]
+            payload["checkpoint_evaluation"] = {
+                "mode": "all", "validation_seeds": [21], "holdout_seeds": [31],
+            }
+            config_path = run_dir / "input.json"
+            write_json(config_path, payload)
+            experiment = Experiment.load(config_path)
+            write_json(run_dir / "experiment_config.snapshot.json", experiment.snapshot())
+            jobs = build_jobs(experiment, run_dir)
+            write_json(run_dir / "jobs.json", jobs)
+            agent_dir = run_dir / "jobs" / "train_seed11" / "agent"
+            checkpoints = agent_dir / "checkpoints"
+            checkpoints.mkdir(parents=True)
+            (checkpoints / "R01_round00001_updates00000001.npz").write_bytes(b"one")
+            (checkpoints / "R01_round00002_updates00000002.npz").write_bytes(b"two")
+            (agent_dir / "latest_model.npz").write_bytes(b"latest")
+            for job in jobs:
+                if job["mode"] != "eval":
+                    continue
+                checkpoint_round = int(job["checkpoint_round"])
+                score = {
+                    ("validation", 1): 1,
+                    ("validation", 2): 2,
+                    ("holdout", 1): 100,
+                    ("holdout", 2): 4,
+                }[(job["seed_role"], checkpoint_round)]
+                job_dir = run_dir / job["artifact_relpath"]
+                (job_dir / "agent").mkdir(parents=True)
+                write_json(job_dir / "official_stats.json", {
+                    "by_agent": {"research_agent": {
+                        "score": score, "coins": score, "kills": 0, "suicides": 0,
+                        "invalid": 0, "steps": 1, "bombs": 0, "crates": 0, "moves": 0,
+                    }},
+                    "by_round": {"Round 01": {"coins": score, "kills": 0, "suicides": 0, "steps": 1}},
+                })
+                (job_dir / "agent" / "agent.jsonl").write_text(
+                    json.dumps({"kind": "action", "round": 1, "action": "WAIT", "position": [1, 1],
+                                "selected_action_was_legal": True, "inference_seconds": 0.01}) + "\n",
+                    encoding="utf-8",
+                )
+            summary = aggregate_results.aggregate(run_dir)
+            self.assertEqual(summary["selected_checkpoint"]["checkpoint_round"], 2)
+            self.assertEqual(summary["holdout_metrics"]["score"]["mean"], 4.0)
+            self.assertEqual(summary["evaluation_suites"]["primary"]["all_checkpoint_holdout_metrics"]["score"]["mean"], 52.0)
 
     @staticmethod
     def _write_config(path: Path) -> Path:

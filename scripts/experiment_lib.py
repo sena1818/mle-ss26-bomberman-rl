@@ -7,7 +7,7 @@ import re
 import shutil
 import subprocess
 import sys
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -21,8 +21,13 @@ SUPPORTED_DECLARATIONS = {
     "R01": ("linear_q", "q_learning", "handcrafted_v1"),
 }
 SUPPORTED_REWARD_VERSIONS = {
-    "R01": {"A00", "A01", "A02"},
+    # A03 (death penalty 1.0) and A05 (death penalty 0.0) are the other two
+    # levels of the D dose-response study; A02 (5.0) is the control arm.  A04
+    # is specified in docs/01 but not implemented, so it is not listed here.
+    "R01": {"A00", "A01", "A02", "A03", "A05"},
 }
+CHECKPOINT_MODES = {"latest", "all"}
+SEED_ROLES = ("validation", "holdout")
 DECLARATIVE_ROUTE_VALUES = {
     "model": {"linear_q", "mlp_q", "cnn_q", "cnn_mlp_q", "dueling_cnn_mlp_q"},
     "algorithm": {"q_learning", "sarsa", "dqn", "double_dqn"},
@@ -127,9 +132,77 @@ class Curriculum:
 
 
 @dataclass(frozen=True)
+class CheckpointEvaluation:
+    """Which saved checkpoints an evaluation suite runs against, and why.
+
+    ``latest`` reproduces the historical behaviour exactly: only each training
+    seed's final ``latest_model.npz`` is evaluated.  It stays the default so
+    older runs remain comparable and so a protocol change is never silent.
+
+    ``all`` additionally evaluates every periodic checkpoint, which is what
+    turns three final points into a learning curve.  Checkpoints are addressed
+    by round number, not by file name, because the file name also encodes an
+    update count that is unknown until the training job has run.
+
+    ``holdout_seeds`` are never used to choose a checkpoint.  Selection happens
+    on ``validation_seeds`` only; the holdout numbers are what a report quotes.
+    """
+
+    mode: str = "latest"
+    validation_seeds: tuple[int, ...] = ()
+    holdout_seeds: tuple[int, ...] = ()
+
+    @classmethod
+    def parse(cls, value: Any, label: str, evaluation: "Phase") -> "CheckpointEvaluation":
+        if value is None:
+            return cls(mode="latest", validation_seeds=evaluation.seeds, holdout_seeds=())
+        if not isinstance(value, dict):
+            raise ConfigError(f"{label} must be an object")
+        mode = value.get("mode", "latest")
+        if mode not in CHECKPOINT_MODES:
+            raise ConfigError(f"{label}.mode must be one of {sorted(CHECKPOINT_MODES)}")
+
+        def seed_list(key: str, default: tuple[int, ...]) -> tuple[int, ...]:
+            if key not in value:
+                return default
+            try:
+                seeds = tuple(int(seed) for seed in value[key])
+            except (TypeError, ValueError) as exc:
+                raise ConfigError(f"{label}.{key} must be a list of integers") from exc
+            if len(set(seeds)) != len(seeds):
+                raise ConfigError(f"{label}.{key} must not repeat a seed")
+            return seeds
+
+        validation = seed_list("validation_seeds", evaluation.seeds)
+        holdout = seed_list("holdout_seeds", ())
+        if not validation:
+            raise ConfigError(f"{label}.validation_seeds must not be empty")
+        overlap = sorted(set(validation) & set(holdout))
+        if overlap:
+            raise ConfigError(
+                f"{label}: holdout seeds must not also select checkpoints; overlapping seeds {overlap}"
+            )
+        return cls(mode=mode, validation_seeds=validation, holdout_seeds=holdout)
+
+    def checkpoint_rounds(self, training: "Phase") -> tuple[int | None, ...]:
+        """Return the checkpoint rounds to evaluate; ``None`` means latest."""
+        if self.mode == "latest":
+            return (None,)
+        every = training.budget.checkpoint_every
+        rounds = tuple(range(every, training.budget.rounds + 1, every))
+        if not rounds:
+            raise ConfigError("checkpoint_evaluation.mode 'all' needs checkpoint_every <= rounds")
+        # The final periodic checkpoint and ``latest_model.npz`` are the same
+        # model when rounds is a multiple of checkpoint_every, so ``None`` is
+        # only added when the run would otherwise never evaluate the final one.
+        return rounds if training.budget.rounds % every == 0 else rounds + (None,)
+
+
+@dataclass(frozen=True)
 class EvaluationSuite:
     name: str
     phase: Phase
+    checkpoints: CheckpointEvaluation | None = None
 
 
 @dataclass(frozen=True)
@@ -147,6 +220,25 @@ class Experiment:
     promotion_primary_metric: str
     curriculum: Curriculum | None = None
     evaluation_suites: tuple[EvaluationSuite, ...] = ()
+    checkpoint_evaluation: CheckpointEvaluation = CheckpointEvaluation()
+    design_note: str = ""
+    predeclared_design_numbers: dict[str, Any] = field(default_factory=dict)
+
+    def suite_checkpoints(self, suite: str) -> CheckpointEvaluation:
+        """Return the checkpoint policy for one suite name.
+
+        Diagnostic suites default to ``latest`` even when the primary suite
+        sweeps every checkpoint: a transfer diagnostic answers "did the final
+        model keep this ability", not "how did it get there".
+        """
+        if suite == "primary":
+            return self.checkpoint_evaluation
+        for declared in self.evaluation_suites:
+            if declared.name == suite:
+                if declared.checkpoints is not None:
+                    return declared.checkpoints
+                return CheckpointEvaluation(mode="latest", validation_seeds=declared.phase.seeds)
+        raise ConfigError(f"Unknown evaluation suite {suite!r}")
 
     @classmethod
     def load(cls, path: Path) -> "Experiment":
@@ -167,15 +259,27 @@ class Experiment:
             raw_suites = raw.get("evaluation_suites", {})
             if not isinstance(raw_suites, dict):
                 raise ConfigError("evaluation_suites must be an object keyed by suite name")
-            suites = tuple(
-                EvaluationSuite(
-                    safe_identifier(name, "evaluation_suites name"),
-                    Phase.parse(phase, f"evaluation_suites.{name}"),
-                )
-                for name, phase in raw_suites.items()
-            )
+            suites = []
+            for name, phase in raw_suites.items():
+                suite_name = safe_identifier(name, "evaluation_suites name")
+                suite_phase = Phase.parse(phase, f"evaluation_suites.{suite_name}")
+                raw_checkpoints = phase.get("checkpoint_evaluation") if isinstance(phase, dict) else None
+                suites.append(EvaluationSuite(
+                    suite_name,
+                    suite_phase,
+                    CheckpointEvaluation.parse(
+                        raw_checkpoints, f"evaluation_suites.{suite_name}.checkpoint_evaluation", suite_phase
+                    ) if raw_checkpoints is not None else None,
+                ))
+            suites = tuple(suites)
             if any(suite.name == "primary" for suite in suites):
                 raise ConfigError("evaluation_suites may not redefine the reserved primary suite")
+            design_note = raw.get("_design_note", "")
+            predeclared_design_numbers = raw.get("_predeclared_design_numbers", {})
+            if not isinstance(design_note, str):
+                raise ConfigError("_design_note must be a string")
+            if not isinstance(predeclared_design_numbers, dict):
+                raise ConfigError("_predeclared_design_numbers must be an object")
             experiment = cls(
                 schema_version=int(raw["schema_version"]),
                 experiment_id=safe_identifier(raw["experiment_id"], "experiment_id"),
@@ -190,6 +294,11 @@ class Experiment:
                 promotion_primary_metric=raw["promotion"]["primary_metric"],
                 curriculum=Curriculum.parse(raw["curriculum"], training) if "curriculum" in raw else None,
                 evaluation_suites=suites,
+                checkpoint_evaluation=CheckpointEvaluation.parse(
+                    raw.get("checkpoint_evaluation"), "checkpoint_evaluation", evaluation
+                ),
+                design_note=design_note,
+                predeclared_design_numbers=predeclared_design_numbers,
             )
         except (KeyError, TypeError) as exc:
             raise ConfigError("agent and promotion sections have invalid fields") from exc
@@ -211,7 +320,7 @@ class Experiment:
         if expected != declared or self.reward_version not in SUPPORTED_REWARD_VERSIONS.get(self.route, set()):
             raise ConfigError(
                 f"{self.route} is declared for the shared infrastructure but is not implemented. "
-                "Only the existing R01 linear Q-learning agent with A00, A01, or A02 may be run."
+                "Only the existing R01 linear Q-learning agent with A00, A01, A02, A03, or A05 may be run."
             )
 
     def snapshot(self) -> dict[str, Any]:
@@ -229,17 +338,27 @@ class Experiment:
             "reward_version": self.reward_version,
             "training": asdict(self.training),
             "evaluation": asdict(self.evaluation),
+            "checkpoint_evaluation": asdict(self.checkpoint_evaluation),
             "promotion": {"primary_metric": self.promotion_primary_metric},
         }
+        if self.design_note:
+            snapshot["_design_note"] = self.design_note
+        if self.predeclared_design_numbers:
+            snapshot["_predeclared_design_numbers"] = self.predeclared_design_numbers
         if self.curriculum is not None:
             snapshot["curriculum"] = {
                 "source_run_id": self.curriculum.source_run_id,
                 "segments": [asdict(segment) for segment in self.curriculum.segments],
             }
         if self.evaluation_suites:
-            snapshot["evaluation_suites"] = {
-                suite.name: asdict(suite.phase) for suite in self.evaluation_suites
-            }
+            snapshot["evaluation_suites"] = {}
+            for suite in self.evaluation_suites:
+                entry = asdict(suite.phase)
+                if suite.checkpoints is not None:
+                    # Nested inside the phase so the snapshot reloads through
+                    # exactly the same parser that read the external config.
+                    entry["checkpoint_evaluation"] = asdict(suite.checkpoints)
+                snapshot["evaluation_suites"][suite.name] = entry
         return snapshot
 
 
@@ -285,6 +404,7 @@ def resolved_runtime_config(experiment: Experiment) -> dict[str, Any]:
     if str(ROOT) not in sys.path:
         sys.path.insert(0, str(ROOT))
     from agent_code.research_agent.config import ACTIONS, EXPERIMENTS, FEATURE_DIMENSION, REWARD_VERSIONS
+    from agent_code.research_agent.runtime.experiment import reward_specification
 
     try:
         config = EXPERIMENTS[experiment.route]
@@ -303,6 +423,9 @@ def resolved_runtime_config(experiment: Experiment) -> dict[str, Any]:
         "actions": list(ACTIONS),
         "feature_dimension": FEATURE_DIMENSION,
         "config": asdict(config),
+        # Freezing the exact weights, not just the version label, means a run
+        # directory stays interpretable even if a later commit edits the table.
+        "reward_specification": reward_specification(experiment.reward_version),
     }
 
 
