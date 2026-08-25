@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import secrets
@@ -53,23 +54,75 @@ def build_jobs(experiment: Experiment, run_dir: Path) -> list[dict]:
     jobs: list[dict] = []
     for seed in experiment.training.seeds:
         job_id = f"train_seed{seed}"
-        jobs.append({
+        job = {
             "job_id": job_id, "mode": "train", "seed": seed,
             "phase": "training", "scenario": experiment.training.scenario,
             "opponents": list(experiment.training.opponents), "budget": experiment.training.budget.__dict__,
             "artifact_relpath": str(Path("jobs") / job_id), "model_relpath": None,
-        })
-    for train_seed in experiment.training.seeds:
-        model_relpath = Path("jobs") / f"train_seed{train_seed}" / "agent" / "latest_model.npz"
-        for seed in experiment.evaluation.seeds:
-            job_id = f"eval_train{train_seed}_seed{seed}"
-            jobs.append({
-                "job_id": job_id, "mode": "eval", "seed": seed, "train_seed": train_seed,
-                "phase": "evaluation", "scenario": experiment.evaluation.scenario,
-                "opponents": list(experiment.evaluation.opponents), "budget": experiment.evaluation.budget.__dict__,
-                "artifact_relpath": str(Path("jobs") / job_id), "model_relpath": str(model_relpath),
-            })
+        }
+        if experiment.curriculum is not None:
+            job["curriculum"] = {
+                "source_run_id": experiment.curriculum.source_run_id,
+                "segments": [segment.__dict__ for segment in experiment.curriculum.segments],
+            }
+            job["input_model_relpath"] = str(Path("inputs") / "initial_models" / f"train_seed{seed}.npz")
+        jobs.append(job)
+
+    def add_evaluations(phase, suite: str) -> None:
+        for train_seed in experiment.training.seeds:
+            model_relpath = Path("jobs") / f"train_seed{train_seed}" / "agent" / "latest_model.npz"
+            for seed in phase.seeds:
+                suffix = "" if suite == "primary" else f"_{suite}"
+                job_id = f"eval{suffix}_train{train_seed}_seed{seed}"
+                jobs.append({
+                    "job_id": job_id, "mode": "eval", "seed": seed, "train_seed": train_seed,
+                    "phase": "evaluation", "suite": suite, "scenario": phase.scenario,
+                    "opponents": list(phase.opponents), "budget": phase.budget.__dict__,
+                    "artifact_relpath": str(Path("jobs") / job_id), "model_relpath": str(model_relpath),
+                })
+
+    add_evaluations(experiment.evaluation, "primary")
+    for suite in experiment.evaluation_suites:
+        add_evaluations(suite.phase, suite.name)
     return jobs
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def materialize_curriculum_inputs(experiment: Experiment, run_dir: Path) -> list[dict]:
+    """Copy warm-start checkpoints into the new run, making it portable."""
+    if experiment.curriculum is None:
+        return []
+    source_root = RUNS_ROOT / experiment.curriculum.source_run_id
+    if not source_root.is_dir():
+        raise FileNotFoundError(f"Curriculum source run is unavailable: {source_root}")
+    try:
+        source_provenance = json.loads((source_root / "provenance.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"Curriculum source provenance is unavailable: {source_root / 'provenance.json'}") from exc
+    records = []
+    for seed in experiment.training.seeds:
+        source = source_root / "jobs" / f"train_seed{seed}" / "agent" / "latest_model.npz"
+        if not source.is_file():
+            raise FileNotFoundError(f"Curriculum source checkpoint is unavailable: {source}")
+        destination = run_dir / "inputs" / "initial_models" / f"train_seed{seed}.npz"
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
+        records.append({
+            "train_seed": seed,
+            "source_run_id": experiment.curriculum.source_run_id,
+            "source_git_commit": source_provenance.get("git_commit"),
+            "source_checkpoint_relpath": str(source.relative_to(source_root)),
+            "input_checkpoint_relpath": str(destination.relative_to(run_dir)),
+            "sha256": _sha256(destination),
+        })
+    return records
 
 
 def prepare(config_path: Path, requested_run_id: str | None, allow_dirty: bool) -> Path:
@@ -85,6 +138,7 @@ def prepare(config_path: Path, requested_run_id: str | None, allow_dirty: bool) 
     run_dir.mkdir(parents=True)
     snapshot = experiment.snapshot()
     snapshot["resolved_runtime_config"] = resolved_runtime_config(experiment)
+    snapshot["curriculum_inputs"] = materialize_curriculum_inputs(experiment, run_dir)
     write_json(run_dir / "experiment_config.snapshot.json", snapshot)
     write_json(run_dir / "provenance.json", {**provenance, "config_source": str(config_path.resolve())})
     jobs = build_jobs(experiment, run_dir)
@@ -117,9 +171,15 @@ def load_context(job_file: Path) -> tuple[Path, dict, Experiment]:
     if artifact_dir is None:
         raise RuntimeError("Job file is missing artifact_relpath")
     model_path = _resolve_run_relative(run_dir, job.get("model_relpath"), "model_relpath")
+    input_model_path = _resolve_run_relative(run_dir, job.get("input_model_relpath"), "input_model_relpath")
     experiment = Experiment.load(run_dir / "experiment_config.snapshot.json")
     experiment.require_implemented()
-    job = {**job, "artifact_dir": str(artifact_dir), "model_path": str(model_path) if model_path else None}
+    job = {
+        **job,
+        "artifact_dir": str(artifact_dir),
+        "model_path": str(model_path) if model_path else None,
+        "input_model_path": str(input_model_path) if input_model_path else None,
+    }
     return run_dir, job, experiment
 
 
@@ -139,6 +199,124 @@ def _archive_failed_attempt(run_dir: Path, job_dir: Path) -> None:
     shutil.move(str(job_dir), str(destination))
 
 
+def _run_curriculum_segment(
+    *,
+    run_dir: Path,
+    job: dict,
+    experiment: Experiment,
+    segment_dir: Path,
+    segment_index: int,
+    segment: dict,
+    input_model: Path,
+) -> tuple[int, Path, Path]:
+    """Run one scenario segment and return its exit code, model, and stats paths."""
+    segment_id = f"segment{segment_index:02d}_{segment['scenario'].replace('-', '_')}"
+    runtime = segment_dir / "runtime"
+    copy_runtime(runtime)
+    (runtime / "logs").mkdir()
+    agent_dir = segment_dir / "agent"
+    stats_path = segment_dir / "official_stats.json"
+    segment_seed = int(job["seed"]) * 1000 + segment_index
+    framework_log = runtime / "agent_code" / experiment.agent_name / "logs" / f"{experiment.agent_name}.log"
+    game_log = runtime / "logs" / "game.log"
+    environment = os.environ.copy()
+    environment.update({
+        "BOMBERMAN_RUN_ID": f"{run_dir.name}_{job['job_id']}_{segment_id}",
+        "BOMBERMAN_EXPERIMENT": experiment.route,
+        "BOMBERMAN_ARTIFACT_DIR": str(agent_dir.resolve()),
+        "BOMBERMAN_SCENARIO": segment["scenario"],
+        "BOMBERMAN_SEED": str(segment_seed),
+        "BOMBERMAN_AGENT_SEED": str(segment_seed),
+        "BOMBERMAN_CHECKPOINT_EVERY": str(job["budget"]["checkpoint_every"]),
+        "BOMBERMAN_CONTINUE": "1",
+        "BOMBERMAN_MODEL_PATH": str(input_model.resolve()),
+    })
+    command = [
+        sys.executable, "main.py", "play", "--agents", experiment.agent_name, *job["opponents"],
+        "--scenario", segment["scenario"], "--seed", str(segment_seed), "--n-rounds", str(segment["rounds"]),
+        "--no-gui", "--save-stats", str(stats_path),
+        "--match-name", f"{run_dir.name}_{job['job_id']}_{segment_id}", "--train", "1",
+    ]
+    write_json(segment_dir / "command.json", {
+        "command": command,
+        "cwd": str(runtime),
+        "environment": {key: environment[key] for key in environment if key.startswith("BOMBERMAN_")},
+    })
+    with (segment_dir / "stdout.log").open("w", encoding="utf-8") as stdout, (segment_dir / "stderr.log").open("w", encoding="utf-8") as stderr:
+        result = subprocess.run(command, cwd=runtime, env=environment, stdout=stdout, stderr=stderr, text=True)
+    if framework_log.exists():
+        shutil.copy2(framework_log, segment_dir / "framework_agent.log")
+    if game_log.exists():
+        shutil.copy2(game_log, segment_dir / "framework_game.log")
+    output_model = agent_dir / "latest_model.npz"
+    write_json(segment_dir / "completion.json", {
+        "exit_code": result.returncode,
+        "job_id": job["job_id"],
+        "segment_index": segment_index,
+        "segment_seed": segment_seed,
+    })
+    return result.returncode, output_model, stats_path
+
+
+def _combine_training_stats(segment_stats: list[tuple[str, Path]], agent_name: str) -> dict:
+    """Preserve a concise root training stats file without flattening segment artifacts."""
+    by_agent: dict[str, float] = {}
+    by_round: dict[str, dict] = {}
+    for segment_id, stats_path in segment_stats:
+        stats = json.loads(stats_path.read_text(encoding="utf-8"))
+        for key, value in stats["by_agent"].get(agent_name, {}).items():
+            if isinstance(value, (int, float)):
+                by_agent[key] = by_agent.get(key, 0.0) + value
+        for round_id, values in stats["by_round"].items():
+            by_round[f"{segment_id}:{round_id}"] = values
+    return {"by_agent": {agent_name: by_agent}, "by_round": by_round}
+
+
+def execute_curriculum_job(run_dir: Path, job: dict, experiment: Experiment, job_dir: Path) -> None:
+    """Continue one model through a frozen sequence of private scenario segments."""
+    input_model = Path(job["input_model_path"])
+    if not input_model.is_file():
+        raise FileNotFoundError(f"Curriculum warm-start checkpoint is unavailable: {input_model}")
+    manifest: list[dict] = []
+    stats: list[tuple[str, Path]] = []
+    previous_model = input_model
+    try:
+        for index, segment in enumerate(job["curriculum"]["segments"], start=1):
+            segment_id = f"segment{index:02d}_{segment['scenario'].replace('-', '_')}"
+            segment_dir = job_dir / "segments" / segment_id
+            result, output_model, stats_path = _run_curriculum_segment(
+                run_dir=run_dir, job=job, experiment=experiment, segment_dir=segment_dir,
+                segment_index=index, segment=segment, input_model=previous_model,
+            )
+            record = {
+                "segment_index": index,
+                "scenario": segment["scenario"],
+                "rounds": segment["rounds"],
+                "input_checkpoint": str(previous_model.relative_to(run_dir)),
+                "output_checkpoint": str(output_model.relative_to(run_dir)),
+                "exit_code": result,
+            }
+            if result:
+                manifest.append(record)
+                write_json(job_dir / "curriculum_manifest.json", {"segments": manifest})
+                write_json(job_dir / "completion.json", {"exit_code": result, "job_id": job["job_id"]})
+                raise subprocess.CalledProcessError(result, ["curriculum", job["job_id"], segment_id])
+            if not output_model.is_file():
+                raise FileNotFoundError(f"Curriculum segment did not produce latest_model.npz: {output_model}")
+            record["output_sha256"] = _sha256(output_model)
+            manifest.append(record)
+            stats.append((segment_id, stats_path))
+            previous_model = output_model
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        raise
+    final_model = job_dir / "agent" / "latest_model.npz"
+    final_model.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(previous_model, final_model)
+    write_json(job_dir / "curriculum_manifest.json", {"segments": manifest, "final_model": str(final_model.relative_to(run_dir))})
+    write_json(job_dir / "official_stats.json", _combine_training_stats(stats, experiment.agent_name))
+    write_json(job_dir / "completion.json", {"exit_code": 0, "job_id": job["job_id"]})
+
+
 def execute_job(job_file: Path, *, retry: bool = False) -> None:
     run_dir, job, experiment = load_context(job_file)
     verify_job_provenance(run_dir)
@@ -151,6 +329,10 @@ def execute_job(job_file: Path, *, retry: bool = False) -> None:
         raise FileNotFoundError(f"Evaluation checkpoint is unavailable: {job['model_path']}")
     job_dir.mkdir(parents=True)
     write_json(job_dir / "job.snapshot.json", job)
+    if job["mode"] == "train" and "curriculum" in job:
+        execute_curriculum_job(run_dir, job, experiment, job_dir)
+        print(f"completed {job['job_id']}: {job_dir}")
+        return
     runtime = job_dir / "runtime"
     copy_runtime(runtime)
     # ``environment.py`` expects this framework-owned location to exist.  It

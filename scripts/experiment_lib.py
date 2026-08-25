@@ -83,6 +83,53 @@ class Phase:
 
 
 @dataclass(frozen=True)
+class CurriculumSegment:
+    scenario: str
+    rounds: int
+
+
+@dataclass(frozen=True)
+class Curriculum:
+    """A warm-started, sequential set of training scenarios for one model."""
+
+    source_run_id: str
+    segments: tuple[CurriculumSegment, ...]
+
+    @classmethod
+    def parse(cls, value: dict[str, Any], training: Phase) -> "Curriculum":
+        try:
+            source_run_id = safe_identifier(value["source_run_id"], "curriculum.source_run_id")
+            raw_segments = value["segments"]
+        except (KeyError, TypeError) as exc:
+            raise ConfigError("curriculum must contain source_run_id and segments") from exc
+        if not isinstance(raw_segments, list) or not raw_segments:
+            raise ConfigError("curriculum.segments must be a non-empty list")
+        segments: list[CurriculumSegment] = []
+        for index, segment in enumerate(raw_segments, start=1):
+            try:
+                scenario = segment["scenario"]
+                rounds = int(segment["rounds"])
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ConfigError(f"curriculum.segments[{index}] must contain scenario and positive rounds") from exc
+            if scenario not in SCENARIOS or rounds < 1:
+                raise ConfigError(f"curriculum.segments[{index}] has an invalid scenario or rounds value")
+            if rounds % training.budget.checkpoint_every:
+                raise ConfigError(
+                    "Each curriculum segment must end on checkpoint_every so continuation checkpoints are explicit."
+                )
+            segments.append(CurriculumSegment(scenario, rounds))
+        if sum(segment.rounds for segment in segments) != training.budget.rounds:
+            raise ConfigError("curriculum segment rounds must sum exactly to training.budget.rounds")
+        return cls(source_run_id, tuple(segments))
+
+
+@dataclass(frozen=True)
+class EvaluationSuite:
+    name: str
+    phase: Phase
+
+
+@dataclass(frozen=True)
 class Experiment:
     schema_version: int
     experiment_id: str
@@ -95,6 +142,8 @@ class Experiment:
     training: Phase
     evaluation: Phase
     promotion_primary_metric: str
+    curriculum: Curriculum | None = None
+    evaluation_suites: tuple[EvaluationSuite, ...] = ()
 
     @classmethod
     def load(cls, path: Path) -> "Experiment":
@@ -110,6 +159,20 @@ class Experiment:
             raise ConfigError(f"Missing config keys: {', '.join(missing)}")
         agent = raw["agent"]
         try:
+            training = Phase.parse(raw["training"], "training")
+            evaluation = Phase.parse(raw["evaluation"], "evaluation")
+            raw_suites = raw.get("evaluation_suites", {})
+            if not isinstance(raw_suites, dict):
+                raise ConfigError("evaluation_suites must be an object keyed by suite name")
+            suites = tuple(
+                EvaluationSuite(
+                    safe_identifier(name, "evaluation_suites name"),
+                    Phase.parse(phase, f"evaluation_suites.{name}"),
+                )
+                for name, phase in raw_suites.items()
+            )
+            if any(suite.name == "primary" for suite in suites):
+                raise ConfigError("evaluation_suites may not redefine the reserved primary suite")
             experiment = cls(
                 schema_version=int(raw["schema_version"]),
                 experiment_id=safe_identifier(raw["experiment_id"], "experiment_id"),
@@ -119,9 +182,11 @@ class Experiment:
                 algorithm=agent["algorithm"],
                 reward_version=safe_identifier(raw["reward_version"], "reward_version"),
                 state_representation=agent["state_representation"],
-                training=Phase.parse(raw["training"], "training"),
-                evaluation=Phase.parse(raw["evaluation"], "evaluation"),
+                training=training,
+                evaluation=evaluation,
                 promotion_primary_metric=raw["promotion"]["primary_metric"],
+                curriculum=Curriculum.parse(raw["curriculum"], training) if "curriculum" in raw else None,
+                evaluation_suites=suites,
             )
         except (KeyError, TypeError) as exc:
             raise ConfigError("agent and promotion sections have invalid fields") from exc
@@ -145,7 +210,7 @@ class Experiment:
 
     def snapshot(self) -> dict[str, Any]:
         """Return the canonical, reloadable config snapshot stored with a run."""
-        return {
+        snapshot = {
             "schema_version": self.schema_version,
             "experiment_id": self.experiment_id,
             "route": self.route,
@@ -160,6 +225,16 @@ class Experiment:
             "evaluation": asdict(self.evaluation),
             "promotion": {"primary_metric": self.promotion_primary_metric},
         }
+        if self.curriculum is not None:
+            snapshot["curriculum"] = {
+                "source_run_id": self.curriculum.source_run_id,
+                "segments": [asdict(segment) for segment in self.curriculum.segments],
+            }
+        if self.evaluation_suites:
+            snapshot["evaluation_suites"] = {
+                suite.name: asdict(suite.phase) for suite in self.evaluation_suites
+            }
+        return snapshot
 
 
 def git_provenance() -> dict[str, Any]:

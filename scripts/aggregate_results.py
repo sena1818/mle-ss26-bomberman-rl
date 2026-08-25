@@ -82,8 +82,9 @@ def aggregate(run_dir: Path) -> dict:
     run_dir = run_dir.resolve()
     experiment = Experiment.load(run_dir / "experiment_config.snapshot.json")
     jobs = json.loads((run_dir / "jobs.json").read_text(encoding="utf-8"))
-    samples: list[dict[str, float]] = []
-    candidate_samples: dict[int, list[dict[str, float]]] = {}
+    suite_samples: dict[str, list[dict[str, float]]] = {}
+    suite_candidates: dict[str, dict[int, list[dict[str, float]]]] = {}
+    suite_scenarios: dict[str, set[str]] = {}
     missing: list[str] = []
     for job in jobs:
         if job["mode"] != "eval":
@@ -93,25 +94,47 @@ def aggregate(run_dir: Path) -> dict:
             missing.append(job["job_id"])
             continue
         sample = one_evaluation(job_dir, experiment.agent_name)
-        samples.append(sample)
-        candidate_samples.setdefault(int(job["train_seed"]), []).append(sample)
+        suite = job.get("suite", "primary")
+        suite_samples.setdefault(suite, []).append(sample)
+        suite_candidates.setdefault(suite, {}).setdefault(int(job["train_seed"]), []).append(sample)
+        suite_scenarios.setdefault(suite, set()).add(job["scenario"])
     if missing:
         raise RuntimeError(f"Cannot summarize incomplete evaluation jobs: {', '.join(missing)}")
+    def suite_summary(name: str) -> dict:
+        samples = suite_samples.get(name, [])
+        candidates = suite_candidates.get(name, {})
+        if not samples:
+            raise RuntimeError(f"Evaluation suite {name!r} has no completed jobs")
+        scenarios = suite_scenarios[name]
+        if len(scenarios) != 1:
+            raise RuntimeError(f"Evaluation suite {name!r} mixes scenarios: {sorted(scenarios)}")
+        return {
+            "scenario": next(iter(scenarios)),
+            "evaluation_jobs": len(samples),
+            "metrics": {metric: mean_std([sample[metric] for sample in samples]) for metric in METRICS},
+            "checkpoint_candidates": [
+                {
+                    "train_seed": seed,
+                    "checkpoint": str((run_dir / "jobs" / f"train_seed{seed}" / "agent" / "latest_model.npz").resolve()),
+                    "metrics": {metric: mean_std([sample[metric] for sample in candidates[seed]]) for metric in METRICS},
+                }
+                for seed in sorted(candidates)
+            ],
+        }
+
+    primary = suite_summary("primary")
+    suites = {name: suite_summary(name) for name in sorted(suite_samples)}
     summary = {
         "experiment_id": experiment.experiment_id,
         "run_id": run_dir.name,
         "primary_metric": "score",
-        "evaluation_jobs": len([job for job in jobs if job["mode"] == "eval"]),
-        "metrics": {metric: mean_std([sample[metric] for sample in samples]) for metric in METRICS},
+        "evaluation_jobs": sum(len(samples) for samples in suite_samples.values()),
+        "primary_evaluation_jobs": primary["evaluation_jobs"],
+        "primary_scenario": primary["scenario"],
+        "metrics": primary["metrics"],
         "invalid_actions_definition": "official per-agent INVALID_ACTION events per round; agent JSONL separately records selection legality",
-        "checkpoint_candidates": [
-            {
-                "train_seed": seed,
-                "checkpoint": str((run_dir / "jobs" / f"train_seed{seed}" / "agent" / "latest_model.npz").resolve()),
-                "metrics": {metric: mean_std([sample[metric] for sample in candidate_samples[seed]]) for metric in METRICS},
-            }
-            for seed in sorted(candidate_samples)
-        ],
+        "checkpoint_candidates": primary["checkpoint_candidates"],
+        "evaluation_suites": suites,
     }
     write_json(run_dir / "evaluation_summary.json", summary)
     return summary
@@ -152,21 +175,24 @@ def best_source_checkpoint(summary: dict) -> Path:
 
 
 def maybe_promote(summary: dict) -> bool:
-    PROMOTION_ROOT.mkdir(parents=True, exist_ok=True)
-    best_path = PROMOTION_ROOT / "best_summary.json"
+    scenario = summary.get("primary_scenario", "legacy")
+    root = PROMOTION_ROOT / scenario
+    root.mkdir(parents=True, exist_ok=True)
+    best_path = root / "best_summary.json"
     current = json.loads(best_path.read_text(encoding="utf-8")) if best_path.exists() else None
     if current is not None and promotion_key(summary) <= promotion_key(current):
         return False
     source = best_source_checkpoint(summary)
-    staging = PROMOTION_ROOT / ".active_model.staging.npz"
+    staging = root / ".active_model.staging.npz"
     shutil.copy2(source, staging)
-    os.replace(staging, PROMOTION_ROOT / "active_model.npz")
-    best_staging = PROMOTION_ROOT / ".best_model.staging.npz"
+    os.replace(staging, root / "active_model.npz")
+    best_staging = root / ".best_model.staging.npz"
     shutil.copy2(source, best_staging)
-    os.replace(best_staging, PROMOTION_ROOT / "best_model.npz")
+    os.replace(best_staging, root / "best_model.npz")
     write_json(best_path, summary)
-    write_json(PROMOTION_ROOT / "promotion_rule.json", {
+    write_json(root / "promotion_rule.json", {
         "rule": "maximize mean official score; then minimize score std; then minimize mean suicides; then maximize mean coins; then lexical run_id",
+        "primary_scenario": scenario,
         "writer": "scripts/aggregate_results.py only",
     })
     return True

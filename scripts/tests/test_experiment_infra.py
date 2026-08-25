@@ -32,6 +32,29 @@ def config(route: str = "R01") -> dict:
     }
 
 
+def curriculum_config() -> dict:
+    payload = config()
+    payload["experiment_id"] = "test_r01_c01"
+    payload["training"] = {
+        "scenario": "classic", "opponents": [], "seeds": [11, 12],
+        "budget": {"rounds": 4, "checkpoint_every": 2},
+    }
+    payload["curriculum"] = {
+        "source_run_id": "source_run",
+        "segments": [
+            {"scenario": "classic", "rounds": 2},
+            {"scenario": "coin-heaven", "rounds": 2},
+        ],
+    }
+    payload["evaluation_suites"] = {
+        "coin_regression": {
+            "scenario": "coin-heaven", "opponents": [], "seeds": [21, 22],
+            "budget": {"rounds": 2, "checkpoint_every": 1},
+        }
+    }
+    return payload
+
+
 class ExperimentInfrastructureTest(unittest.TestCase):
     def test_snapshot_is_reloadable_and_jobs_have_private_artifact_directories(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -48,6 +71,20 @@ class ExperimentInfrastructureTest(unittest.TestCase):
             self.assertTrue(all(not Path(job["artifact_relpath"]).is_absolute() for job in jobs))
             self.assertTrue(all(job["model_relpath"] is None or not Path(job["model_relpath"]).is_absolute() for job in jobs))
             self.assertEqual({job["mode"] for job in jobs}, {"train", "eval"})
+
+    def test_curriculum_jobs_keep_warm_start_and_regression_suite_explicit(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "config.json"
+            write_json(path, curriculum_config())
+            experiment = Experiment.load(path)
+            self.assertEqual(sum(segment.rounds for segment in experiment.curriculum.segments), 4)
+            jobs = build_jobs(experiment, Path(temporary) / "run")
+            train_jobs = [job for job in jobs if job["mode"] == "train"]
+            eval_jobs = [job for job in jobs if job["mode"] == "eval"]
+            self.assertEqual(len(train_jobs), 2)
+            self.assertEqual(len(eval_jobs), 8)
+            self.assertTrue(all(job["input_model_relpath"].startswith("inputs/") for job in train_jobs))
+            self.assertEqual({job["suite"] for job in eval_jobs}, {"primary", "coin_regression"})
 
     def test_job_files_relocate_with_the_run_directory(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -134,7 +171,7 @@ class ExperimentInfrastructureTest(unittest.TestCase):
             try:
                 aggregate_results.PROMOTION_ROOT = Path(temporary) / "promoted"
                 self.assertTrue(aggregate_results.maybe_promote(summary))
-                self.assertTrue((aggregate_results.PROMOTION_ROOT / "active_model.npz").is_file())
+                self.assertTrue((aggregate_results.PROMOTION_ROOT / "classic" / "active_model.npz").is_file())
                 weaker = json.loads(json.dumps(summary))
                 weaker["run_id"] = "later_but_weaker"
                 weaker["metrics"]["score"]["mean"] = -1.0
