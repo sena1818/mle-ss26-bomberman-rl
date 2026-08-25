@@ -16,6 +16,7 @@ if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
 import aggregate_results  # noqa: E402
+import compare_runs  # noqa: E402
 import experiment_lib  # noqa: E402
 import prune_runs  # noqa: E402
 from experiment_lib import ConfigError, Experiment, resolved_runtime_config, verify_job_provenance, write_json  # noqa: E402
@@ -245,6 +246,20 @@ class ExperimentInfrastructureTest(unittest.TestCase):
             write_json(path, config(exploration_version="E99"))
             with self.assertRaises(ConfigError):
                 Experiment.load(path).require_implemented()
+
+    def test_controlled_comparison_reports_the_exploration_dimension(self):
+        shared = {
+            "route": "R01",
+            "state_representation": "handcrafted_v1",
+            "model": "linear_q",
+            "algorithm": "q_learning",
+            "reward_version": "A03",
+        }
+        arms = [
+            {"dimensions": {**shared, "exploration_version": "E00"}},
+            {"dimensions": {**shared, "exploration_version": "E01"}},
+        ]
+        self.assertEqual(compare_runs.changed_dimensions(arms), ["exploration_version"])
 
     def test_unregistered_reward_version_is_rejected_before_any_job_runs(self):
         with tempfile.TemporaryDirectory() as temporary:

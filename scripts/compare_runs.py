@@ -32,7 +32,7 @@ REPORTED = (
     "coins_per_crate",
     "distinct_cells",
 )
-COMPARABLE_FIELDS = ("route", "state_representation", "model", "algorithm", "reward_version")
+COMPARABLE_FIELDS = ("route", "state_representation", "model", "algorithm", "reward_version", "exploration_version")
 
 
 def parse_args() -> argparse.Namespace:
@@ -92,6 +92,7 @@ def load_arm(run_dir: Path, suite: str, split: str, checkpoint_round: int | None
             "model": agent.get("model", ""),
             "algorithm": agent.get("algorithm", ""),
             "reward_version": snapshot.get("reward_version", ""),
+            "exploration_version": snapshot.get("exploration_version", "E00"),
         },
         "reward_specification": snapshot.get("resolved_runtime_config", {}).get("reward_specification", {}),
         "predeclared": snapshot.get("_predeclared_design_numbers", {}),
@@ -108,7 +109,13 @@ def changed_dimensions(arms: list[dict]) -> list[str]:
 
 
 def render(arms: list[dict], changed: list[str], split: str, checkpoint_round: int | None) -> str:
-    labels = [arm["dimensions"]["reward_version"] or arm["run_id"] for arm in arms]
+    labels = [
+        "_".join(
+            part for part in (arm["dimensions"]["reward_version"], arm["dimensions"]["exploration_version"])
+            if part
+        ) or arm["run_id"]
+        for arm in arms
+    ]
     width = max(14, max(len(label) for label in labels) + 2)
     lines = [
         f"suite scenario : {arms[0]['scenario']}",
