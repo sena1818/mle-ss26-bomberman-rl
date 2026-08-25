@@ -7,7 +7,7 @@ import re
 import shutil
 import subprocess
 import sys
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -18,7 +18,10 @@ RUNS_ROOT = ROOT / "runs"
 SCENARIOS = {"empty", "coin-heaven", "loot-crate", "classic"}
 SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 SUPPORTED_DECLARATIONS = {
-    "R01": ("linear_q", "q_learning", "handcrafted_v1", "A00"),
+    "R01": ("linear_q", "q_learning", "handcrafted_v1"),
+}
+SUPPORTED_REWARD_VERSIONS = {
+    "R01": {"A00", "A01"},
 }
 DECLARATIVE_ROUTE_VALUES = {
     "model": {"linear_q", "mlp_q", "cnn_q", "cnn_mlp_q", "dueling_cnn_mlp_q"},
@@ -192,6 +195,9 @@ class Experiment:
             raise ConfigError("agent and promotion sections have invalid fields") from exc
         if experiment.schema_version != 1:
             raise ConfigError("Only schema_version 1 is supported")
+        suite_names = [suite.name for suite in experiment.evaluation_suites]
+        if len(suite_names) != len(set(suite_names)):
+            raise ConfigError("evaluation_suites names must be distinct")
         for name, allowed in DECLARATIVE_ROUTE_VALUES.items():
             if getattr(experiment, name) not in allowed:
                 raise ConfigError(f"agent.{name} is not a declared R01-R07 value")
@@ -201,11 +207,11 @@ class Experiment:
 
     def require_implemented(self) -> None:
         expected = SUPPORTED_DECLARATIONS.get(self.route)
-        declared = (self.model, self.algorithm, self.state_representation, self.reward_version)
-        if expected != declared:
+        declared = (self.model, self.algorithm, self.state_representation)
+        if expected != declared or self.reward_version not in SUPPORTED_REWARD_VERSIONS.get(self.route, set()):
             raise ConfigError(
                 f"{self.route} is declared for the shared infrastructure but is not implemented. "
-                "Only the existing R01 linear Q-learning/A00 agent may be run."
+                "Only the existing R01 linear Q-learning agent with A00 or A01 may be run."
             )
 
     def snapshot(self) -> dict[str, Any]:
@@ -278,12 +284,15 @@ def resolved_runtime_config(experiment: Experiment) -> dict[str, Any]:
         raise ConfigError(f"No runtime config resolver is registered for {experiment.agent_name!r}")
     if str(ROOT) not in sys.path:
         sys.path.insert(0, str(ROOT))
-    from agent_code.research_agent.config import ACTIONS, EXPERIMENTS, FEATURE_DIMENSION
+    from agent_code.research_agent.config import ACTIONS, EXPERIMENTS, FEATURE_DIMENSION, REWARD_VERSIONS
 
     try:
         config = EXPERIMENTS[experiment.route]
     except KeyError as exc:
         raise ConfigError(f"No runtime config is registered for route {experiment.route!r}") from exc
+    if experiment.reward_version not in REWARD_VERSIONS:
+        raise ConfigError(f"No runtime config is registered for reward version {experiment.reward_version!r}")
+    config = replace(config, reward_version=experiment.reward_version)
     declared = (experiment.model, experiment.algorithm, experiment.state_representation, experiment.reward_version)
     resolved = (config.network, config.algorithm, config.state_encoder, config.reward_version)
     if declared != resolved:

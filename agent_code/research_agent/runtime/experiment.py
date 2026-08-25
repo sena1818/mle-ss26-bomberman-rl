@@ -16,10 +16,38 @@ from ..models import QModel, build_model, load_model
 from ..state import encode_state, legal_action_mask
 
 
-OFFICIAL_REWARDS = {
-    "COIN_COLLECTED": 1.0,
-    "KILLED_OPPONENT": 5.0,
+REWARD_TABLES = {
+    # Frozen baseline: only official positive scoring events reach the learner.
+    "A00": {
+        "COIN_COLLECTED": 1.0,
+        "KILLED_OPPONENT": 5.0,
+    },
+    # Safety ablation: the only change from A00 is a terminal death cost.
+    "A01": {
+        "COIN_COLLECTED": 1.0,
+        "KILLED_OPPONENT": 5.0,
+    },
 }
+DEATH_PENALTIES = {
+    "A00": 0.0,
+    # The official framework emits both KILLED_SELF and GOT_KILLED for one
+    # self-inflicted death.  This is deliberately one penalty per death, not
+    # one penalty per event label.
+    "A01": -5.0,
+}
+
+
+def reward_for_events(reward_version: str, events: list[str]) -> float:
+    """Return one versioned training reward without changing official scoring."""
+    try:
+        rewards = REWARD_TABLES[reward_version]
+        death_penalty = DEATH_PENALTIES[reward_version]
+    except KeyError as exc:
+        raise ValueError(f"No reward table is registered for {reward_version!r}") from exc
+    reward = sum(rewards.get(event, 0.0) for event in events)
+    if death_penalty and {"KILLED_SELF", "GOT_KILLED"}.intersection(events):
+        reward += death_penalty
+    return reward
 
 
 class ExperimentRuntime:
@@ -79,7 +107,7 @@ class ExperimentRuntime:
         state = encode_state(old_game_state, self.config.state_encoder)
         next_state = None if terminal else encode_state(new_game_state, self.config.state_encoder)
         next_mask = None if terminal else legal_action_mask(new_game_state)
-        reward = sum(OFFICIAL_REWARDS.get(event, 0.0) for event in events)
+        reward = reward_for_events(self.config.reward_version, events)
         td_error = self.learner.observe(Transition(
             state=state,
             action_index=ACTIONS.index(action),

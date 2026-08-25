@@ -223,6 +223,7 @@ def _run_curriculum_segment(
     environment.update({
         "BOMBERMAN_RUN_ID": f"{run_dir.name}_{job['job_id']}_{segment_id}",
         "BOMBERMAN_EXPERIMENT": experiment.route,
+        "BOMBERMAN_REWARD_VERSION": experiment.reward_version,
         "BOMBERMAN_ARTIFACT_DIR": str(agent_dir.resolve()),
         "BOMBERMAN_SCENARIO": segment["scenario"],
         "BOMBERMAN_SEED": str(segment_seed),
@@ -346,6 +347,7 @@ def execute_job(job_file: Path, *, retry: bool = False) -> None:
     environment.update({
         "BOMBERMAN_RUN_ID": f"{run_dir.name}_{job['job_id']}",
         "BOMBERMAN_EXPERIMENT": experiment.route,
+        "BOMBERMAN_REWARD_VERSION": experiment.reward_version,
         "BOMBERMAN_ARTIFACT_DIR": str(agent_dir.resolve()),
         "BOMBERMAN_SCENARIO": job["scenario"],
         "BOMBERMAN_SEED": str(job["seed"]),

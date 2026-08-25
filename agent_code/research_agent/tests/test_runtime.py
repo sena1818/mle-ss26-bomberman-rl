@@ -15,6 +15,7 @@ from agent_code.research_agent.config import active_config
 from agent_code.research_agent.learners import OnlineQLearner
 from agent_code.research_agent.models import LinearQModel, build_model
 from agent_code.research_agent.runtime import ExperimentRuntime
+from agent_code.research_agent.runtime.experiment import reward_for_events
 
 
 def game_state() -> dict:
@@ -41,6 +42,13 @@ class ExperimentRuntimeTest(unittest.TestCase):
         with patch.dict(os.environ, {"BOMBERMAN_EXPERIMENT": "R99"}, clear=False):
             with self.assertRaises(ValueError):
                 active_config()
+
+    def test_a01_adds_only_terminal_death_penalties_to_a00(self):
+        events = ["COIN_COLLECTED", "KILLED_SELF", "GOT_KILLED", "CRATE_DESTROYED"]
+        self.assertEqual(reward_for_events("A00", events), 1.0)
+        self.assertEqual(reward_for_events("A01", events), -4.0)
+        with patch.dict(os.environ, {"BOMBERMAN_EXPERIMENT": "R01", "BOMBERMAN_REWARD_VERSION": "A01"}, clear=False):
+            self.assertEqual(active_config().reward_version, "A01")
 
     def test_r01_behaviour_is_hidden_behind_the_shared_runtime_interface(self):
         with tempfile.TemporaryDirectory() as temporary:

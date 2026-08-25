@@ -19,13 +19,13 @@ from experiment_lib import ConfigError, Experiment, resolved_runtime_config, ver
 from run_experiment import _archive_failed_attempt, build_jobs, load_context  # noqa: E402
 
 
-def config(route: str = "R01") -> dict:
+def config(route: str = "R01", reward_version: str = "A00") -> dict:
     return {
         "schema_version": 1,
         "experiment_id": "test_r01",
         "route": route,
         "agent": {"name": "research_agent", "model": "linear_q", "algorithm": "q_learning", "state_representation": "handcrafted_v1"},
-        "reward_version": "A00",
+        "reward_version": reward_version,
         "training": {"scenario": "coin-heaven", "opponents": [], "seeds": [11, 12], "budget": {"rounds": 2, "checkpoint_every": 1}},
         "evaluation": {"scenario": "classic", "opponents": [], "seeds": [21, 22], "budget": {"rounds": 2, "checkpoint_every": 1}},
         "promotion": {"primary_metric": "score"},
@@ -138,6 +138,29 @@ class ExperimentInfrastructureTest(unittest.TestCase):
             write_json(path, payload)
             with self.assertRaises(ConfigError):
                 Experiment.load(path).require_implemented()
+
+    def test_a01_and_named_diagnostic_evaluation_suites_are_explicit(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "config.json"
+            payload = config(reward_version="A01")
+            payload["evaluation_suites"] = {
+                "loot_crate_diagnostic": {
+                    "scenario": "loot-crate",
+                    "opponents": [],
+                    "seeds": [31, 32],
+                    "budget": {"rounds": 2, "checkpoint_every": 1},
+                }
+            }
+            write_json(path, payload)
+            experiment = Experiment.load(path)
+            experiment.require_implemented()
+            self.assertEqual(resolved_runtime_config(experiment)["config"]["reward_version"], "A01")
+            jobs = build_jobs(experiment, Path(temporary) / "run")
+            self.assertEqual(len(jobs), 10)
+            self.assertEqual(
+                {job.get("suite", "primary") for job in jobs if job["mode"] == "eval"},
+                {"primary", "loot_crate_diagnostic"},
+            )
 
     def test_aggregate_and_promotion_use_fixed_rule(self):
         with tempfile.TemporaryDirectory() as temporary:
