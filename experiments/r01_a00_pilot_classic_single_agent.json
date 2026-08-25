@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "experiment_id": "R01_A00_pilot_classic_single_agent",
+  "route": "R01",
+  "agent": {
+    "name": "research_agent",
+    "model": "linear_q",
+    "algorithm": "q_learning",
+    "state_representation": "handcrafted_v1"
+  },
+  "reward_version": "A00",
+  "training": {
+    "scenario": "classic",
+    "opponents": [],
+    "seeds": [1001, 1002, 1003],
+    "budget": {"rounds": 500, "checkpoint_every": 50}
+  },
+  "evaluation": {
+    "scenario": "classic",
+    "opponents": [],
+    "seeds": [2001, 2002, 2003, 2004, 2005],
+    "budget": {"rounds": 30, "checkpoint_every": 50}
+  },
+  "promotion": {"primary_metric": "score"}
+}
