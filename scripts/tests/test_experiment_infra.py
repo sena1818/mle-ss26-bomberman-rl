@@ -162,6 +162,14 @@ class ExperimentInfrastructureTest(unittest.TestCase):
                 {"primary", "loot_crate_diagnostic"},
             )
 
+    def test_a02_is_an_explicit_r01_reward_version(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "config.json"
+            write_json(path, config(reward_version="A02"))
+            experiment = Experiment.load(path)
+            experiment.require_implemented()
+            self.assertEqual(resolved_runtime_config(experiment)["config"]["reward_version"], "A02")
+
     def test_aggregate_and_promotion_use_fixed_rule(self):
         with tempfile.TemporaryDirectory() as temporary:
             run_dir = Path(temporary) / "run_a"

@@ -43,12 +43,13 @@ class ExperimentRuntimeTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 active_config()
 
-    def test_a01_adds_only_terminal_death_penalties_to_a00(self):
-        events = ["COIN_COLLECTED", "KILLED_SELF", "GOT_KILLED", "CRATE_DESTROYED"]
+    def test_versioned_rewards_keep_one_death_penalty_and_a02_auxiliary_events(self):
+        events = ["COIN_COLLECTED", "KILLED_SELF", "GOT_KILLED", "CRATE_DESTROYED", "COIN_FOUND"]
         self.assertEqual(reward_for_events("A00", events), 1.0)
         self.assertEqual(reward_for_events("A01", events), -4.0)
-        with patch.dict(os.environ, {"BOMBERMAN_EXPERIMENT": "R01", "BOMBERMAN_REWARD_VERSION": "A01"}, clear=False):
-            self.assertEqual(active_config().reward_version, "A01")
+        self.assertAlmostEqual(reward_for_events("A02", events), -3.7)
+        with patch.dict(os.environ, {"BOMBERMAN_EXPERIMENT": "R01", "BOMBERMAN_REWARD_VERSION": "A02"}, clear=False):
+            self.assertEqual(active_config().reward_version, "A02")
 
     def test_r01_behaviour_is_hidden_behind_the_shared_runtime_interface(self):
         with tempfile.TemporaryDirectory() as temporary:

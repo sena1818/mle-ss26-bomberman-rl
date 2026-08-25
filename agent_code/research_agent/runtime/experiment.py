@@ -27,6 +27,14 @@ REWARD_TABLES = {
         "COIN_COLLECTED": 1.0,
         "KILLED_OPPONENT": 5.0,
     },
+    # Sparse-credit ablation: keep A01 safety, then lightly reward the two
+    # official events that connect a safe bomb to a hidden collectible.
+    "A02": {
+        "COIN_COLLECTED": 1.0,
+        "KILLED_OPPONENT": 5.0,
+        "CRATE_DESTROYED": 0.1,
+        "COIN_FOUND": 0.2,
+    },
 }
 DEATH_PENALTIES = {
     "A00": 0.0,
@@ -34,6 +42,7 @@ DEATH_PENALTIES = {
     # self-inflicted death.  This is deliberately one penalty per death, not
     # one penalty per event label.
     "A01": -5.0,
+    "A02": -5.0,
 }
 
 

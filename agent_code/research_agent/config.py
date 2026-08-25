@@ -9,7 +9,7 @@ ACTIVE_EXPERIMENT = "R01"
 FEATURE_DIMENSION = 44
 FEATURE_VERSION = "handcrafted_v1"
 REWARD_VERSION = "A00"
-REWARD_VERSIONS = frozenset({"A00", "A01"})
+REWARD_VERSIONS = frozenset({"A00", "A01", "A02"})
 
 # Verified against the unmodified SS26 settings.py.  They are deliberately
 # local constants: a submitted agent cannot rely on imports outside its folder.

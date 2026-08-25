@@ -21,7 +21,7 @@ SUPPORTED_DECLARATIONS = {
     "R01": ("linear_q", "q_learning", "handcrafted_v1"),
 }
 SUPPORTED_REWARD_VERSIONS = {
-    "R01": {"A00", "A01"},
+    "R01": {"A00", "A01", "A02"},
 }
 DECLARATIVE_ROUTE_VALUES = {
     "model": {"linear_q", "mlp_q", "cnn_q", "cnn_mlp_q", "dueling_cnn_mlp_q"},
@@ -211,7 +211,7 @@ class Experiment:
         if expected != declared or self.reward_version not in SUPPORTED_REWARD_VERSIONS.get(self.route, set()):
             raise ConfigError(
                 f"{self.route} is declared for the shared infrastructure but is not implemented. "
-                "Only the existing R01 linear Q-learning agent with A00 or A01 may be run."
+                "Only the existing R01 linear Q-learning agent with A00, A01, or A02 may be run."
             )
 
     def snapshot(self) -> dict[str, Any]:
