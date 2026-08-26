@@ -41,6 +41,12 @@ IMPLEMENTED_ROUTES = {
         "reward_versions": _VECTOR_REWARD_VERSIONS,
         "exploration_versions": {"E00", "E01"},
     },
+    "R02_1": {
+        "lines": ("M3",),
+        "declaration": ("mlp_q", "q_learning", "handcrafted_v1"),
+        "reward_versions": _VECTOR_REWARD_VERSIONS,
+        "exploration_versions": {"E00", "E01"},
+    },
     "R07": {
         "lines": ("M4",),
         "declaration": ("cnn_mlp_q", "double_dqn", "board_egocentric_v1"),
