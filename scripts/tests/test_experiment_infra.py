@@ -896,7 +896,7 @@ class FourMainLineDeclarationTest(unittest.TestCase):
         self.assertEqual(m3, m2)
 
         runtime = resolved_runtime_config(Experiment.load(m3_path))["config"]
-        self.assertEqual(runtime["hidden_layers"], [64, 32])
+        self.assertEqual(runtime["hidden_layers"], (64, 32))
 
 
 if __name__ == "__main__":
