@@ -47,6 +47,21 @@ IMPLEMENTED_ROUTES = {
         "reward_versions": _VECTOR_REWARD_VERSIONS,
         "exploration_versions": {"E00", "E01"},
     },
+    # M3.2 / M3.3: the R02_1 recipe with the state representation as the only
+    # changed factor.  They are separate routes rather than a flag on R02_1 so
+    # that a finished run's declaration names the exact feature vector it saw.
+    "R02_2": {
+        "lines": ("M3",),
+        "declaration": ("mlp_q", "q_learning", "handcrafted_v2"),
+        "reward_versions": _VECTOR_REWARD_VERSIONS,
+        "exploration_versions": {"E00", "E01"},
+    },
+    "R02_3": {
+        "lines": ("M3",),
+        "declaration": ("mlp_q", "q_learning", "handcrafted_v3"),
+        "reward_versions": _VECTOR_REWARD_VERSIONS,
+        "exploration_versions": {"E00", "E01"},
+    },
     "R07": {
         "lines": ("M4",),
         "declaration": ("cnn_mlp_q", "double_dqn", "board_egocentric_v1"),
