@@ -7,7 +7,10 @@ from typing import Iterable
 
 import numpy as np
 
-from .config import ACTIONS, BOMB_POWER, BOMB_TIMER, FEATURE_DIMENSION, MAX_STEPS
+from .config import (
+    ACTIONS, BOMB_POWER, BOMB_TIMER, EXPLOSION_TIMER, FEATURE_DIMENSION,
+    FEATURE_DIMENSION_V2, FEATURE_DIMENSION_V3, MAX_STEPS,
+)
 
 
 _DIRECTIONS = {
@@ -31,6 +34,31 @@ HANDCRAFTED_V1_LAYOUT = {
     "nearest_bomb": slice(33, 38),
     "local_counts": slice(38, 42),
     "bomb_escape": slice(42, 44),
+}
+
+# handcrafted_v2 keeps every v1 entry at its original index and appends what the
+# escape diagnosis found missing (docs/01 section 7.10): v1 forecasts danger one
+# step ahead only, so two neighbouring cells that are both inside a blast look
+# identical even when one leads out and the other dead-ends.  In 94.4% of the
+# turns that lost a survivable escape, the fatal direction and a saving one were
+# bit-for-bit equal in ``danger_current_and_neighbors``.  These entries carry the
+# multi-step answer instead.  ``bomb_escape`` is left untouched: it answers "may
+# I bomb here", is zero once a bomb is down, and changing it would silently
+# redefine a block every earlier arm was trained on.
+HANDCRAFTED_V2_LAYOUT = {
+    **HANDCRAFTED_V1_LAYOUT,
+    "escape_here": slice(44, 46),
+    "escape_by_direction": slice(46, 54),
+}
+
+# handcrafted_v3 adds the routing answer on top of v2.  ``_target_features``
+# encodes ``sign(tx - x), sign(ty - y)`` -- a compass bearing, not a route -- and
+# in 16.3% of steps every direction that bearing suggests is wrong, because the
+# corridor turns.  These entries say which legal move actually shortens the walk.
+HANDCRAFTED_V3_LAYOUT = {
+    **HANDCRAFTED_V2_LAYOUT,
+    "coin_route": slice(54, 58),
+    "crate_route": slice(58, 62),
 }
 
 
@@ -94,6 +122,10 @@ def encode_state(game_state: dict, encoder_name: str) -> np.ndarray | None:
         return None
     if encoder_name == "handcrafted_v1":
         return handcrafted_v1(game_state)
+    if encoder_name == "handcrafted_v2":
+        return handcrafted_v2(game_state)
+    if encoder_name == "handcrafted_v3":
+        return handcrafted_v3(game_state)
     if encoder_name == "board_egocentric_v1":
         return board_egocentric_v1(game_state)
     raise NotImplementedError(f"State encoder {encoder_name!r} has not been implemented yet.")
@@ -103,10 +135,158 @@ def state_dimension(encoder_name: str) -> int:
     """Return the flat length one encoder produces, without a game state."""
     if encoder_name == "handcrafted_v1":
         return FEATURE_DIMENSION
+    if encoder_name == "handcrafted_v2":
+        return FEATURE_DIMENSION_V2
+    if encoder_name == "handcrafted_v3":
+        return FEATURE_DIMENSION_V3
     if encoder_name == "board_egocentric_v1":
         channels, width, height = BOARD_EGOCENTRIC_LAYOUT["board_shape"]
         return channels * width * height + BOARD_EGOCENTRIC_LAYOUT["global_dimension"]
     raise NotImplementedError(f"State encoder {encoder_name!r} has not been implemented yet.")
+
+
+def escape_search(
+    game_state: dict,
+    origin: tuple[int, int] | None = None,
+    horizon: int = BOMB_TIMER + 1,
+) -> tuple[bool, int | None]:
+    """Can the agent stand outside every current blast in time, and how fast?
+
+    The search is over ``(cell, tick)`` rather than plain distance, because a
+    cell that is reachable in three steps is useless if it detonates on the
+    second.  A tile holding a bomb is not enterable, so the tile a bomb was just
+    dropped on does not count as a way through.
+
+    ``scripts/diagnose_bomb_escape.py`` measures the same question about a
+    finished run and imports this function, so the feature the agent sees and
+    the diagnostic that judges it can never drift apart.
+    """
+    field = game_state["field"]
+    bombs = list(game_state["bombs"])
+    if not bombs:
+        return True, 0
+    start = tuple(origin if origin is not None else game_state["self"][3])
+    blocked = {tuple(position) for position, _ in bombs}
+    blocked.update(tuple(other[3]) for other in game_state["others"])
+
+    lethal: dict[tuple[int, int], set[int]] = {}
+    in_any_blast: set[tuple[int, int]] = set()
+    for position, timer in bombs:
+        detonation = max(int(timer) + 1, 1)
+        for cell in _blast_coordinates(tuple(position), field):
+            in_any_blast.add(cell)
+            ticks = lethal.setdefault(cell, set())
+            for offset in range(EXPLOSION_TIMER):
+                ticks.add(detonation + offset)
+
+    if start not in in_any_blast:
+        return True, 0
+    seen = {(start, 0)}
+    queue = deque([(start, 0)])
+    while queue:
+        cell, tick = queue.popleft()
+        if tick >= horizon:
+            continue
+        for nxt in (cell, *((cell[0] + dx, cell[1] + dy) for dx, dy in _DIRECTIONS.values())):
+            if nxt != cell and not _is_free(nxt, field, blocked):
+                continue
+            step = tick + 1
+            if step in lethal.get(nxt, ()):
+                continue
+            if nxt not in in_any_blast:
+                return True, step
+            if (nxt, step) in seen:
+                continue
+            seen.add((nxt, step))
+            queue.append((nxt, step))
+    return False, None
+
+
+def _escape_features(game_state: dict) -> np.ndarray:
+    """Ten entries saying where safety is, from here and from each neighbour.
+
+    Layout: ``[reachable_from_here, ticks_from_here]`` then, per direction in
+    ``_DIRECTIONS`` order, ``[reachable_after_stepping, ticks_after_stepping]``.
+    Ticks are scaled by the bomb timer so every entry stays in ``[0, 1]``, and an
+    unreachable direction is ``(0, 1)``: not reachable, worst possible cost.
+    Blocked directions are ``(0, 1)`` too -- a wall is no way out either.
+    """
+    field = game_state["field"]
+    origin = tuple(game_state["self"][3])
+    blocked = {tuple(position) for position, _ in game_state["bombs"]}
+    blocked.update(tuple(other[3]) for other in game_state["others"])
+    scale = float(BOMB_TIMER + 1)
+
+    def encode(reachable: bool, ticks: int | None) -> list[float]:
+        if not reachable or ticks is None:
+            return [0.0, 1.0]
+        return [1.0, min(ticks, BOMB_TIMER + 1) / scale]
+
+    values = encode(*escape_search(game_state))
+    for dx, dy in _DIRECTIONS.values():
+        cell = (origin[0] + dx, origin[1] + dy)
+        if not _is_free(cell, field, blocked):
+            values.extend([0.0, 1.0])
+            continue
+        values.extend(encode(*escape_search(game_state, origin=cell)))
+    return np.asarray(values, dtype=np.float32)
+
+
+def _route_features(game_state: dict) -> np.ndarray:
+    """Eight entries: which legal move actually shortens the walk to a target.
+
+    Four for the nearest reachable coin, four for the nearest reachable cell
+    beside a crate, in ``_DIRECTIONS`` order.  The distances come from a BFS run
+    backwards from the target, so a direction scores 1.0 exactly when stepping
+    there lies on some shortest route.  With no reachable target the block is
+    zero, which is also what ``_target_features`` reports in that case.
+    """
+    field = game_state["field"]
+    origin = tuple(game_state["self"][3])
+    blocked = {tuple(position) for position, _ in game_state["bombs"]}
+    blocked.update(tuple(other[3]) for other in game_state["others"])
+    forward = _bfs_distances(game_state)
+
+    def gradient(targets: set[tuple[int, int]]) -> list[float]:
+        reachable = [target for target in targets if target in forward]
+        if not reachable:
+            return [0.0] * len(_DIRECTIONS)
+        goal = min(reachable, key=forward.__getitem__)
+        backward = {goal: 0}
+        queue = deque([goal])
+        while queue:
+            cell = queue.popleft()
+            for dx, dy in _DIRECTIONS.values():
+                nxt = (cell[0] + dx, cell[1] + dy)
+                if nxt in backward or not _is_free(nxt, field, blocked):
+                    continue
+                backward[nxt] = backward[cell] + 1
+                queue.append(nxt)
+        here = backward.get(origin)
+        if here is None:
+            return [0.0] * len(_DIRECTIONS)
+        values = []
+        for dx, dy in _DIRECTIONS.values():
+            cell = (origin[0] + dx, origin[1] + dy)
+            values.append(1.0 if _is_free(cell, field, blocked) and backward.get(cell, here) < here else 0.0)
+        return values
+
+    coins = {tuple(coin) for coin in game_state["coins"]}
+    return np.asarray(gradient(coins) + gradient(_crate_adjacent_cells(game_state)), dtype=np.float32)
+
+
+def handcrafted_v2(game_state: dict) -> np.ndarray:
+    """v1 plus the multi-step escape answer; see ``HANDCRAFTED_V2_LAYOUT``."""
+    features = np.concatenate([handcrafted_v1(game_state), _escape_features(game_state)])
+    assert features.shape == (FEATURE_DIMENSION_V2,)
+    return features.astype(np.float32)
+
+
+def handcrafted_v3(game_state: dict) -> np.ndarray:
+    """v2 plus the routing answer; see ``HANDCRAFTED_V3_LAYOUT``."""
+    features = np.concatenate([handcrafted_v2(game_state), _route_features(game_state)])
+    assert features.shape == (FEATURE_DIMENSION_V3,)
+    return features.astype(np.float32)
 
 
 def handcrafted_v1(game_state: dict) -> np.ndarray:

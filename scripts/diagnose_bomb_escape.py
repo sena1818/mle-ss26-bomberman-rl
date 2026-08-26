@@ -54,7 +54,8 @@ from experiment_lib import write_json  # noqa: E402
 from agent_code.research_agent.config import shaping_specification  # noqa: E402
 from agent_code.research_agent.shaping import PotentialShaping  # noqa: E402
 from agent_code.research_agent.state import (  # noqa: E402
-    HANDCRAFTED_V1_LAYOUT, _blast_coordinates, handcrafted_v1,
+    HANDCRAFTED_V1_LAYOUT, _bfs_distances, _crate_adjacent_cells, escape_search,
+    handcrafted_v1,
 )
 
 MOVES = {"UP": (0, -1), "RIGHT": (1, 0), "DOWN": (0, 1), "LEFT": (-1, 0)}
@@ -122,70 +123,15 @@ def read_actions(job_dir: Path) -> dict[tuple[int, int], str]:
     return actions
 
 
-def blast_schedule(field: np.ndarray, bombs: list) -> dict[tuple[int, int], set[int]]:
-    """Return, per cell, the set of future ticks at which it is lethal.
-
-    Tick numbering is relative to the decision now being taken: a bomb whose
-    observed timer is ``t`` explodes ``t + 1`` ticks from now, matching the
-    convention in ``state.future_danger_times``, and the blast lingers for
-    ``EXPLOSION_TIMER`` ticks after that.
-    """
-    lethal: dict[tuple[int, int], set[int]] = collections.defaultdict(set)
-    for position, timer in bombs:
-        detonation = max(int(timer) + 1, 1)
-        for cell in _blast_coordinates(tuple(position), field):
-            for offset in range(s.EXPLOSION_TIMER):
-                lethal[cell].add(detonation + offset)
-    return lethal
-
-
 def survivable(state: dict, horizon: int) -> tuple[bool, int | None]:
     """Was there a plan that walks out of every current blast in time?
 
-    Returns whether such a plan exists and the length of the shortest one.  The
-    search is over ``(cell, tick)`` so that walking through a cell that is about
-    to explode is rejected, which a plain distance BFS cannot express.
+    Delegates to the encoder's own ``escape_search`` so that the number this
+    diagnostic judges a run by is the very number handcrafted_v2 shows the
+    agent.  If the two ever disagreed, the diagnosis would be measuring a
+    world the agent does not live in.
     """
-    field = np.asarray(state["field"])
-    bombs = list(state["bombs"])
-    if not bombs:
-        return True, 0
-    start = tuple(state["self"][3])
-    blocked = {tuple(position) for position, _ in bombs}
-    blocked.update(tuple(other[3]) for other in state["others"])
-    lethal = blast_schedule(field, bombs)
-    in_any_blast = set()
-    for position, _ in bombs:
-        in_any_blast.update(_blast_coordinates(tuple(position), field))
-
-    def free(cell: tuple[int, int]) -> bool:
-        x, y = cell
-        if not (0 <= x < field.shape[0] and 0 <= y < field.shape[1]):
-            return False
-        return field[x, y] == 0 and cell not in blocked
-
-    if start not in in_any_blast:
-        return True, 0
-    seen = {(start, 0)}
-    queue = deque([(start, 0)])
-    while queue:
-        cell, tick = queue.popleft()
-        if tick >= horizon:
-            continue
-        candidates = [cell] + [(cell[0] + dx, cell[1] + dy) for dx, dy in MOVES.values()]
-        for nxt in candidates:
-            if nxt != cell and not free(nxt):
-                continue
-            step = tick + 1
-            if step in lethal.get(nxt, ()):  # standing there when it goes off
-                continue
-            if nxt not in in_any_blast:
-                return True, step
-            if (nxt, step) in seen:
-                continue
-            seen.add((nxt, step))
-            queue.append((nxt, step))
-    return False, None
+    return escape_search(state, horizon=horizon)
 
 
 def shaping_terms(state: dict, shaping: PotentialShaping) -> dict[str, float]:
@@ -214,6 +160,78 @@ def shaping_terms(state: dict, shaping: PotentialShaping) -> dict[str, float]:
         moved["self"] = (name_, score, can_bomb, cell)
         terms[name] = shaping.discount * shaping.potential(moved) - here
     return terms
+
+
+def bearing_audit(state: dict) -> dict | None:
+    """Does the compass bearing to the nearest target name a useful first step?
+
+    ``_target_features`` encodes ``sign(tx - x), sign(ty - y)``: where the
+    target lies as the crow flies.  In a maze the first step of the actual route
+    often points elsewhere, and nothing else in handcrafted_v1 carries the
+    route.  This counts how often the bearing and the route disagree.
+    """
+    field = np.asarray(state["field"])
+    origin = tuple(state["self"][3])
+    distances = _bfs_distances(state)
+    targets = {tuple(coin) for coin in state["coins"]}
+    kind = "coin"
+    if not targets:
+        targets = _crate_adjacent_cells(state)
+        kind = "crate"
+    reachable = [t for t in targets if t in distances]
+    if not reachable:
+        return None
+    goal = min(reachable, key=distances.__getitem__)
+    if distances[goal] == 0:
+        return None
+
+    blocked = {tuple(position) for position, _ in state["bombs"]}
+    blocked.update(tuple(other[3]) for other in state["others"])
+    # Which legal moves actually shorten the route, by BFS from the goal.
+    from collections import deque as _deque
+    back = {goal: 0}
+    queue = _deque([goal])
+    while queue:
+        cell = queue.popleft()
+        for dx, dy in MOVES.values():
+            nxt = (cell[0] + dx, cell[1] + dy)
+            x, y = nxt
+            if not (0 <= x < field.shape[0] and 0 <= y < field.shape[1]):
+                continue
+            if nxt in back or field[x, y] != 0 or nxt in blocked:
+                continue
+            back[nxt] = back[cell] + 1
+            queue.append(nxt)
+    if origin not in back:
+        return None
+    routed = set()
+    for name, (dx, dy) in MOVES.items():
+        cell = (origin[0] + dx, origin[1] + dy)
+        x, y = cell
+        if not (0 <= x < field.shape[0] and 0 <= y < field.shape[1]):
+            continue
+        if field[x, y] != 0 or cell in blocked:
+            continue
+        if back.get(cell, 10 ** 6) < back[origin]:
+            routed.add(name)
+
+    # What the bearing suggests, read the way a linear head would read it.
+    sx, sy = np.sign(goal[0] - origin[0]), np.sign(goal[1] - origin[1])
+    suggested = set()
+    if sx > 0:
+        suggested.add("RIGHT")
+    if sx < 0:
+        suggested.add("LEFT")
+    if sy > 0:
+        suggested.add("DOWN")
+    if sy < 0:
+        suggested.add("UP")
+    return {
+        "kind": kind,
+        "bearing_names_a_route_step": bool(suggested & routed),
+        "bearing_is_entirely_wrong": bool(suggested and not (suggested & routed)),
+        "route_step_count": len(routed),
+    }
 
 
 def escape_step_record(state: dict, chosen: str, shaping: PotentialShaping | None) -> dict:
@@ -290,6 +308,7 @@ def replay_job(job_dir: Path, shaping: PotentialShaping | None) -> dict:
     agent = world.agents[0]
 
     bombs: list[dict] = []
+    bearings: list[dict] = []
     observed = {"coins": 0, "kills": 0, "suicides": 0, "score": 0, "bombs": 0}
     for _ in range(int(snapshot["budget"]["rounds"])):
         world.new_round()
@@ -323,6 +342,10 @@ def replay_job(job_dir: Path, shaping: PotentialShaping | None) -> dict:
                     episode["min_escape_steps"] = length
                 bombs.append(episode)
                 pending = episode
+            if before is not None:
+                audit = bearing_audit(before)
+                if audit is not None:
+                    bearings.append(audit)
             if agent.dead:
                 if pending is not None:
                     pending["died"] = True
@@ -340,7 +363,8 @@ def replay_job(job_dir: Path, shaping: PotentialShaping | None) -> dict:
     observed["score"] = int(agent.total_score)
     official = json.loads((job_dir / "official_stats.json").read_text(encoding="utf-8"))
     shutil.rmtree(log_dir, ignore_errors=True)
-    return {"job_id": snapshot["job_id"], "bombs": bombs, "observed": observed, "official": official}
+    return {"job_id": snapshot["job_id"], "bombs": bombs, "bearings": bearings,
+            "observed": observed, "official": official}
 
 
 def official_totals(official: dict) -> dict[str, int]:
@@ -468,6 +492,15 @@ def main() -> None:
         print(f"  the fatal turn and a saving turn looked the")
         print(f"  same in handcrafted_v1's danger features       "
               f"{indistinguishable}/{distinguishable_total} ({share:.1%})")
+    bearings = [entry for result in results for entry in result["bearings"]]
+    if bearings:
+        useful = sum(entry["bearing_names_a_route_step"] for entry in bearings)
+        wrong = sum(entry["bearing_is_entirely_wrong"] for entry in bearings)
+        print("-" * 66)
+        print("compass bearing to the nearest target vs the actual route")
+        print(f"  steps audited                                {len(bearings)}")
+        print(f"  bearing names at least one route step        {useful} ({useful / len(bearings):.1%})")
+        print(f"  every direction the bearing suggests is wrong{wrong:>6} ({wrong / len(bearings):.1%})")
     print("-" * 66)
     print("escape ticks (a bomb is ticking and the agent is not yet safe)")
     print(f"  ticks recorded                               {len(ticks)}")

@@ -1,0 +1,136 @@
+{
+  "_design_note": "M3.3. The sole change from m3_2_r02_2_a06_e01_t02_n5_v2 is the state representation, handcrafted_v2 to handcrafted_v3. handcrafted_v3 appends eight entries saying which legal move actually shortens the walk to the nearest coin and to the nearest cell beside a crate. It exists because _target_features encodes a compass bearing, sign(tx - x) and sign(ty - y), rather than a route: measured over 36,783 replayed steps of the M3.1 run, every direction that bearing suggests is wrong in 16.3 percent of steps. This arm must be read against M3.2, not against M3.1, so that the routing entries are the only new factor.",
+  "_predeclared_design_numbers": {
+    "changed_factor": "state_representation only: handcrafted_v2 -> handcrafted_v3 (54 -> 62)",
+    "diagnosis": "docs/01 section 7.10",
+    "falsification": "coins unchanged against M3.2 means the bearing was already sufficient for the distances that matter and the extra width is not worth its cost.",
+    "m3_1_control": "runs/m3_1_r02_1_a06_t02_n5_20260826/",
+    "m3_2_control": "the handcrafted_v2 arm; this arm is only interpretable against it",
+    "measured_motivation": "16.3 percent of 36,783 replayed steps have a wholly misleading bearing",
+    "prediction_coins": "above the M3.2 arm; the routing entries address collection, not survival",
+    "prediction_suicides": "not worse than M3.2",
+    "primary_evaluation": "Loot-Crate holdout @500",
+    "reporting": "Report all five training-seed distributions and the training diagnostics; apply every G2 threshold."
+  },
+  "agent": {
+    "algorithm": "q_learning",
+    "model": "mlp_q",
+    "n_step": 5,
+    "name": "research_agent",
+    "replay": {
+      "batch_size": 32,
+      "capacity": 50000,
+      "min_size": 1000,
+      "target_update_every": 500,
+      "train_every": 1
+    },
+    "state_representation": "handcrafted_v3"
+  },
+  "checkpoint_evaluation": {
+    "holdout_seeds": [
+      3001,
+      3002,
+      3003
+    ],
+    "mode": "all",
+    "validation_seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation": {
+    "budget": {
+      "checkpoint_every": 50,
+      "rounds": 30
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation_suites": {
+    "classic_transfer": {
+      "budget": {
+        "checkpoint_every": 50,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "coin_heaven_diagnostic": {
+      "budget": {
+        "checkpoint_every": 50,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "coin-heaven",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    }
+  },
+  "experiment_id": "M3_3_R02_3_A06_E01_C00_T02_n5",
+  "exploration_version": "E01",
+  "promotion": {
+    "primary_metric": "score"
+  },
+  "reward_version": "A06",
+  "route": "R02_3",
+  "schema_version": 1,
+  "shaping": {
+    "name": "potential_v1"
+  },
+  "terminal_on_truncation": false,
+  "training": {
+    "budget": {
+      "checkpoint_every": 50,
+      "rounds": 500
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      1001,
+      1002,
+      1003,
+      1004,
+      1005
+    ]
+  }
+}

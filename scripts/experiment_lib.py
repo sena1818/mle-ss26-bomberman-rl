@@ -81,7 +81,8 @@ DECLARATIVE_ROUTE_VALUES = {
     "model": {"linear_q", "mlp_q", "cnn_q", "cnn_mlp_q", "dueling_cnn_mlp_q"},
     "algorithm": {"q_learning", "sarsa", "double_dqn"},
     "state_representation": {
-        "handcrafted_v1", "board_channels_v1", "board_channels_global_v1", "board_egocentric_v1",
+        "handcrafted_v1", "handcrafted_v2", "handcrafted_v3",
+        "board_channels_v1", "board_channels_global_v1", "board_egocentric_v1",
     },
 }
 

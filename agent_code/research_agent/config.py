@@ -17,6 +17,11 @@ import os
 ACTIONS = ("UP", "RIGHT", "DOWN", "LEFT", "WAIT", "BOMB")
 ACTIVE_EXPERIMENT = "R01"
 FEATURE_DIMENSION = 44
+# handcrafted_v2 appends ten escape entries, v3 another eight routing entries.
+# Every v1 index keeps its meaning, so a v1 model's weights stay readable, but
+# the vectors are different lengths and arms across versions are not comparable.
+FEATURE_DIMENSION_V2 = 54
+FEATURE_DIMENSION_V3 = 62
 FEATURE_VERSION = "handcrafted_v1"
 REWARD_VERSION = "A00"
 EXPLORATION_VERSION = "E00"
@@ -91,6 +96,7 @@ SHAPING_SPECIFICATIONS = {
 MAX_STEPS = 400
 BOMB_POWER = 3
 BOMB_TIMER = 4
+EXPLOSION_TIMER = 2
 
 
 @dataclass(frozen=True)
@@ -225,6 +231,50 @@ EXPERIMENTS = {
         epsilon=0.15,
         safety_filter="legality_only",
         feature_version=FEATURE_VERSION,
+        reward_version=REWARD_VERSION,
+        exploration_version=EXPLORATION_VERSION,
+        terminal_on_truncation=TERMINAL_ON_TRUNCATION,
+        hidden_layers=(64, 32),
+        optimizer="adam",
+        td_loss="huber",
+        gradient_clip_norm=10.0,
+    ),
+    # M3.2 / M3.3 -- the M3.1 recipe untouched, with the state representation as
+    # the only changed factor.  docs/01 section 7.10 located M3.1's remaining
+    # suicides in the features rather than in the reward or the task, so these
+    # two routes are the controlled test of that finding: R02_2 adds only the
+    # escape entries, R02_3 adds the routing entries on top.  Keeping them apart
+    # is the point -- bundled, neither result would be attributable.
+    "R02_2": ExperimentConfig(
+        name="R02_2",
+        lines=("M3",),
+        state_encoder="handcrafted_v2",
+        network="mlp_q",
+        algorithm="q_learning",
+        learning_rate=1e-3,
+        discount=0.95,
+        epsilon=0.15,
+        safety_filter="legality_only",
+        feature_version="handcrafted_v2",
+        reward_version=REWARD_VERSION,
+        exploration_version=EXPLORATION_VERSION,
+        terminal_on_truncation=TERMINAL_ON_TRUNCATION,
+        hidden_layers=(64, 32),
+        optimizer="adam",
+        td_loss="huber",
+        gradient_clip_norm=10.0,
+    ),
+    "R02_3": ExperimentConfig(
+        name="R02_3",
+        lines=("M3",),
+        state_encoder="handcrafted_v3",
+        network="mlp_q",
+        algorithm="q_learning",
+        learning_rate=1e-3,
+        discount=0.95,
+        epsilon=0.15,
+        safety_filter="legality_only",
+        feature_version="handcrafted_v3",
         reward_version=REWARD_VERSION,
         exploration_version=EXPLORATION_VERSION,
         terminal_on_truncation=TERMINAL_ON_TRUNCATION,

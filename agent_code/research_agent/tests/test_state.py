@@ -16,6 +16,8 @@ from agent_code.research_agent.state import (
     handcrafted_v1,
     legal_action_mask,
 )
+from agent_code.research_agent import state as state_module
+from agent_code.research_agent.config import FEATURE_DIMENSION_V2
 from items import Bomb
 
 
@@ -129,3 +131,127 @@ class DangerMapTest(unittest.TestCase):
         # The first bomb hits (5, 3), but the framework does not trigger the
         # second bomb.  Its perpendicular blast keeps its own timer (4 + 1).
         self.assertEqual(danger[5, 4], 5)
+
+
+class HandcraftedV2Test(unittest.TestCase):
+    """The escape block must answer the question v1 provably could not.
+
+    docs/01 section 7.10: in 94.4% of the turns that threw away a survivable
+    escape, the fatal direction and a saving one were bit-for-bit identical in
+    ``danger_current_and_neighbors``.  The T-junction below is that situation in
+    miniature, and the first test is the one that would have caught it.
+    """
+
+    @staticmethod
+    def t_junction():
+        # One corridor, bomb to the agent's left with one tick left.  Both
+        # horizontal neighbours are inside the blast and equally urgent, but the
+        # bomb seals the left side, so only the right arm reaches open floor in
+        # time.  This is the T-junction of section 7.10 reduced to one line.
+        field = np.full((10, 5), -1, dtype=np.int8)
+        field[1:9, 3] = 0
+        return {
+            "field": field,
+            "self": ("me", 0, False, (5, 3)),
+            "others": [],
+            "bombs": [((3, 3), 1)],
+            "coins": [],
+            "explosion_map": np.zeros_like(field, dtype=float),
+            "round": 1,
+            "step": 5,
+        }
+
+    def test_v1_cannot_tell_the_two_arms_apart(self):
+        state = self.t_junction()
+        block = state_module.handcrafted_v1(state)[
+            state_module.HANDCRAFTED_V1_LAYOUT["danger_current_and_neighbors"]]
+        order = list(state_module._DIRECTIONS)
+        left = order.index("LEFT")
+        right = order.index("RIGHT")
+        self.assertTrue(np.array_equal(block[2 + 2 * left: 4 + 2 * left],
+                                       block[2 + 2 * right: 4 + 2 * right]))
+
+    def test_v2_tells_the_two_arms_apart(self):
+        state = self.t_junction()
+        block = state_module.handcrafted_v2(state)[
+            state_module.HANDCRAFTED_V2_LAYOUT["escape_by_direction"]]
+        order = list(state_module._DIRECTIONS)
+        left = order.index("LEFT")
+        right = order.index("RIGHT")
+        self.assertFalse(np.array_equal(block[2 * left: 2 + 2 * left],
+                                        block[2 * right: 2 + 2 * right]))
+        # The long arm is escapable, the stub is not.
+        self.assertEqual(block[2 * right], 1.0)
+        self.assertEqual(block[2 * left], 0.0)
+
+    def test_v2_keeps_every_v1_entry_at_its_original_index(self):
+        state = self.t_junction()
+        first = state_module.handcrafted_v2(state)[:state_module.FEATURE_DIMENSION]
+        self.assertTrue(np.array_equal(first, state_module.handcrafted_v1(state)))
+
+    def test_a_board_without_bombs_reports_safety_everywhere(self):
+        state = self.t_junction()
+        state["bombs"] = []
+        block = state_module.handcrafted_v2(state)[
+            state_module.HANDCRAFTED_V2_LAYOUT["escape_here"]]
+        self.assertEqual(list(block), [1.0, 0.0])
+
+    def test_a_blocked_direction_reads_as_no_way_out(self):
+        state = self.t_junction()
+        block = state_module.handcrafted_v2(state)[
+            state_module.HANDCRAFTED_V2_LAYOUT["escape_by_direction"]]
+        order = list(state_module._DIRECTIONS)
+        down = order.index("DOWN")  # stone below the agent
+        self.assertEqual(list(block[2 * down: 2 + 2 * down]), [0.0, 1.0])
+
+    def test_the_dimension_matches_the_declared_layout(self):
+        state = self.t_junction()
+        self.assertEqual(state_module.handcrafted_v2(state).shape,
+                         (state_module.state_dimension("handcrafted_v2"),))
+        self.assertEqual(max(s.stop for s in state_module.HANDCRAFTED_V2_LAYOUT.values()),
+                         state_module.state_dimension("handcrafted_v2"))
+
+
+class HandcraftedV3Test(unittest.TestCase):
+    """The routing block must name the turn the compass bearing gets wrong."""
+
+    @staticmethod
+    def dogleg():
+        # The coin is up and to the right, but a wall means the only route
+        # starts by going right; the bearing suggests UP as well.
+        field = np.full((9, 9), -1, dtype=np.int8)
+        field[1:8, 5] = 0
+        field[7, 1:6] = 0
+        return {
+            "field": field,
+            "self": ("me", 0, True, (2, 5)),
+            "others": [],
+            "bombs": [],
+            "coins": [(7, 1)],
+            "explosion_map": np.zeros_like(field, dtype=float),
+            "round": 1,
+            "step": 5,
+        }
+
+    def test_the_bearing_points_up_but_the_route_starts_right(self):
+        state = self.dogleg()
+        features = state_module.handcrafted_v3(state)
+        bearing = features[state_module.HANDCRAFTED_V3_LAYOUT["coin_target"]]
+        route = features[state_module.HANDCRAFTED_V3_LAYOUT["coin_route"]]
+        order = list(state_module._DIRECTIONS)
+        # sign(ty - y) is negative: the coin is "up" as the crow flies.
+        self.assertLess(bearing[1], 0.0)
+        self.assertEqual(route[order.index("UP")], 0.0)
+        self.assertEqual(route[order.index("RIGHT")], 1.0)
+
+    def test_v3_keeps_every_v2_entry_at_its_original_index(self):
+        state = self.dogleg()
+        first = state_module.handcrafted_v3(state)[:state_module.FEATURE_DIMENSION_V2]
+        self.assertTrue(np.array_equal(first, state_module.handcrafted_v2(state)))
+
+    def test_no_reachable_coin_leaves_the_coin_route_zero(self):
+        state = self.dogleg()
+        state["coins"] = []
+        route = state_module.handcrafted_v3(state)[
+            state_module.HANDCRAFTED_V3_LAYOUT["coin_route"]]
+        self.assertEqual(list(route), [0.0, 0.0, 0.0, 0.0])

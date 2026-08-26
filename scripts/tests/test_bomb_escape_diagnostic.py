@@ -1,5 +1,9 @@
 """Tests for the survivability search behind the bomb-escape diagnostic.
 
+The search itself lives in ``state.escape_search`` because handcrafted_v2 shows
+it to the agent; the diagnostic only re-exports it.  These cases pin the
+behaviour both of them depend on.
+
 The diagnostic's whole value is the claim "a survivable plan existed here".
 If that search is wrong in either direction the run's suicides get sorted into
 the wrong bucket and the next experiment is chosen on a false premise, so the
@@ -79,26 +83,6 @@ class SurvivabilityTest(unittest.TestCase):
         state = corridor_state(12, agent_x=6, bomb_x=1, timer=3)
         state["bombs"] = []
         self.assertEqual(diagnostic.survivable(state, s.BOMB_TIMER + 1), (True, 0))
-
-
-class BlastScheduleTest(unittest.TestCase):
-    def test_a_tile_is_lethal_for_the_whole_explosion(self):
-        field = np.zeros((7, 3), dtype=np.int8)
-        schedule = diagnostic.blast_schedule(field, [((1, 1), 3)])
-        # Timer 3 detonates on tick 4 and lingers EXPLOSION_TIMER ticks.
-        self.assertEqual(schedule[(1, 1)], set(range(4, 4 + s.EXPLOSION_TIMER)))
-
-    def test_an_expired_timer_still_detonates_on_the_next_tick(self):
-        field = np.zeros((7, 3), dtype=np.int8)
-        schedule = diagnostic.blast_schedule(field, [((1, 1), 0)])
-        self.assertEqual(min(schedule[(1, 1)]), 1)
-
-    def test_stone_stops_the_blast(self):
-        field = np.zeros((7, 3), dtype=np.int8)
-        field[3, 1] = -1
-        schedule = diagnostic.blast_schedule(field, [((1, 1), 3)])
-        self.assertIn((2, 1), schedule)
-        self.assertNotIn((4, 1), schedule)
 
 
 class ShapingComparisonTest(unittest.TestCase):

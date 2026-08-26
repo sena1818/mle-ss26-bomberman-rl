@@ -1,0 +1,136 @@
+{
+  "_design_note": "M3.2. The sole change from m3_r02_1_a06_e01_t02_n5 is the state representation, handcrafted_v1 to handcrafted_v2. Route, reward version A06, shaping, exploration schedule E01, task T02, n=5, the whole M3.1 fitted-Q recipe, budgets, seeds, checkpoint policy and greedy evaluation are unchanged; only the MLP input width changes, from 44 to 54. handcrafted_v2 appends ten entries that answer, for the agent's own cell and for each of the four neighbours, whether a cell outside every current blast is reachable in time and how many ticks it costs. This is the controlled test of the section 7.10 diagnosis, which found that in 94.4 percent of the turns that threw away a survivable escape, the fatal direction and a saving one were bit-for-bit identical in handcrafted_v1's danger features.",
+  "_predeclared_design_numbers": {
+    "changed_factor": "state_representation only: handcrafted_v1 -> handcrafted_v2 (44 -> 54)",
+    "comparability": "Not comparable with any handcrafted_v1 arm on input-identical grounds; the feature vector differs in length. The comparison that carries weight is behavioural, against the M3.1 control on the same task and seeds.",
+    "diagnosis": "docs/01 section 7.10",
+    "falsification": "suicides unchanged while crates_per_round holds means the fatal turn is not a representation problem after all, and the section 7.10 diagnosis is wrong; do not respond by enlarging the death penalty, re-open the diagnosis instead.",
+    "m3_1_control": "runs/m3_1_r02_1_a06_t02_n5_20260826/",
+    "prediction_bomb_rate": "not below 0.02",
+    "prediction_crates_per_round": "not below 15, the level M3.1 reached at 22.291",
+    "prediction_suicides": "< 0.5, the G2 threshold M3.1 missed at 0.613",
+    "primary_evaluation": "Loot-Crate holdout @500",
+    "reporting": "Report all five training-seed distributions and the training diagnostics; apply every G2 threshold."
+  },
+  "agent": {
+    "algorithm": "q_learning",
+    "model": "mlp_q",
+    "n_step": 5,
+    "name": "research_agent",
+    "replay": {
+      "batch_size": 32,
+      "capacity": 50000,
+      "min_size": 1000,
+      "target_update_every": 500,
+      "train_every": 1
+    },
+    "state_representation": "handcrafted_v2"
+  },
+  "checkpoint_evaluation": {
+    "holdout_seeds": [
+      3001,
+      3002,
+      3003
+    ],
+    "mode": "all",
+    "validation_seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation": {
+    "budget": {
+      "checkpoint_every": 50,
+      "rounds": 30
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation_suites": {
+    "classic_transfer": {
+      "budget": {
+        "checkpoint_every": 50,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "coin_heaven_diagnostic": {
+      "budget": {
+        "checkpoint_every": 50,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "coin-heaven",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    }
+  },
+  "experiment_id": "M3_2_R02_2_A06_E01_C00_T02_n5",
+  "exploration_version": "E01",
+  "promotion": {
+    "primary_metric": "score"
+  },
+  "reward_version": "A06",
+  "route": "R02_2",
+  "schema_version": 1,
+  "shaping": {
+    "name": "potential_v1"
+  },
+  "terminal_on_truncation": false,
+  "training": {
+    "budget": {
+      "checkpoint_every": 50,
+      "rounds": 500
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      1001,
+      1002,
+      1003,
+      1004,
+      1005
+    ]
+  }
+}
