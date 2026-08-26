@@ -14,11 +14,19 @@ propagates reward backwards, and only the first is helped by a safer bombing
 rule, so a run's remaining suicides have to be split before choosing.
 
 Method.  Each evaluation job is replayed through the unmodified official
-``BombeRLeWorld`` with the job's own scenario and seed, driving the agent with
-the actions recorded in ``agent/agent.jsonl``.  Nothing is re-inferred, so the
-replay is exact rather than approximate; the acceptance test is that every
-job's bombs, coins, suicides and score reproduce ``official_stats.json``
+``BombeRLeWorld`` with the job's own scenario and seed, driving every agent with
+the actions recorded in the framework's own game log.  Nothing is re-inferred,
+so the replay is exact rather than approximate; the acceptance test is that
+every job's bombs, coins, suicides and score reproduce ``official_stats.json``
 exactly, and a job that fails it is reported instead of silently averaged in.
+
+Reading the log rather than ``agent/agent.jsonl`` is what makes games with
+opponents tractable.  ``rule_based_agent.setup`` calls ``np.random.seed()`` with
+no argument, so those agents cannot be re-run to the same decisions -- but the
+decisions they did make are in the log, one line per agent per step, already in
+the order the world executed them.  The board itself is deterministic given the
+scenario seed, so replaying recorded decisions reproduces the game exactly even
+though re-playing the agents would not.
 
 For every bomb the agent places, a time-expanded breadth-first search decides
 whether a survivable plan existed at that moment, using the framework's own
@@ -34,6 +42,7 @@ import argparse
 import collections
 import gzip
 import json
+import re
 import shutil
 import sys
 import tempfile
@@ -80,7 +89,10 @@ class ScriptedBackend(AgentBackend):
     def send_event(self, event_name, *event_args):
         if event_name == "act":
             state = event_args[0]
-            self.pending = self.actions.get((state["round"], state["step"]), "WAIT")
+            # state["self"] is (name, score, bombs_left, position), so one shared
+            # action table serves every agent without needing a per-agent copy.
+            key = (state["round"], state["step"], state["self"][0])
+            self.pending = self.actions.get(key, "WAIT")
 
     def get(self, expect_name: str, block=True, timeout=None):
         return None
@@ -90,11 +102,12 @@ class ScriptedBackend(AgentBackend):
 
 
 class ReplayWorld(BombeRLeWorld):
-    """The official world with the agent's decisions supplied from a log."""
+    """The official world with every agent's decisions supplied from a log."""
 
-    def __init__(self, args: WorldArgs, actions: dict[tuple[int, int], str]):
+    def __init__(self, args: WorldArgs, actions: dict[tuple[int, int, str], str],
+                 roster: list[tuple[str, bool]]):
         self._scripted_actions = actions
-        super().__init__(args, [("research_agent", False)])
+        super().__init__(args, roster)
 
     def add_agent(self, agent_dir, name, train=False):
         from agents import Agent
@@ -104,22 +117,39 @@ class ReplayWorld(BombeRLeWorld):
         self.agents.append(Agent(name, agent_dir, name, train, backend, color, color))
 
 
-def read_actions(job_dir: Path) -> dict[tuple[int, int], str]:
-    """Return the recorded action for every (round, step) the agent acted on."""
-    path = job_dir / "agent" / "agent.jsonl.gz"
+ROUND_START = re.compile(r"STARTING ROUND #(?P<round>\d+)")
+STEP_START = re.compile(r"STARTING STEP (?P<step>\d+)")
+CHOSE_ACTION = re.compile(r"Agent <(?P<name>[^>]+)> chose action (?P<action>[A-Z_]+) in ")
+
+
+def read_actions(job_dir: Path) -> dict[tuple[int, int, str], str]:
+    """Return every agent's recorded action, keyed by (round, step, agent name).
+
+    The game log is the only place the opponents' decisions survive, and it is
+    also the only record of the order the world applied them, which matters
+    because moving first decides who gets a contested tile.
+    """
+    path = job_dir / "framework_game.log.gz"
     opener = gzip.open
     if not path.exists():
-        path = job_dir / "agent" / "agent.jsonl"
+        path = job_dir / "framework_game.log"
         opener = open
-    actions: dict[tuple[int, int], str] = {}
-    with opener(path, "rt", encoding="utf-8") as handle:
+    actions: dict[tuple[int, int, str], str] = {}
+    round_number = step_number = 0
+    with opener(path, "rt", encoding="utf-8", errors="replace") as handle:
         for line in handle:
-            line = line.strip()
-            if not line:
+            match = ROUND_START.search(line)
+            if match:
+                round_number = int(match.group("round"))
+                step_number = 0
                 continue
-            record = json.loads(line)
-            if record.get("kind") == "action":
-                actions[(record["round"], record["step"])] = record["action"]
+            match = STEP_START.search(line)
+            if match:
+                step_number = int(match.group("step"))
+                continue
+            match = CHOSE_ACTION.search(line)
+            if match:
+                actions[(round_number, step_number, match.group("name"))] = match.group("action")
     return actions
 
 
@@ -295,6 +325,14 @@ def replay_job(job_dir: Path, shaping: PotentialShaping | None) -> dict:
     """Replay one evaluation job and collect every own-bomb episode."""
     snapshot = json.loads((job_dir / "job.snapshot.json").read_text(encoding="utf-8"))
     actions = read_actions(job_dir)
+    # The roster has to match the recorded game exactly: setup_agents derives the
+    # numbered names from this list, and those names key the action table.
+    command = json.loads((job_dir / "command.json").read_text(encoding="utf-8"))["command"]
+    names = command[command.index("--agents") + 1:]
+    for flag in ("--scenario", "--seed", "--n-rounds", "--no-gui", "--save-stats", "--match-name"):
+        if flag in names:
+            names = names[:names.index(flag)]
+    roster = [(name, False) for name in names]
     # The world insists on a log directory; a finished run is read-only as far
     # as this script is concerned, so the framework's chatter goes to a temp dir.
     log_dir = Path(tempfile.mkdtemp(prefix="bomb_escape_"))
@@ -304,10 +342,11 @@ def replay_job(job_dir: Path, shaping: PotentialShaping | None) -> dict:
         save_stats=False, match_name=None, seed=snapshot["seed"], silence_errors=False,
         scenario=snapshot["scenario"],
     )
-    world = ReplayWorld(args, actions)
-    agent = world.agents[0]
+    world = ReplayWorld(args, actions, roster)
+    agent = next(a for a in world.agents if a.code_name == "research_agent")
 
     bombs: list[dict] = []
+    deaths: list[dict] = []
     bearings: list[dict] = []
     observed = {"coins": 0, "kills": 0, "suicides": 0, "score": 0, "bombs": 0}
     for _ in range(int(snapshot["budget"]["rounds"])):
@@ -315,18 +354,20 @@ def replay_job(job_dir: Path, shaping: PotentialShaping | None) -> dict:
         # do_step sets this; we read a state before the first step of a round.
         world.user_input = None
         pending: dict | None = None
+        died_this_round = False
         while world.running:
             round_number, step_number = world.round, world.step + 1
-            chosen = actions.get((round_number, step_number), "WAIT")
+            chosen = actions.get((round_number, step_number, agent.name), "WAIT")
             before = world.get_state_for_agent(agent)
             bombs_left_before = agent.bombs_left
             # Ticks after a bomb, while it is still ticking, are the escape the
             # agent has to execute; record what it saw and what it chose.
-            if (pending is not None and before is not None
+            if (pending is not None and before is not None and not died_this_round
                     and step_number - pending["step"] <= s.BOMB_TIMER):
                 pending["escape_window"].append(escape_step_record(before, chosen, shaping))
             world.do_step()
-            placed = chosen == "BOMB" and bombs_left_before and not agent.bombs_left
+            placed = (not died_this_round and chosen == "BOMB"
+                      and bombs_left_before and not agent.bombs_left)
             if placed:
                 after = world.get_state_for_agent(agent)
                 episode = {
@@ -346,14 +387,30 @@ def replay_job(job_dir: Path, shaping: PotentialShaping | None) -> dict:
                 audit = bearing_audit(before)
                 if audit is not None:
                     bearings.append(audit)
-            if agent.dead:
-                if pending is not None:
+            if agent.dead and not died_this_round:
+                died_this_round = True
+                # The world has just decided the cause and put it in the agent's
+                # events.  With opponents on the board, "the agent died some time
+                # after it bombed" is not evidence its own bomb did it: most
+                # deaths here are somebody else's blast, and attributing those to
+                # the last own bomb produced death delays of 116 and 210 ticks.
+                self_inflicted = "KILLED_SELF" in agent.events
+                deaths.append({"round": round_number, "step": step_number,
+                               "self_inflicted": bool(self_inflicted),
+                               "last_action": chosen})
+                within_blast_window = (
+                    pending is not None
+                    and step_number - pending["step"] <= s.BOMB_TIMER + s.EXPLOSION_TIMER
+                )
+                if pending is not None and self_inflicted and within_blast_window:
                     pending["died"] = True
                     pending["death_step"] = step_number
                     pending["last_action"] = chosen
                     if shaping is not None and before is not None:
                         pending["shaping_at_death"] = shaping_terms(before, shaping)
-                break
+                # Do not break: with opponents still alive the round continues,
+                # and skipping its remaining steps would leave the world's rng
+                # out of step so every later round would replay a different board.
         # A round always ends inside do_step: the last agent dying or the step
         # limit both make time_to_stop() true, so there is nothing to close here.
         pending = None
@@ -361,17 +418,29 @@ def replay_job(job_dir: Path, shaping: PotentialShaping | None) -> dict:
     for key in ("coins", "kills", "suicides", "bombs"):
         observed[key] = int(agent.lifetime_statistics.get(key, 0))
     observed["score"] = int(agent.total_score)
+    observed["all_agents"] = {
+        a.name: {k: int(a.lifetime_statistics.get(k, 0)) for k in ("coins", "kills", "suicides", "bombs")}
+        | {"score": int(a.total_score)}
+        for a in world.agents
+    }
     official = json.loads((job_dir / "official_stats.json").read_text(encoding="utf-8"))
     shutil.rmtree(log_dir, ignore_errors=True)
-    return {"job_id": snapshot["job_id"], "bombs": bombs, "bearings": bearings,
+    return {"job_id": snapshot["job_id"], "bombs": bombs, "deaths": deaths, "bearings": bearings,
             "observed": observed, "official": official}
 
 
-def official_totals(official: dict) -> dict[str, int]:
-    """Pull the agent's per-run totals out of the framework's stats file."""
-    by_agent = official.get("by_agent", {})
-    entry = next(iter(by_agent.values()), {})
-    return {key: int(entry.get(key, 0)) for key in ("coins", "kills", "suicides", "score", "bombs")}
+def official_totals(official: dict) -> dict[str, dict[str, int]]:
+    """Pull every agent's per-run totals out of the framework's stats file.
+
+    Checking all of them, not just ours, is what makes the replay credible with
+    opponents in the game: if the scripted opponents had diverged by even one
+    action their own coins and suicides would drift, and that would show up here
+    long before it quietly distorted our agent's numbers.
+    """
+    return {
+        name: {key: int(entry.get(key, 0)) for key in ("coins", "kills", "suicides", "score", "bombs")}
+        for name, entry in official.get("by_agent", {}).items()
+    }
 
 
 def jsonable(value):
@@ -414,8 +483,15 @@ def main() -> None:
     for job in jobs:
         result = replay_job(job, shaping)
         expected = official_totals(result["official"])
-        if any(result["observed"][key] != expected[key] for key in ("coins", "suicides", "score")):
-            mismatched.append({"job_id": result["job_id"], "replayed": result["observed"], "official": expected})
+        replayed = result["observed"]["all_agents"]
+        drifted = {
+            name: {"replayed": replayed.get(name), "official": totals}
+            for name, totals in expected.items()
+            if any(replayed.get(name, {}).get(key) != totals[key]
+                   for key in ("coins", "suicides", "score"))
+        }
+        if drifted:
+            mismatched.append({"job_id": result["job_id"], "agents": drifted})
         results.append(result)
         print(f"  replayed {result['job_id']}: "
               f"{len(result['bombs'])} bombs, {result['observed']['suicides']} suicides", flush=True)
@@ -423,9 +499,12 @@ def main() -> None:
     if mismatched:
         print("\nREPLAY DID NOT REPRODUCE THE OFFICIAL STATISTICS -- findings below are void:")
         for entry in mismatched:
-            print(f"  {entry['job_id']}: replayed {entry['replayed']} vs official {entry['official']}")
+            print(f"  {entry['job_id']}:")
+            for name, sides in entry["agents"].items():
+                print(f"    {name}: replayed {sides['replayed']} vs official {sides['official']}")
 
     every_bomb = [bomb for result in results for bomb in result["bombs"]]
+    every_death = [death for result in results for death in result["deaths"]]
     fatal = [bomb for bomb in every_bomb if bomb["died"]]
     with_escape = [bomb for bomb in every_bomb if bomb["escape_existed"]]
     fatal_with_escape = [bomb for bomb in fatal if bomb["escape_existed"]]
@@ -438,7 +517,11 @@ def main() -> None:
     print(f"replay reproduced official statistics          {len(results) - len(mismatched)}/{len(results)}")
     print(f"bombs placed                                   {len(every_bomb)}")
     print(f"bombs with a survivable plan at placement      {len(with_escape)}/{len(every_bomb)}")
-    print(f"deaths attributable to the agent's own bomb    {len(fatal)}")
+    self_inflicted = [d for d in every_death if d["self_inflicted"]]
+    print(f"deaths                                         {len(every_death)}")
+    print(f"  the framework blamed the agent's own bomb    {len(self_inflicted)}"
+          f" ({len(self_inflicted) / len(every_death):.1%})" if every_death else "")
+    print(f"  tied to a specific own bomb in its window    {len(fatal)}")
     print(f"  of those, an escape existed when bombing     {len(fatal_with_escape)}/{len(fatal)}")
     print(f"  last action before dying                     {dict(last_actions.most_common())}")
     print(f"  ticks from bomb to death                     {dict(sorted(delays.items()))}")
