@@ -11,14 +11,24 @@ from ..config import ACTIONS
 
 
 class MLPQModel:
-    """A ReLU MLP trained by one-step online Q-learning with SGD.
+    """A ReLU MLP Q model with explicit, route-declared optimization.
 
     The implementation intentionally relies only on NumPy, which is already a
     dependency of the official project.  Hidden layers use He initialization;
     the final Q head starts close to zero like R01's linear head.
     """
 
-    def __init__(self, input_dim: int, hidden_layers: tuple[int, ...], seed: int = 0, learning_rate: float = 0.02):
+    def __init__(
+        self,
+        input_dim: int,
+        hidden_layers: tuple[int, ...],
+        seed: int = 0,
+        learning_rate: float = 0.02,
+        *,
+        optimizer: str = "sgd",
+        td_loss: str = "mse",
+        gradient_clip_norm: float | None = None,
+    ):
         if input_dim < 1 or not hidden_layers or any(width < 1 for width in hidden_layers):
             raise ValueError("MLPQModel requires a positive input dimension and non-empty positive hidden layers.")
         self.layer_sizes = (int(input_dim), *(int(width) for width in hidden_layers), len(ACTIONS))
@@ -29,9 +39,24 @@ class MLPQModel:
             scale = np.sqrt(2.0 / fan_in) if layer < len(self.layer_sizes) - 2 else 0.01
             self.weights.append(generator.normal(0.0, scale, size=(fan_out, fan_in)).astype(np.float32))
             self.biases.append(np.zeros(fan_out, dtype=np.float32))
-        # Only the batch path uses this; the online path is handed a rate by
-        # its learner, exactly as the linear model is.
+        if optimizer not in {"sgd", "adam"}:
+            raise ValueError(f"Unsupported MLP optimizer {optimizer!r}.")
+        if td_loss not in {"mse", "huber"}:
+            raise ValueError(f"Unsupported MLP TD loss {td_loss!r}.")
+        if gradient_clip_norm is not None and gradient_clip_norm <= 0:
+            raise ValueError("gradient_clip_norm must be positive when declared.")
         self.learning_rate = float(learning_rate)
+        self.optimizer = optimizer
+        self.td_loss = td_loss
+        self.gradient_clip_norm = gradient_clip_norm
+        self._adam_step = 0
+        self._weight_momentum = [np.zeros_like(weight) for weight in self.weights]
+        self._weight_variance = [np.zeros_like(weight) for weight in self.weights]
+        self._bias_momentum = [np.zeros_like(bias) for bias in self.biases]
+        self._bias_variance = [np.zeros_like(bias) for bias in self.biases]
+        self.last_gradient_l2_norm: float | None = None
+        self.last_gradient_was_clipped = False
+        self.last_hidden_zero_fraction: float | None = None
         self.metadata: dict = {}
 
     def q_values(self, state: np.ndarray) -> np.ndarray:
@@ -48,7 +73,7 @@ class MLPQModel:
         learning_rate: float,
         discount: float,
     ) -> float:
-        """Apply SGD to the selected Q head using the masked Q-learning target."""
+        """Apply one declared optimizer step using the masked Q-learning target."""
         prediction, activations, pre_activations = self._forward(state, retain_cache=True)
         predicted_q = float(prediction[action_index])
         if next_state is None:
@@ -63,7 +88,7 @@ class MLPQModel:
         # Gradient ascent on td_error * Q(s, a), equivalent to SGD on
         # 1/2(target - Q(s, a))^2 with the target held constant.
         delta = np.zeros(len(ACTIONS), dtype=np.float32)
-        delta[action_index] = td_error
+        delta[action_index] = self._loss_gradient(np.asarray([td_error], dtype=np.float32))[0]
         weight_gradients: list[np.ndarray] = [np.empty_like(weight) for weight in self.weights]
         bias_gradients: list[np.ndarray] = [np.empty_like(bias) for bias in self.biases]
         for layer in range(len(self.weights) - 1, -1, -1):
@@ -71,9 +96,7 @@ class MLPQModel:
             bias_gradients[layer] = delta
             if layer:
                 delta = (self.weights[layer].T @ delta) * (pre_activations[layer - 1] > 0.0)
-        for layer, (weight_gradient, bias_gradient) in enumerate(zip(weight_gradients, bias_gradients)):
-            self.weights[layer] += learning_rate * weight_gradient
-            self.biases[layer] += learning_rate * bias_gradient
+        self._apply_gradients(weight_gradients, bias_gradients, learning_rate)
         return td_error
 
     def q_values_batch(self, states: np.ndarray) -> np.ndarray:
@@ -89,18 +112,23 @@ class MLPQModel:
         td_errors = np.asarray(targets, dtype=np.float32) - predictions[rows, action_indices]
 
         delta = np.zeros_like(predictions)
-        delta[rows, action_indices] = td_errors / len(action_indices)
+        delta[rows, action_indices] = self._loss_gradient(td_errors) / len(action_indices)
+        self.last_hidden_zero_fraction = self._hidden_zero_fraction(pre_activations)
+        weight_gradients: list[np.ndarray] = [np.empty_like(weight) for weight in self.weights]
+        bias_gradients: list[np.ndarray] = [np.empty_like(bias) for bias in self.biases]
         for layer in range(len(self.weights) - 1, -1, -1):
-            weight_gradient = delta.T @ activations[layer]
-            bias_gradient = delta.sum(axis=0)
+            weight_gradients[layer] = delta.T @ activations[layer]
+            bias_gradients[layer] = delta.sum(axis=0)
             if layer:
                 delta = (delta @ self.weights[layer]) * (pre_activations[layer - 1] > 0.0)
-            self.weights[layer] += (self.learning_rate * weight_gradient).astype(np.float32)
-            self.biases[layer] += (self.learning_rate * bias_gradient).astype(np.float32)
+        self._apply_gradients(weight_gradients, bias_gradients, self.learning_rate)
         return td_errors
 
     def clone(self) -> "MLPQModel":
-        copy = MLPQModel(self.layer_sizes[0], self.layer_sizes[1:-1], learning_rate=self.learning_rate)
+        copy = MLPQModel(
+            self.layer_sizes[0], self.layer_sizes[1:-1], learning_rate=self.learning_rate,
+            optimizer=self.optimizer, td_loss=self.td_loss, gradient_clip_norm=self.gradient_clip_norm,
+        )
         copy.copy_parameters_from(self)
         return copy
 
@@ -138,8 +166,27 @@ class MLPQModel:
             payload[f"biases_{layer}"] = bias
         np.savez(path, **payload)
 
+    def training_diagnostics(self) -> dict[str, float | bool | int | None]:
+        """Return small, JSON-safe signals for diagnosing fitted-Q stability."""
+        parameter_sq = sum(float(np.sum(parameter.astype(np.float64) ** 2)) for parameter in self.weights + self.biases)
+        return {
+            "optimizer_steps": self._adam_step if self.optimizer == "adam" else 0,
+            "parameter_l2_norm": float(np.sqrt(parameter_sq)),
+            "last_gradient_l2_norm": self.last_gradient_l2_norm,
+            "last_gradient_was_clipped": self.last_gradient_was_clipped,
+            "last_hidden_zero_fraction": self.last_hidden_zero_fraction,
+        }
+
     @classmethod
-    def load(cls, path: Path) -> "MLPQModel":
+    def load(
+        cls,
+        path: Path,
+        *,
+        learning_rate: float = 0.02,
+        optimizer: str = "sgd",
+        td_loss: str = "mse",
+        gradient_clip_norm: float | None = None,
+    ) -> "MLPQModel":
         """Load and validate a self-describing R02 checkpoint."""
         with np.load(path, allow_pickle=False) as data:
             required = {"model_type", "layer_sizes", "metadata"}
@@ -148,7 +195,10 @@ class MLPQModel:
             layer_sizes = tuple(int(size) for size in data["layer_sizes"])
             if len(layer_sizes) < 3 or layer_sizes[0] < 1 or any(size < 1 for size in layer_sizes[1:]) or layer_sizes[-1] != len(ACTIONS):
                 raise ValueError(f"Checkpoint {path} has an invalid MLP shape {layer_sizes}.")
-            model = cls(layer_sizes[0], layer_sizes[1:-1])
+            model = cls(
+                layer_sizes[0], layer_sizes[1:-1], learning_rate=learning_rate,
+                optimizer=optimizer, td_loss=td_loss, gradient_clip_norm=gradient_clip_norm,
+            )
             weights: list[np.ndarray] = []
             biases: list[np.ndarray] = []
             for layer, (fan_in, fan_out) in enumerate(zip(layer_sizes, layer_sizes[1:])):
@@ -184,5 +234,57 @@ class MLPQModel:
             activation = linear if layer == len(self.weights) - 1 else np.maximum(linear, 0.0)
             activations.append(activation)
         if retain_cache:
+            self.last_hidden_zero_fraction = self._hidden_zero_fraction(pre_activations)
             return activation, activations, pre_activations
         return activation
+
+    def _loss_gradient(self, td_errors: np.ndarray) -> np.ndarray:
+        """Return the update direction for MSE or unit-delta Huber loss."""
+        if self.td_loss == "mse":
+            return td_errors
+        return np.clip(td_errors, -1.0, 1.0)
+
+    @staticmethod
+    def _hidden_zero_fraction(pre_activations: list[np.ndarray]) -> float | None:
+        hidden = pre_activations[:-1]
+        if not hidden:
+            return None
+        return float(np.mean(np.concatenate([layer.reshape(-1) for layer in hidden]) <= 0.0))
+
+    def _apply_gradients(
+        self,
+        weight_gradients: list[np.ndarray],
+        bias_gradients: list[np.ndarray],
+        learning_rate: float,
+    ) -> None:
+        gradients = weight_gradients + bias_gradients
+        squared_norm = sum(float(np.sum(gradient.astype(np.float64) ** 2)) for gradient in gradients)
+        gradient_norm = float(np.sqrt(squared_norm))
+        self.last_gradient_l2_norm = gradient_norm
+        self.last_gradient_was_clipped = False
+        if self.gradient_clip_norm is not None and gradient_norm > self.gradient_clip_norm:
+            scale = self.gradient_clip_norm / gradient_norm
+            weight_gradients = [gradient * scale for gradient in weight_gradients]
+            bias_gradients = [gradient * scale for gradient in bias_gradients]
+            self.last_gradient_was_clipped = True
+
+        if self.optimizer == "sgd":
+            for layer, (weight_gradient, bias_gradient) in enumerate(zip(weight_gradients, bias_gradients)):
+                self.weights[layer] += (learning_rate * weight_gradient).astype(np.float32)
+                self.biases[layer] += (learning_rate * bias_gradient).astype(np.float32)
+            return
+
+        self._adam_step += 1
+        beta1, beta2, epsilon = 0.9, 0.999, 1e-8
+        correction1 = 1.0 - beta1 ** self._adam_step
+        correction2 = 1.0 - beta2 ** self._adam_step
+        for parameters, gradients_for_parameters, momentum, variance in (
+            (self.weights, weight_gradients, self._weight_momentum, self._weight_variance),
+            (self.biases, bias_gradients, self._bias_momentum, self._bias_variance),
+        ):
+            for parameter, gradient, first, second in zip(parameters, gradients_for_parameters, momentum, variance):
+                first *= beta1
+                first += (1.0 - beta1) * gradient
+                second *= beta2
+                second += (1.0 - beta2) * (gradient * gradient)
+                parameter += (learning_rate * (first / correction1) / (np.sqrt(second / correction2) + epsilon)).astype(np.float32)

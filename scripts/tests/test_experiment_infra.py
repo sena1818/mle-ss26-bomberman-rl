@@ -775,6 +775,7 @@ class FourMainLineDeclarationTest(unittest.TestCase):
     ROUTES = {
         "R01": ("linear_q", "q_learning", "handcrafted_v1"),
         "R02": ("mlp_q", "q_learning", "handcrafted_v1"),
+        "R02_1": ("mlp_q", "q_learning", "handcrafted_v1"),
         "R07": ("cnn_mlp_q", "double_dqn", "board_egocentric_v1"),
         "R08": ("dueling_cnn_mlp_q", "double_dqn", "board_egocentric_v1"),
     }
@@ -797,7 +798,7 @@ class FourMainLineDeclarationTest(unittest.TestCase):
             return Experiment.load(path)
 
     def test_each_implemented_route_declares_the_line_it_serves(self):
-        for route, lines in (("R01", ("M1", "M2")), ("R02", ("M3",)), ("R07", ("M4",)), ("R08", ("M4",))):
+        for route, lines in (("R01", ("M1", "M2")), ("R02", ("M3",)), ("R02_1", ("M3",)), ("R07", ("M4",)), ("R08", ("M4",))):
             with self.subTest(route=route):
                 experiment = self._load(route)
                 experiment.require_implemented()
@@ -872,6 +873,45 @@ class FourMainLineDeclarationTest(unittest.TestCase):
                 experiment = Experiment.load(path)
                 experiment.require_implemented()
                 resolved_runtime_config(experiment)
+
+    def test_m3_n5_is_a_controlled_mlp_replacement_of_m2_n5(self):
+        root = Path(__file__).resolve().parents[2]
+        m2_path = root / "experiments" / "m2_r01_a06_e01_t02_n5.json"
+        m3_path = root / "experiments" / "m3_r02_a06_e01_t02_n5.json"
+        with m2_path.open(encoding="utf-8") as source:
+            m2 = json.load(source)
+        with m3_path.open(encoding="utf-8") as source:
+            m3 = json.load(source)
+
+        self.assertEqual(m3["route"], "R02")
+        self.assertEqual(m3["agent"]["model"], "mlp_q")
+        self.assertEqual(m3["agent"]["n_step"], 5)
+        self.assertIsNone(m3["agent"]["replay"])
+        self.assertEqual(m3["training"]["seeds"], [1001, 1002, 1003, 1004, 1005])
+        self.assertEqual(len(build_jobs(Experiment.load(m3_path), root / "runs" / "test_m3_n5")), 365)
+
+        for field in ("_design_note", "_predeclared_design_numbers", "experiment_id", "route"):
+            m2.pop(field)
+            m3.pop(field)
+        m2["agent"]["model"] = m3["agent"]["model"]
+        self.assertEqual(m3, m2)
+
+        runtime = resolved_runtime_config(Experiment.load(m3_path))["config"]
+        self.assertEqual(runtime["hidden_layers"], (64, 32))
+
+    def test_m3_1_declares_the_stabilized_mlp_recipe(self):
+        root = Path(__file__).resolve().parents[2]
+        path = root / "experiments" / "m3_r02_1_a06_e01_t02_n5.json"
+        experiment = Experiment.load(path)
+        experiment.require_implemented()
+        runtime = resolved_runtime_config(experiment)["config"]
+        self.assertEqual(runtime["learning_rate"], 1e-3)
+        self.assertEqual(runtime["optimizer"], "adam")
+        self.assertEqual(runtime["td_loss"], "huber")
+        self.assertEqual(runtime["gradient_clip_norm"], 10.0)
+        self.assertEqual(experiment.n_step, 5)
+        self.assertEqual(experiment.replay["min_size"], 1000)
+        self.assertEqual(len(build_jobs(experiment, root / "runs" / "test_m3_1")), 365)
 
 
 if __name__ == "__main__":

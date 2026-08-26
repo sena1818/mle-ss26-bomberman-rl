@@ -413,6 +413,7 @@ class ExperimentRuntime:
             "shaping_reward": self.round_shaping_reward,
             "mean_abs_td_error": self.round_abs_td_error / max(1, self.round_updates),
             "updates_this_round": self.round_updates,
+            "model_diagnostics": self._round_model_diagnostics(),
             "round_end_mispredictions": self.round_end_mispredictions,
             "events": self.round_event_counts,
             "checkpoint": str(saved_checkpoint) if saved_checkpoint else None,
@@ -460,6 +461,34 @@ class ExperimentRuntime:
             self.training_updates += 1
             self.round_updates += 1
             self.round_abs_td_error += abs(td_error)
+            self._record_model_diagnostics()
+
+    def _record_model_diagnostics(self) -> None:
+        """Accumulate optional model-side stability diagnostics for this round."""
+        if self.model is None or not hasattr(self.model, "training_diagnostics"):
+            return
+        diagnostics = self.model.training_diagnostics()
+        gradient = diagnostics.get("last_gradient_l2_norm")
+        if gradient is not None:
+            self.round_gradient_norm_sum += float(gradient)
+            self.round_gradient_norm_count += 1
+        activation = diagnostics.get("last_hidden_zero_fraction")
+        if activation is not None:
+            self.round_hidden_zero_sum += float(activation)
+            self.round_hidden_zero_count += 1
+        self.round_gradient_clipped_updates += int(bool(diagnostics.get("last_gradient_was_clipped")))
+        self.latest_model_diagnostics = diagnostics
+
+    def _round_model_diagnostics(self) -> dict[str, Any] | None:
+        if self.latest_model_diagnostics is None:
+            return None
+        return {
+            "parameter_l2_norm": self.latest_model_diagnostics.get("parameter_l2_norm"),
+            "optimizer_steps": self.latest_model_diagnostics.get("optimizer_steps"),
+            "mean_gradient_l2_norm": self.round_gradient_norm_sum / max(1, self.round_gradient_norm_count),
+            "gradient_clipped_updates": self.round_gradient_clipped_updates,
+            "mean_hidden_zero_fraction": self.round_hidden_zero_sum / max(1, self.round_hidden_zero_count),
+        }
 
     def _potential(self, game_state: dict | None) -> float:
         """Return phi(s), or zero when no shaping is configured."""
@@ -511,6 +540,12 @@ class ExperimentRuntime:
         self.round_shaping_reward = 0.0
         self.round_abs_td_error = 0.0
         self.round_event_counts: dict[str, int] = {}
+        self.round_gradient_norm_sum = 0.0
+        self.round_gradient_norm_count = 0
+        self.round_gradient_clipped_updates = 0
+        self.round_hidden_zero_sum = 0.0
+        self.round_hidden_zero_count = 0
+        self.latest_model_diagnostics: dict[str, Any] | None = None
 
     def _training_rounds(self) -> int:
         """Read the immutable budget supplied by the experiment runner.

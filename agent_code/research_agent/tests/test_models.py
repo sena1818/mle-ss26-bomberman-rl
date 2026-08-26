@@ -32,7 +32,7 @@ class SharedQModelContractTest(unittest.TestCase):
     """Run the same contract against every implemented adapter."""
 
     def adapters(self):
-        for route in ("R01", "R02", "R07", "R08"):
+        for route in ("R01", "R02", "R02_1", "R07", "R08"):
             config = EXPERIMENTS[route]
             if config.network in {"cnn_mlp_q", "dueling_cnn_mlp_q"} and not TORCH_AVAILABLE:
                 continue
@@ -114,6 +114,21 @@ class LinearAndMlpTest(unittest.TestCase):
             MLPQModel(44, (8,), seed=1).save(path)
             with self.assertRaises(ValueError):
                 load_model(EXPERIMENTS["R02"], path)
+
+    def test_adam_huber_recipe_clips_an_outlier_update_and_exposes_diagnostics(self):
+        model = MLPQModel(
+            44, (16, 8), seed=3, learning_rate=1e-3,
+            optimizer="adam", td_loss="huber", gradient_clip_norm=0.01,
+        )
+        states = np.ones((4, 44), dtype=np.float32)
+        actions = np.array([0, 1, 2, 3])
+        td_errors = model.fit_batch(states, actions, np.full(4, 100.0, dtype=np.float32))
+        diagnostics = model.training_diagnostics()
+        self.assertTrue(np.isfinite(td_errors).all())
+        self.assertEqual(diagnostics["optimizer_steps"], 1)
+        self.assertTrue(diagnostics["last_gradient_was_clipped"])
+        self.assertGreater(float(diagnostics["last_gradient_l2_norm"]), 0.01)
+        self.assertIsNotNone(diagnostics["last_hidden_zero_fraction"])
 
 
 @unittest.skipUnless(TORCH_AVAILABLE, "the M4 adapters require PyTorch")

@@ -166,6 +166,12 @@ class ExperimentConfig:
     hidden_layers: tuple[int, ...] = ()
     # None means online updating without a target network.
     replay: ReplayConfig | None = None
+    # The MLP routes make their optimization recipe explicit.  Keeping these
+    # in the route declaration (rather than as hidden model defaults) makes a
+    # stabilized M3 baseline reproducible and leaves R02/M3.0 untouched.
+    optimizer: str = "sgd"
+    td_loss: str = "mse"
+    gradient_clip_norm: float | None = None
 
 
 EXPERIMENTS = {
@@ -205,6 +211,28 @@ EXPERIMENTS = {
         terminal_on_truncation=TERMINAL_ON_TRUNCATION,
         hidden_layers=(64, 32),
     ),
+    # M3.1 -- same handcrafted MLP architecture as R02/M3.0, but with a
+    # numerically stable fitted-Q recipe.  It is deliberately a new route so
+    # the historical online-SGD control remains immutable and attributable.
+    "R02_1": ExperimentConfig(
+        name="R02_1",
+        lines=("M3",),
+        state_encoder="handcrafted_v1",
+        network="mlp_q",
+        algorithm="q_learning",
+        learning_rate=1e-3,
+        discount=0.95,
+        epsilon=0.15,
+        safety_filter="legality_only",
+        feature_version=FEATURE_VERSION,
+        reward_version=REWARD_VERSION,
+        exploration_version=EXPLORATION_VERSION,
+        terminal_on_truncation=TERMINAL_ON_TRUNCATION,
+        hidden_layers=(64, 32),
+        optimizer="adam",
+        td_loss="huber",
+        gradient_clip_norm=10.0,
+    ),
     # M4 anchor -- egocentric board tensor, CNN plus global-scalar MLP, Double
     # DQN.  docs/05 section 5.4 requires this to learn from scratch before any
     # further increment (D4 augmentation, behaviour cloning, dueling) is added.
@@ -224,6 +252,9 @@ EXPERIMENTS = {
         terminal_on_truncation=TERMINAL_ON_TRUNCATION,
         hidden_layers=(256,),
         replay=ReplayConfig(),
+        optimizer="adam",
+        td_loss="huber",
+        gradient_clip_norm=10.0,
     ),
     # M4 dueling increment -- identical to R07 apart from the value/advantage
     # split in the head.  It exists as its own route so the increment is a
@@ -244,6 +275,9 @@ EXPERIMENTS = {
         terminal_on_truncation=TERMINAL_ON_TRUNCATION,
         hidden_layers=(256,),
         replay=ReplayConfig(),
+        optimizer="adam",
+        td_loss="huber",
+        gradient_clip_norm=10.0,
     ),
 }
 
@@ -344,6 +378,12 @@ def validate_config(config: ExperimentConfig) -> ExperimentConfig:
     """Fail closed on a combination no learner or model adapter implements."""
     if config.n_step < 1:
         raise ValueError(f"n_step must be at least 1, got {config.n_step}.")
+    if config.optimizer not in {"sgd", "adam"}:
+        raise ValueError(f"optimizer must be 'sgd' or 'adam', got {config.optimizer!r}.")
+    if config.td_loss not in {"mse", "huber"}:
+        raise ValueError(f"td_loss must be 'mse' or 'huber', got {config.td_loss!r}.")
+    if config.gradient_clip_norm is not None and config.gradient_clip_norm <= 0:
+        raise ValueError("gradient_clip_norm must be positive when declared.")
     if config.algorithm == "double_dqn" and config.replay is None:
         raise ValueError("double_dqn requires a replay buffer and a target network; replay must not be null.")
     if config.replay is not None and config.replay.augmentation == "d4" and config.state_encoder != "board_egocentric_v1":

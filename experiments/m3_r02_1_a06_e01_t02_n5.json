@@ -1,0 +1,161 @@
+{
+  "_design_note": "M3.1 stabilized handcrafted-feature MLP baseline. M3.0 is the completed R02 online-SGD control (runs/m3_r02_a06_t02_n5_20260826/) and remains immutable. This arm preserves the 44-64-32-6 ReLU MLP, A06, E01, C00 Loot-Crate task, n=5, fresh starts, budgets and seed protocol, but uses the declared R02_1 fitted-Q recipe: Adam lr=0.001, unit-delta Huber TD loss, global gradient clipping at 10, uniform replay and a frozen target network. handcrafted_v1 already uses fixed semantic range scaling; no running standardizer is introduced because it would require training-state persistence and can shift the policy at evaluation time. This is a practical stabilization bundle, not an attribution claim about any individual component.",
+  "_predeclared_design_numbers": {
+    "m3_0_control": "runs/m3_r02_a06_t02_n5_20260826/",
+    "linear_recipe_control": "runs/m2_a06_n5_20260826/",
+    "optimizer": "Adam(beta1=0.9, beta2=0.999, eps=1e-8)",
+    "learning_rate": 0.001,
+    "td_loss": "Huber(delta=1.0)",
+    "gradient_clip_norm": 10.0,
+    "replay": {
+      "capacity": 50000,
+      "batch_size": 32,
+      "min_size": 1000,
+      "train_every": 1,
+      "target_update_every": 500
+    },
+    "feature_scaling": "handcrafted_v1 fixed semantic range scaling; no running standardizer",
+    "primary_evaluation": "Loot-Crate holdout @500",
+    "focus_metrics": [
+      "coins",
+      "official score",
+      "bomb_rate",
+      "crates_per_round",
+      "approximate_safe_bomb_rate",
+      "suicides",
+      "wait_fraction",
+      "steps",
+      "rounds_with_bombs"
+    ],
+    "training_diagnostics": [
+      "mean_abs_td_error",
+      "parameter_l2_norm",
+      "mean_gradient_l2_norm",
+      "gradient_clipped_updates",
+      "mean_hidden_zero_fraction"
+    ],
+    "reporting": "Report all five training-seed distributions and the training diagnostics; apply every G2 threshold.",
+    "coin_heaven_scope": "Coin-Heaven is transfer-only and does not demonstrate a T01 single-task G1 pass."
+  },
+  "agent": {
+    "algorithm": "q_learning",
+    "model": "mlp_q",
+    "n_step": 5,
+    "name": "research_agent",
+    "replay": {
+      "batch_size": 32,
+      "capacity": 50000,
+      "min_size": 1000,
+      "target_update_every": 500,
+      "train_every": 1
+    },
+    "state_representation": "handcrafted_v1"
+  },
+  "checkpoint_evaluation": {
+    "holdout_seeds": [
+      3001,
+      3002,
+      3003
+    ],
+    "mode": "all",
+    "validation_seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation": {
+    "budget": {
+      "checkpoint_every": 50,
+      "rounds": 30
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation_suites": {
+    "classic_transfer": {
+      "budget": {
+        "checkpoint_every": 50,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "coin_heaven_diagnostic": {
+      "budget": {
+        "checkpoint_every": 50,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "coin-heaven",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    }
+  },
+  "experiment_id": "M3_1_R02_1_A06_E01_C00_T02_n5",
+  "exploration_version": "E01",
+  "promotion": {
+    "primary_metric": "score"
+  },
+  "reward_version": "A06",
+  "route": "R02_1",
+  "schema_version": 1,
+  "shaping": {
+    "name": "potential_v1"
+  },
+  "terminal_on_truncation": false,
+  "training": {
+    "budget": {
+      "checkpoint_every": 50,
+      "rounds": 500
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      1001,
+      1002,
+      1003,
+      1004,
+      1005
+    ]
+  }
+}

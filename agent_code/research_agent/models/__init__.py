@@ -26,7 +26,10 @@ def build_model(config: ExperimentConfig, input_dim: int, *, seed: int) -> QMode
     if config.network == "linear_q":
         return LinearQModel(input_dim, seed=seed, learning_rate=config.learning_rate)
     if config.network == "mlp_q":
-        return MLPQModel(input_dim, config.hidden_layers, seed=seed, learning_rate=config.learning_rate)
+        return MLPQModel(
+            input_dim, config.hidden_layers, seed=seed, learning_rate=config.learning_rate,
+            optimizer=config.optimizer, td_loss=config.td_loss, gradient_clip_norm=config.gradient_clip_norm,
+        )
     if config.network in _CNN_NETWORKS:
         from .cnn_mlp_q import CnnMlpQModel
 
@@ -46,8 +49,13 @@ def load_model(config: ExperimentConfig, path: Path) -> QModel:
         model.learning_rate = config.learning_rate
         return model
     if config.network == "mlp_q":
-        model = MLPQModel.load(path)
-        model.learning_rate = config.learning_rate
+        model = MLPQModel.load(
+            path,
+            learning_rate=config.learning_rate,
+            optimizer=config.optimizer,
+            td_loss=config.td_loss,
+            gradient_clip_norm=config.gradient_clip_norm,
+        )
         if model.layer_sizes[1:-1] != tuple(config.hidden_layers):
             raise ValueError(
                 f"Checkpoint {path} has hidden layers {model.layer_sizes[1:-1]}, "
