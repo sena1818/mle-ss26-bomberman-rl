@@ -1,0 +1,54 @@
+{
+  "_design_note": "Local integration smoke for the M2 shaping path. Five rounds only; not a performance result.",
+  "agent": {
+    "algorithm": "q_learning",
+    "model": "linear_q",
+    "n_step": 1,
+    "name": "research_agent",
+    "replay": null,
+    "state_representation": "handcrafted_v1"
+  },
+  "checkpoint_evaluation": {
+    "holdout_seeds": [
+      301
+    ],
+    "mode": "latest",
+    "validation_seeds": [
+      201
+    ]
+  },
+  "evaluation": {
+    "budget": {
+      "checkpoint_every": 1,
+      "rounds": 2
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      201
+    ]
+  },
+  "experiment_id": "M2_R01_A06_E01_smoke",
+  "exploration_version": "E01",
+  "promotion": {
+    "primary_metric": "score"
+  },
+  "reward_version": "A06",
+  "route": "R01",
+  "schema_version": 1,
+  "shaping": {
+    "name": "potential_v1"
+  },
+  "terminal_on_truncation": false,
+  "training": {
+    "budget": {
+      "checkpoint_every": 5,
+      "rounds": 5
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      101
+    ]
+  }
+}

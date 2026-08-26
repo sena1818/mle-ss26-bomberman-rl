@@ -1,0 +1,124 @@
+{
+  "_design_note": "Experiment 2 of docs/05 section 5.2 and the preregistration of section 4.4: the sole change from m2_r01_a03_e01_t02 is the potential-based shaping term that reward version A06 switches on. A06's event weights and death penalty are identical to A03's.",
+  "_predeclared_design_numbers": {
+    "falsification": "wait_fraction up together with bomb_rate down means the danger weight 0.30 reproduces A02's paralysis; lower the weight rather than adding a term",
+    "prediction_safe_bomb_rate": "> 0.85",
+    "prediction_suicides": "down",
+    "prediction_wait_fraction": "not up"
+  },
+  "agent": {
+    "algorithm": "q_learning",
+    "model": "linear_q",
+    "n_step": 1,
+    "name": "research_agent",
+    "replay": null,
+    "state_representation": "handcrafted_v1"
+  },
+  "checkpoint_evaluation": {
+    "holdout_seeds": [
+      3001,
+      3002,
+      3003
+    ],
+    "mode": "all",
+    "validation_seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation": {
+    "budget": {
+      "checkpoint_every": 50,
+      "rounds": 30
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation_suites": {
+    "classic_transfer": {
+      "budget": {
+        "checkpoint_every": 50,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "coin_heaven_diagnostic": {
+      "budget": {
+        "checkpoint_every": 50,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "coin-heaven",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    }
+  },
+  "experiment_id": "M2_R01_A06_E01_C00_T02",
+  "exploration_version": "E01",
+  "promotion": {
+    "primary_metric": "score"
+  },
+  "reward_version": "A06",
+  "route": "R01",
+  "schema_version": 1,
+  "shaping": {
+    "name": "potential_v1"
+  },
+  "terminal_on_truncation": false,
+  "training": {
+    "budget": {
+      "checkpoint_every": 50,
+      "rounds": 500
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      1001,
+      1002,
+      1003,
+      1004,
+      1005
+    ]
+  }
+}

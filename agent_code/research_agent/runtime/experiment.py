@@ -3,17 +3,25 @@
 from __future__ import annotations
 
 import os
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict
 from time import perf_counter
 from typing import Any
 
 import numpy as np
 
 from ..artifacts import append_jsonl, checkpoint_interval, checkpoint_path, latest_model_path, model_path, run_id
-from ..config import ACTIONS, ExperimentConfig, epsilon_for_training_round, exploration_specification
+from ..config import (
+    ACTIONS,
+    ExperimentConfig,
+    epsilon_for_training_round,
+    exploration_specification,
+    shaping_specification,
+)
 from ..learners import Learner, Transition, build_learner
 from ..models import QModel, build_model, load_model
-from ..state import encode_state, legal_action_mask
+from ..shaping import PotentialShaping, build_shaping
+from ..state import encode_state, legal_action_mask, state_dimension
+from .transitions import NStepAssembler, PendingTransition
 
 
 REWARD_TABLES = {
@@ -50,6 +58,15 @@ REWARD_TABLES = {
         "CRATE_DESTROYED": 0.1,
         "COIN_FOUND": 0.2,
     },
+    # A06 is A03 plus potential-based shaping.  Its event table is identical to
+    # A03 on purpose: the shaping term must be the only variable in the
+    # comparison, and shaping is not an event weight.
+    "A06": {
+        "COIN_COLLECTED": 1.0,
+        "KILLED_OPPONENT": 5.0,
+        "CRATE_DESTROYED": 0.1,
+        "COIN_FOUND": 0.2,
+    },
 }
 DEATH_PENALTIES = {
     "A00": 0.0,
@@ -63,6 +80,7 @@ DEATH_PENALTIES = {
     # separates "signal starvation" from "risk term too large".
     "A03": -1.0,
     "A05": 0.0,
+    "A06": -1.0,
 }
 # Frozen, human-readable provenance for every registered reward version.  The
 # runner copies this into the run snapshot so a result can always be traced back
@@ -73,6 +91,7 @@ REWARD_DESIGN_NOTES = {
     "A02": "A01 + CRATE_DESTROYED 0.1 + COIN_FOUND 0.2",
     "A03": "A02 with the death penalty lowered from 5.0 to 1.0; nothing else changes",
     "A05": "A02 with the death penalty removed; control arm of the D dose-response study",
+    "A06": "A03 plus potential-based shaping; the event weights are identical to A03",
 }
 
 
@@ -91,6 +110,10 @@ def reward_specification(reward_version: str) -> dict:
             "death_penalty": DEATH_PENALTIES[reward_version],
             "death_penalty_events": ["KILLED_SELF", "GOT_KILLED"],
             "death_penalty_applications_per_death": 1,
+            # Shaping belongs in the reward specification because it changes the
+            # learner's reward.  It is derived from the version, never declared
+            # twice, so a config cannot say A03 and train with a shaped reward.
+            "shaping": shaping_specification(reward_version),
             "notes": REWARD_DESIGN_NOTES.get(reward_version, ""),
         }
     except KeyError as exc:
@@ -120,31 +143,18 @@ def _is_unusable_action(action: str | None) -> bool:
     return action not in ACTIONS
 
 
-@dataclass
-class _PendingTransition:
-    """One encoded transition held back until its terminality is known.
-
-    The official framework decides whether a round ends *after* it has already
-    delivered the step through ``game_events_occurred``, so terminality is not
-    knowable at delivery time.  Holding one transition back is what lets the
-    runtime commit each transition exactly once, with the right target.
-    """
-
-    key: tuple[int, int]
-    state: np.ndarray
-    action_index: int
-    next_state: np.ndarray | None
-    next_legal_mask: np.ndarray | None
-    events: list[str] = field(default_factory=list)
-
-
 class ExperimentRuntime:
     """Deep module hiding route-specific model and learner adapters.
 
     Its interface is intentionally limited to the official lifecycle:
     ``select_action``, ``observe``, and ``end_round``.  Algorithm-specific
-    state never reaches callbacks: a future SarsaLearner owns its action cache,
-    while a future DqnLearner owns replay and target-network state.
+    state never reaches callbacks: the replay learner owns its buffer and
+    target network, and the n-step window lives in ``runtime.transitions``.
+
+    All four main lines of docs/05 run through this one class.  What differs
+    between them -- the state encoder, the Q-model, the update rule, potential
+    shaping, the bootstrap length and whether updates come from a buffer -- is
+    resolved from the declared config here and nowhere else.
     """
 
     def __init__(self, config: ExperimentConfig, *, train: bool, agent_seed: int, logger: Any):
@@ -157,12 +167,20 @@ class ExperimentRuntime:
         self.learner: Learner | None = None
         self.training_updates = 0
         self.round_number: int | None = None
-        self._pending: _PendingTransition | None = None
+        self._pending: PendingTransition | None = None
+        # Shaping is derived from the reward version and shares the learner's
+        # gamma, which is what makes the policy-invariance argument hold.
+        self.shaping: PotentialShaping | None = build_shaping(config)
+        self._assembler = NStepAssembler(config.n_step, config.discount)
         self._reset_round_metrics()
         append_jsonl("agent_setup", {
             "experiment": config.name,
+            "main_lines": list(config.lines),
             "runtime_config": asdict(config),
             "terminal_on_truncation": config.terminal_on_truncation,
+            "n_step": config.n_step,
+            "replay": asdict(config.replay) if config.replay is not None else None,
+            "shaping_specification": shaping_specification(config.reward_version),
             "round_offset": self._round_offset(),
             "feature_version": config.feature_version,
             "reward_version": config.reward_version,
@@ -173,6 +191,22 @@ class ExperimentRuntime:
             "agent_seed": agent_seed,
             "training": train,
         })
+
+    def warm_up(self) -> None:
+        """Build or load the model before the first *timed* callback.
+
+        The official framework gives ``act`` 0.5 s but does not time ``setup``.
+        For the NumPy routes construction costs microseconds, but an M4 route
+        has to import PyTorch, build the network and run its first forward pass
+        -- about three seconds on this machine, which would exceed the timeout
+        on step 1 of every round.  Doing it here moves that cost to where it is
+        free, and makes a missing evaluation checkpoint fail at setup instead of
+        mid-game.  Steady-state inference is unaffected (0.7 ms for the CNN).
+        """
+        input_dim = state_dimension(self.config.state_encoder)
+        self._ensure_initialized(input_dim)
+        assert self.model is not None
+        self.model.q_values(np.zeros(input_dim, dtype=np.float32))
 
     def select_action(self, game_state: dict) -> str:
         started = perf_counter()
@@ -213,7 +247,7 @@ class ExperimentRuntime:
         round_number = int(old_game_state["round"])
         if self.round_number != round_number:
             self.round_number = round_number
-            self._reset_round_metrics()
+            self._start_round()
         # The previous transition is now known to be non-terminal: the round
         # continued far enough to report another step.
         self._commit_pending(terminal=False)
@@ -222,13 +256,15 @@ class ExperimentRuntime:
             # step is skipped rather than mapped onto an action never chosen.
             self.logger.warning("Skipping a transition with unusable action %r", action)
             return
-        self._pending = _PendingTransition(
+        self._pending = PendingTransition(
             key=(round_number, int(old_game_state["step"])),
             state=encode_state(old_game_state, self.config.state_encoder),
             action_index=ACTIONS.index(action),
             next_state=encode_state(new_game_state, self.config.state_encoder),
             next_legal_mask=legal_action_mask(new_game_state) if new_game_state is not None else None,
             events=list(events),
+            potential=self._potential(old_game_state),
+            next_potential=self._potential(new_game_state),
         )
 
     def end_round(self, last_game_state: dict | None, last_action: str, events: list[str]) -> None:
@@ -259,17 +295,22 @@ class ExperimentRuntime:
                 # transition that was never delivered to game_events_occurred.
                 self._commit_pending(terminal=False)
                 self._commit(
-                    _PendingTransition(
+                    PendingTransition(
                         key=key,
                         state=encode_state(last_game_state, self.config.state_encoder),
                         action_index=ACTIONS.index(last_action),
                         next_state=None,
                         next_legal_mask=None,
                         events=list(events),
+                        potential=self._potential(last_game_state),
+                        next_potential=self._terminal_potential(),
                     ),
                     terminal=True,
                 )
         self._pending = None
+        # A truncated round leaves shorter windows behind; they are bootstrapped
+        # from the last observed state rather than silently discarded.
+        self._apply_all(self._assembler.flush())
         self.learner.end_round()
         round_number = int(last_game_state["round"])
         metadata = {
@@ -291,6 +332,7 @@ class ExperimentRuntime:
         append_jsonl("round_end", {
             **metadata,
             "official_reward": self.round_reward,
+            "shaping_reward": self.round_shaping_reward,
             "mean_abs_td_error": self.round_abs_td_error / max(1, self.round_updates),
             "updates_this_round": self.round_updates,
             "events": self.round_event_counts,
@@ -306,26 +348,53 @@ class ExperimentRuntime:
         pending, self._pending = self._pending, None
         self._commit(pending, terminal=terminal)
 
-    def _commit(self, pending: _PendingTransition, *, terminal: bool, events: list[str] | None = None) -> None:
-        """Perform the one learner update this transition is entitled to."""
-        assert self.learner is not None
+    def _commit(self, pending: PendingTransition, *, terminal: bool, events: list[str] | None = None) -> None:
+        """Resolve one transition and hand it to the n-step window.
+
+        Resolving is not the same as learning from it.  With ``n_step = 1`` the
+        window emits it immediately and the two coincide, which is why the
+        historical behaviour is unchanged; with a longer window it is held until
+        its full return is known.  Either way it is emitted exactly once.
+        """
         resolved_events = pending.events if events is None else events
         reward = reward_for_events(self.config.reward_version, resolved_events)
-        td_error = self.learner.observe(Transition(
+        shaping_reward = 0.0
+        if self.shaping is not None:
+            # phi(terminal) = 0 by construction, so a terminal transition uses
+            # the declared terminal potential rather than the observed successor.
+            next_potential = self._terminal_potential() if terminal else pending.next_potential
+            shaping_reward = self.shaping.shaping_reward(pending.potential, next_potential)
+        self._apply_all(self._assembler.push(Transition(
             state=pending.state,
             action_index=pending.action_index,
-            reward=reward,
+            reward=reward + shaping_reward,
             next_state=None if terminal else pending.next_state,
             next_legal_mask=None if terminal else pending.next_legal_mask,
             terminal=terminal,
-        ))
-        self.training_updates += 1
-        self.round_updates += 1
+        )))
+        # Reward and event counts are accounted per game step, not per learner
+        # update, so that a shaped or n-step run stays comparable with A03/n=1.
         self.round_reward += reward
-        self.round_abs_td_error += abs(td_error)
+        self.round_shaping_reward += shaping_reward
         for event in resolved_events:
             self.round_event_counts[event] = self.round_event_counts.get(event, 0) + 1
-        self.logger.debug("reward=%+.2f td_error=%+.4f terminal=%s", reward, td_error, terminal)
+        self.logger.debug("reward=%+.2f shaping=%+.4f terminal=%s", reward, shaping_reward, terminal)
+
+    def _apply_all(self, transitions: list[Transition]) -> None:
+        """Send every completed n-step transition to the learner exactly once."""
+        assert self.learner is not None
+        for transition in transitions:
+            td_error = self.learner.observe(transition)
+            self.training_updates += 1
+            self.round_updates += 1
+            self.round_abs_td_error += abs(td_error)
+
+    def _potential(self, game_state: dict | None) -> float:
+        """Return phi(s), or zero when no shaping is configured."""
+        return 0.0 if self.shaping is None else self.shaping.potential(game_state)
+
+    def _terminal_potential(self) -> float:
+        return 0.0 if self.shaping is None else self.shaping.terminal_potential
 
     def _ensure_initialized(self, input_dim: int) -> None:
         if self.model is not None:
@@ -345,11 +414,25 @@ class ExperimentRuntime:
         else:
             self.logger.info("Creating a fresh %s QModel adapter", self.config.network)
             self.model = build_model(self.config, input_dim, seed=self.agent_seed)
-        self.learner = build_learner(self.config, self.model)
+        self.learner = build_learner(self.config, self.model, seed=self.agent_seed, training=self.train)
+
+    def _start_round(self) -> None:
+        """Reset per-round metrics and guarantee an empty n-step window.
+
+        ``end_round`` always flushes, so a leftover window means a round ended
+        without the official hook firing.  Carrying it into the next round would
+        mix two rounds' rewards into one return, so it is dropped loudly.
+        """
+        leftover = self._assembler.pending_count()
+        if leftover:
+            self.logger.warning("Discarding %d unflushed transitions from the previous round", leftover)
+            self._assembler.reset()
+        self._reset_round_metrics()
 
     def _reset_round_metrics(self) -> None:
         self.round_updates = 0
         self.round_reward = 0.0
+        self.round_shaping_reward = 0.0
         self.round_abs_td_error = 0.0
         self.round_event_counts: dict[str, int] = {}
 

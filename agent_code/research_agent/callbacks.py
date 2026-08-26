@@ -18,6 +18,9 @@ def setup(self):
         agent_seed=int(os.environ.get("BOMBERMAN_AGENT_SEED", "0")),
         logger=self.logger,
     )
+    # setup is not subject to the official 0.5 s per-step timeout, so this is
+    # where model construction and the first forward pass belong.
+    self.runtime.warm_up()
     # Retained only for framework examples and compatibility helpers. New code
     # uses ``self.runtime`` rather than reaching into model internals.
     self.config = self.runtime.config

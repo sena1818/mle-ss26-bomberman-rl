@@ -1,0 +1,120 @@
+{
+  "_design_note": "Experiment 1 of docs/05 section 5.2: the only change from the rebuilt R01_A03_E01_C00_T03 baseline is the training task, classic (T03) to loot-crate (T02). Everything else -- route, reward version, exploration schedule, budgets, seeds, checkpoint policy and greedy evaluation -- is unchanged. It is also the control arm that experiments 2 and 3 are compared against, so it must be run first.",
+  "_predeclared_design_numbers": {
+    "expectation": "crates_per_round rises against T03",
+    "gate_seeds_with_bomb_samples": "5/5"
+  },
+  "agent": {
+    "algorithm": "q_learning",
+    "model": "linear_q",
+    "n_step": 1,
+    "name": "research_agent",
+    "replay": null,
+    "state_representation": "handcrafted_v1"
+  },
+  "checkpoint_evaluation": {
+    "holdout_seeds": [
+      3001,
+      3002,
+      3003
+    ],
+    "mode": "all",
+    "validation_seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation": {
+    "budget": {
+      "checkpoint_every": 50,
+      "rounds": 30
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation_suites": {
+    "classic_transfer": {
+      "budget": {
+        "checkpoint_every": 50,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "coin_heaven_diagnostic": {
+      "budget": {
+        "checkpoint_every": 50,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "coin-heaven",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    }
+  },
+  "experiment_id": "M2_R01_A03_E01_C00_T02",
+  "exploration_version": "E01",
+  "promotion": {
+    "primary_metric": "score"
+  },
+  "reward_version": "A03",
+  "route": "R01",
+  "schema_version": 1,
+  "shaping": null,
+  "terminal_on_truncation": false,
+  "training": {
+    "budget": {
+      "checkpoint_every": 50,
+      "rounds": 500
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      1001,
+      1002,
+      1003,
+      1004,
+      1005
+    ]
+  }
+}

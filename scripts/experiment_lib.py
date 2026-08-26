@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import shutil
@@ -17,21 +18,47 @@ ROOT = Path(__file__).resolve().parents[1]
 RUNS_ROOT = ROOT / "runs"
 SCENARIOS = {"empty", "coin-heaven", "loot-crate", "classic"}
 SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
-SUPPORTED_DECLARATIONS = {
-    "R01": ("linear_q", "q_learning", "handcrafted_v1"),
+# Every implemented route, keyed by the id used in a config's ``route`` field.
+# A route is an agent *design*; the main line it serves is recorded so that a
+# run directory says which of the four research questions it belongs to.  What
+# a line varies on top of its route -- reward version, exploration schedule,
+# shaping, n-step, replay -- is declared per experiment, not baked in here.
+#
+# A04 (SAFE_BOMB) is specified in docs/01 but not implemented, so no route
+# lists it.  A06 is A03 plus potential shaping and is only offered on routes
+# whose state representation the potential is defined for.
+_VECTOR_REWARD_VERSIONS = {"A00", "A01", "A02", "A03", "A05", "A06"}
+IMPLEMENTED_ROUTES = {
+    "R01": {
+        "lines": ("M1", "M2"),
+        "declaration": ("linear_q", "q_learning", "handcrafted_v1"),
+        "reward_versions": _VECTOR_REWARD_VERSIONS,
+        "exploration_versions": {"E00", "E01"},
+    },
+    "R02": {
+        "lines": ("M3",),
+        "declaration": ("mlp_q", "q_learning", "handcrafted_v1"),
+        "reward_versions": _VECTOR_REWARD_VERSIONS,
+        "exploration_versions": {"E00", "E01"},
+    },
+    "R07": {
+        "lines": ("M4",),
+        "declaration": ("cnn_mlp_q", "double_dqn", "board_egocentric_v1"),
+        "reward_versions": _VECTOR_REWARD_VERSIONS,
+        "exploration_versions": {"E00", "E01"},
+    },
+    "R08": {
+        "lines": ("M4",),
+        "declaration": ("dueling_cnn_mlp_q", "double_dqn", "board_egocentric_v1"),
+        "reward_versions": _VECTOR_REWARD_VERSIONS,
+        "exploration_versions": {"E00", "E01"},
+    },
 }
-SUPPORTED_REWARD_VERSIONS = {
-    # A03 (death penalty 1.0) and A05 (death penalty 0.0) are the other two
-    # levels of the D dose-response study; A02 (5.0) is the control arm.  A04
-    # is specified in docs/01 but not implemented, so it is not listed here.
-    "R01": {"A00", "A01", "A02", "A03", "A05"},
-}
-SUPPORTED_EXPLORATION_VERSIONS = {
-    # E00 is the historical fixed epsilon=0.15 baseline. E01 is its only
-    # currently implemented, predeclared single-variable comparison.
-    "R01": {"E00", "E01"},
-}
+MAIN_LINES = ("M1", "M2", "M3", "M4")
 CHECKPOINT_MODES = {"latest", "all"}
+# How a run may be warm-started from weights produced outside it.  Only
+# behaviour cloning is implemented; "checkpoint" is reserved and fails closed.
+INITIAL_MODEL_KINDS = {"behaviour_cloning"}
 # Mirrors agent_code.research_agent.config.CURRICULUM_ANNEAL_MODES.  A curriculum
 # segment is a separate process with its own round counter, so the way the
 # exploration schedule spans segments has to be declared rather than inferred.
@@ -40,15 +67,58 @@ SEED_ROLES = ("validation", "holdout")
 # The only repository directories a running job imports from.  See copy_runtime.
 RUNTIME_ROOT_DIRECTORIES = ("assets", "agent_code")
 _RUNTIME_IGNORED = shutil.ignore_patterns("__pycache__", "*.pyc", "tests", "artifacts", "logs")
+# The declarative vocabulary a config may use.  It is deliberately wider than
+# ``IMPLEMENTED_ROUTES``: a value here parses, but only a registered route runs.
+# ``dqn`` is absent on purpose -- classic DQN is ``q_learning`` plus a declared
+# ``replay`` block, so having both would let one setup be spelled two ways.
 DECLARATIVE_ROUTE_VALUES = {
     "model": {"linear_q", "mlp_q", "cnn_q", "cnn_mlp_q", "dueling_cnn_mlp_q"},
-    "algorithm": {"q_learning", "sarsa", "dqn", "double_dqn"},
-    "state_representation": {"handcrafted_v1", "board_channels_v1", "board_channels_global_v1"},
+    "algorithm": {"q_learning", "sarsa", "double_dqn"},
+    "state_representation": {
+        "handcrafted_v1", "board_channels_v1", "board_channels_global_v1", "board_egocentric_v1",
+    },
 }
+
+
+_REPLAY_SETTINGS = {"capacity", "batch_size", "min_size", "train_every", "target_update_every", "augmentation"}
 
 
 class ConfigError(ValueError):
     """An experiment config is malformed or requests an unimplemented route."""
+
+
+def _parse_replay(value: Any) -> dict[str, Any] | None:
+    """Validate an ``agent.replay`` block without duplicating the agent's rules.
+
+    Only the key set and the value types are checked here; the numeric
+    invariants live in ``research_agent.config.ReplayConfig`` and are enforced
+    when ``resolved_runtime_config`` instantiates it, so there is one authority.
+    """
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise ConfigError("agent.replay must be null or an object of replay settings")
+    unknown = sorted(set(value) - _REPLAY_SETTINGS)
+    if unknown:
+        raise ConfigError(f"Unknown agent.replay settings: {', '.join(unknown)}")
+    parsed: dict[str, Any] = {}
+    for key, setting in value.items():
+        if key == "augmentation":
+            parsed[key] = safe_identifier(setting, "agent.replay.augmentation")
+        else:
+            try:
+                parsed[key] = int(setting)
+            except (TypeError, ValueError) as exc:
+                raise ConfigError(f"agent.replay.{key} must be an integer") from exc
+    return parsed
+
+
+def _parse_shaping(value: Any) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict) or "name" not in value:
+        raise ConfigError("shaping must be null or an object naming the shaping function")
+    return dict(value)
 
 
 def utc_now() -> str:
@@ -238,6 +308,62 @@ class EvaluationSuite:
 
 
 @dataclass(frozen=True)
+class InitialModel:
+    """A checkpoint every training seed starts from, instead of fresh weights.
+
+    This is how the M4 behaviour-cloning warm start enters a run (docs/05
+    section 5.4).  It is deliberately not the curriculum mechanism: a curriculum
+    warm-starts each seed from *its own* earlier run, whereas this starts every
+    seed from one shared, externally produced file.
+
+    ``sha256`` is not optional decoration.  A warm start moves the result's
+    origin outside the run directory, so without a recorded digest a run could
+    never prove which weights it actually began from.
+    """
+
+    kind: str
+    path: str
+    sha256: str
+
+    @classmethod
+    def parse(cls, value: dict[str, Any] | None) -> "InitialModel | None":
+        if value is None:
+            return None
+        if not isinstance(value, dict):
+            raise ConfigError("initial_model must be null or an object")
+        unknown = sorted(set(value) - {"kind", "path", "sha256"})
+        if unknown:
+            raise ConfigError(f"Unknown initial_model keys: {', '.join(unknown)}")
+        try:
+            parsed = cls(kind=str(value["kind"]), path=str(value["path"]), sha256=str(value["sha256"]))
+        except KeyError as exc:
+            raise ConfigError("initial_model requires kind, path and sha256") from exc
+        if parsed.kind not in INITIAL_MODEL_KINDS:
+            raise ConfigError(f"initial_model.kind must be one of {sorted(INITIAL_MODEL_KINDS)}, got {parsed.kind!r}")
+        if Path(parsed.path).is_absolute() or ".." in Path(parsed.path).parts:
+            raise ConfigError("initial_model.path must be a repository-relative path without '..'")
+        if len(parsed.sha256) != 64 or not all(character in "0123456789abcdef" for character in parsed.sha256):
+            raise ConfigError("initial_model.sha256 must be a lowercase hex SHA-256 digest")
+        return parsed
+
+    def resolve(self) -> Path:
+        """Return the checkpoint, verifying that it is the declared one."""
+        resolved = (ROOT / self.path).resolve()
+        if not resolved.is_file():
+            raise ConfigError(
+                f"initial_model.path does not exist: {resolved}. "
+                "Produce it with scripts/pretrain_behaviour_cloning.py before preparing this run."
+            )
+        digest = hashlib.sha256(resolved.read_bytes()).hexdigest()
+        if digest != self.sha256:
+            raise ConfigError(
+                f"initial_model {self.path} has digest {digest}, but the config declares {self.sha256}. "
+                "The warm-start weights are not the ones this experiment was written against."
+            )
+        return resolved
+
+
+@dataclass(frozen=True)
 class Experiment:
     schema_version: int
     experiment_id: str
@@ -259,6 +385,17 @@ class Experiment:
     # A surviving agent's last step is a time-limit truncation, not a terminal
     # state.  Declared here so the choice is snapshotted and ablatable.
     terminal_on_truncation: bool = False
+    # Bootstrap length of the TD target.  1 is the historical one-step case.
+    n_step: int = 1
+    # None means fully online updating; an object switches on experience replay
+    # and a target network.  See agent_code.research_agent.config.ReplayConfig.
+    replay: dict[str, Any] | None = None
+    # Informational echo of the shaping the reward version switches on.  It is
+    # validated against the derived specification rather than trusted, so a
+    # config can never declare one shaping and train with another.
+    shaping: dict[str, Any] | None = None
+    # Weights every training seed starts from; None means fresh initialization.
+    initial_model: InitialModel | None = None
 
     def suite_checkpoints(self, suite: str) -> CheckpointEvaluation:
         """Return the checkpoint policy for one suite name.
@@ -337,6 +474,10 @@ class Experiment:
                 design_note=design_note,
                 predeclared_design_numbers=predeclared_design_numbers,
                 terminal_on_truncation=bool(raw.get("terminal_on_truncation", False)),
+                initial_model=InitialModel.parse(raw.get("initial_model")),
+                n_step=int(agent.get("n_step", 1)),
+                replay=_parse_replay(agent.get("replay")),
+                shaping=_parse_shaping(raw.get("shaping")),
             )
         except (KeyError, TypeError) as exc:
             raise ConfigError("agent and promotion sections have invalid fields") from exc
@@ -350,19 +491,38 @@ class Experiment:
                 raise ConfigError(f"agent.{name} is not a declared R01-R07 value")
         if experiment.promotion_primary_metric != "score":
             raise ConfigError("promotion.primary_metric is currently fixed to 'score'")
+        if experiment.n_step < 1:
+            raise ConfigError("agent.n_step must be a positive integer")
+        if experiment.algorithm == "double_dqn" and experiment.replay is None:
+            raise ConfigError("agent.algorithm 'double_dqn' requires an agent.replay block")
         return experiment
 
+    @property
+    def lines(self) -> tuple[str, ...]:
+        """The main lines of docs/05 this experiment's route belongs to."""
+        return tuple(IMPLEMENTED_ROUTES.get(self.route, {}).get("lines", ()))
+
     def require_implemented(self) -> None:
-        expected = SUPPORTED_DECLARATIONS.get(self.route)
+        """Fail closed on anything the agent code does not actually implement."""
+        route = IMPLEMENTED_ROUTES.get(self.route)
         declared = (self.model, self.algorithm, self.state_representation)
-        if (
-            expected != declared
-            or self.reward_version not in SUPPORTED_REWARD_VERSIONS.get(self.route, set())
-            or self.exploration_version not in SUPPORTED_EXPLORATION_VERSIONS.get(self.route, set())
-        ):
+        if route is None:
             raise ConfigError(
-                f"{self.route} is declared for the shared infrastructure but is not implemented. "
-                "Only the existing R01 linear Q-learning agent with A00, A01, A02, A03, or A05 and E00 or E01 may be run."
+                f"Route {self.route!r} is not implemented. Implemented routes: {sorted(IMPLEMENTED_ROUTES)}."
+            )
+        if route["declaration"] != declared:
+            raise ConfigError(
+                f"Route {self.route} is implemented as {route['declaration']}, but this config declares {declared}."
+            )
+        if self.reward_version not in route["reward_versions"]:
+            raise ConfigError(
+                f"Route {self.route} does not implement reward version {self.reward_version!r}; "
+                f"implemented: {sorted(route['reward_versions'])}."
+            )
+        if self.exploration_version not in route["exploration_versions"]:
+            raise ConfigError(
+                f"Route {self.route} does not implement exploration version {self.exploration_version!r}; "
+                f"implemented: {sorted(route['exploration_versions'])}."
             )
 
     def snapshot(self) -> dict[str, Any]:
@@ -376,19 +536,25 @@ class Experiment:
                 "model": self.model,
                 "algorithm": self.algorithm,
                 "state_representation": self.state_representation,
+                "n_step": self.n_step,
+                "replay": self.replay,
             },
+            "main_lines": list(self.lines),
             "reward_version": self.reward_version,
             "exploration_version": self.exploration_version,
             "training": asdict(self.training),
             "evaluation": asdict(self.evaluation),
             "checkpoint_evaluation": asdict(self.checkpoint_evaluation),
             "terminal_on_truncation": self.terminal_on_truncation,
+            "shaping": self.shaping,
             "promotion": {"primary_metric": self.promotion_primary_metric},
         }
         if self.design_note:
             snapshot["_design_note"] = self.design_note
         if self.predeclared_design_numbers:
             snapshot["_predeclared_design_numbers"] = self.predeclared_design_numbers
+        if self.initial_model is not None:
+            snapshot["initial_model"] = asdict(self.initial_model)
         if self.curriculum is not None:
             snapshot["curriculum"] = {
                 "source_run_id": self.curriculum.source_run_id,
@@ -452,11 +618,14 @@ def resolved_runtime_config(experiment: Experiment) -> dict[str, Any]:
         ACTIONS,
         EXPERIMENTS,
         EXPLORATION_VERSIONS,
-        FEATURE_DIMENSION,
         REWARD_VERSIONS,
+        ReplayConfig,
         exploration_specification,
+        shaping_specification,
+        validate_config,
     )
     from agent_code.research_agent.runtime.experiment import reward_specification
+    from agent_code.research_agent.state import state_dimension
 
     try:
         config = EXPERIMENTS[experiment.route]
@@ -466,12 +635,30 @@ def resolved_runtime_config(experiment: Experiment) -> dict[str, Any]:
         raise ConfigError(f"No runtime config is registered for reward version {experiment.reward_version!r}")
     if experiment.exploration_version not in EXPLORATION_VERSIONS:
         raise ConfigError(f"No runtime config is registered for exploration version {experiment.exploration_version!r}")
-    config = replace(
-        config,
-        reward_version=experiment.reward_version,
-        exploration_version=experiment.exploration_version,
-        terminal_on_truncation=experiment.terminal_on_truncation,
-    )
+    try:
+        config = validate_config(replace(
+            config,
+            reward_version=experiment.reward_version,
+            exploration_version=experiment.exploration_version,
+            terminal_on_truncation=experiment.terminal_on_truncation,
+            n_step=experiment.n_step,
+            # An absent ``agent.replay`` means no replay, never "whatever the
+            # route happens to default to".  A route default exists only for a
+            # manual invocation through environment variables; a config file
+            # that wants a buffer has to say so, and ``Experiment.load``
+            # enforces that for the algorithms which cannot run without one.
+            replay=ReplayConfig.parse(experiment.replay),
+        ))
+    except ValueError as exc:
+        # The agent package owns these invariants; surfacing them as a config
+        # error keeps the runner's failure mode uniform.
+        raise ConfigError(str(exc)) from exc
+    derived_shaping = shaping_specification(experiment.reward_version)
+    if experiment.shaping is not None and experiment.shaping.get("name") != (derived_shaping or {}).get("name"):
+        raise ConfigError(
+            f"shaping declares {experiment.shaping.get('name')!r} but reward version "
+            f"{experiment.reward_version} implies {(derived_shaping or {}).get('name')!r}."
+        )
     declared = (
         experiment.model,
         experiment.algorithm,
@@ -492,12 +679,14 @@ def resolved_runtime_config(experiment: Experiment) -> dict[str, Any]:
         )
     return {
         "actions": list(ACTIONS),
-        "feature_dimension": FEATURE_DIMENSION,
+        "main_lines": list(config.lines),
+        "feature_dimension": state_dimension(config.state_encoder),
         "config": asdict(config),
         # Freezing the exact weights, not just the version label, means a run
         # directory stays interpretable even if a later commit edits the table.
         "reward_specification": reward_specification(experiment.reward_version),
         "exploration_specification": exploration_specification(experiment.exploration_version),
+        "shaping_specification": derived_shaping,
     }
 
 

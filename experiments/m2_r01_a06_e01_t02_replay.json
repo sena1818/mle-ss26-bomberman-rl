@@ -1,0 +1,128 @@
+{
+  "_design_note": "Experiment 4 of docs/05 section 5.2, replay arm: the only change from m2_r01_a06_e01_t02 is that updates are drawn from a 50k uniform buffer against a target network refreshed every 500 gradient steps. docs/02 gives the quantitative trigger: without a buffer each positive sample is used exactly once, which is a structural ceiling no reward change can lift.",
+  "_predeclared_design_numbers": {
+    "positive_samples_reused": "each transition is now sampled many times",
+    "target_update_every": 500
+  },
+  "agent": {
+    "algorithm": "q_learning",
+    "model": "linear_q",
+    "n_step": 1,
+    "name": "research_agent",
+    "replay": {
+      "batch_size": 32,
+      "capacity": 50000,
+      "min_size": 1000,
+      "target_update_every": 500,
+      "train_every": 1
+    },
+    "state_representation": "handcrafted_v1"
+  },
+  "checkpoint_evaluation": {
+    "holdout_seeds": [
+      3001,
+      3002,
+      3003
+    ],
+    "mode": "all",
+    "validation_seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation": {
+    "budget": {
+      "checkpoint_every": 50,
+      "rounds": 30
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation_suites": {
+    "classic_transfer": {
+      "budget": {
+        "checkpoint_every": 50,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "coin_heaven_diagnostic": {
+      "budget": {
+        "checkpoint_every": 50,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "coin-heaven",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    }
+  },
+  "experiment_id": "M2_R01_A06_E01_C00_T02_replay",
+  "exploration_version": "E01",
+  "promotion": {
+    "primary_metric": "score"
+  },
+  "reward_version": "A06",
+  "route": "R01",
+  "schema_version": 1,
+  "shaping": {
+    "name": "potential_v1"
+  },
+  "terminal_on_truncation": false,
+  "training": {
+    "budget": {
+      "checkpoint_every": 50,
+      "rounds": 500
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      1001,
+      1002,
+      1003,
+      1004,
+      1005
+    ]
+  }
+}

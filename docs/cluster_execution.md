@@ -41,6 +41,36 @@ conda run -n ml_homework python scripts/aggregate_results.py \
 
 Promotion is deterministic: maximize mean official score, then minimize score standard deviation, then minimize mean suicides, then maximize mean coins. The chosen checkpoint uses the smaller training seed as its final tie-break; competing configuration runs use lexical `run_id`. The aggregator alone writes `runs/promoted/<primary-scenario>/active_model.npz` and `best_summary.json`; training jobs never write an active model. This keeps incomparable scenarios such as `coin-heaven` and `classic` out of one leaderboard.
 
+## 单机并行：`run --jobs N`
+
+`run --jobs N` 在**一台**机器上并发执行同一阶段的 job（训练阶段全部完成后才开始评估阶段）。
+Hetzner 是单台服务器而非调度集群，因此这是那里的默认执行方式；上面按 job 逐个提交的流程
+保留给真正的调度器。
+
+```bash
+.venv/bin/python scripts/run_experiment.py run \
+  --config experiments/r01_a03_dose_response_classic.json \
+  --run-id r01_a03_dose_response_<tag> --jobs 8
+```
+
+阶段内的 job 相互独立（各自拥有私有 artifact 目录与私有框架副本，只通过文件通信），
+阶段之间保序。并发是**线程**级的：每个 job 的实际工作都在一个 `subprocess.run` 里，
+它会释放 GIL；进程内的部分只有几毫秒的文件复制。
+
+选 `N`：不要超过物理核数。一次 365-job 的 arm 在 8 并发下约 10–15 分钟，
+`A05` 这类平均 5 步就结束的 arm 约 1 分钟。
+
+**磁盘**：每个 job 会复制一份私有框架副本，成功后删除，但峰值占用约等于 `N × 单副本`。
+一个跑完的 arm 约 2.5 GiB（`A05` 约 150 MiB）。用 `scripts/prune_runs.py` 瘦身。
+
+### 可复现性（2026-08-26 核实）
+
+同一 commit 下，服务器（Linux / Python 3.12.3 / NumPy 2.5.2）与 macOS ARM / NumPy 2.4.6
+的结果**逐位一致**：把 `A05` 臂在 commit `85034d9` 上本地重跑，与 8-25 的服务器版每个指标
+都相同（`steps 15.57 ± 20.5`、`bomb_rate 0.1877 ± 0.0131`、`suicides 0.9756 ± 0.0527`）。
+串行与 `--jobs 8` 的结果同样一致。**因此跨平台、跨并发度的定量比较是合法的**，
+run 目录可以在 Mac 与 Hetzner 之间自由搬运。
+
 ## Evaluating checkpoints instead of only the final model
 
 By default an experiment evaluates only each training seed's final

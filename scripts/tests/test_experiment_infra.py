@@ -145,9 +145,22 @@ class ExperimentInfrastructureTest(unittest.TestCase):
     def test_declared_but_unimplemented_route_is_not_silently_run(self):
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "config.json"
-            payload = config("R02")
+            # R03 (MLP plus SARSA) is a declared design in docs/00 with no
+            # learner adapter behind it; the vocabulary accepts it, the runner
+            # must not.
+            payload = config("R03")
             payload["agent"]["model"] = "mlp_q"
+            payload["agent"]["algorithm"] = "sarsa"
             write_json(path, payload)
+            with self.assertRaises(ConfigError):
+                Experiment.load(path).require_implemented()
+
+    def test_an_implemented_route_declaration_must_match_its_registered_design(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "config.json"
+            # R02 is implemented, but as an MLP: declaring it with R01's linear
+            # model must fail rather than quietly run the wrong approximator.
+            write_json(path, config("R02"))
             with self.assertRaises(ConfigError):
                 Experiment.load(path).require_implemented()
 
@@ -266,6 +279,35 @@ class ExperimentInfrastructureTest(unittest.TestCase):
             {"dimensions": {**shared, "exploration_version": "E01"}},
         ]
         self.assertEqual(compare_runs.changed_dimensions(arms), ["exploration_version"])
+
+    def test_a_comparison_names_the_training_recipe_dimensions_too(self):
+        # An n-step or replay arm that reports "nothing changed" would make the
+        # comparison table claim a single-factor result it does not have.
+        shared = {
+            "route": "R01", "state_representation": "handcrafted_v1", "model": "linear_q",
+            "algorithm": "q_learning", "reward_version": "A06", "exploration_version": "E01",
+        }
+        self.assertEqual(
+            compare_runs.changed_dimensions([
+                {"dimensions": {**shared, "n_step": "1", "replay": ""}},
+                {"dimensions": {**shared, "n_step": "5", "replay": ""}},
+            ]),
+            ["n_step"],
+        )
+        self.assertEqual(
+            compare_runs.changed_dimensions([
+                {"dimensions": {**shared, "n_step": "1", "replay": ""}},
+                {"dimensions": {**shared, "n_step": "1", "replay": '{"capacity": 50000}'}},
+            ]),
+            ["replay"],
+        )
+        self.assertEqual(
+            compare_runs.changed_dimensions([
+                {"dimensions": {**shared, "reward_version": "A03", "shaping": ""}},
+                {"dimensions": {**shared, "reward_version": "A06", "shaping": "potential_v1"}},
+            ]),
+            ["reward_version", "shaping"],
+        )
 
     def test_unregistered_reward_version_is_rejected_before_any_job_runs(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -714,6 +756,116 @@ class ParallelPhaseTest(unittest.TestCase):
     def test_a_phase_with_no_jobs_is_a_no_op(self):
         with patch("run_experiment.execute_job", side_effect=AssertionError("must not run")):
             execute_phase(Path("/runs/x"), [], "train", 4)
+
+
+class FourMainLineDeclarationTest(unittest.TestCase):
+    """The M1--M4 declarations of docs/05 must survive the config round trip.
+
+    Every dimension a line varies -- shaping, n-step, replay -- has to reach the
+    resolved runtime config and the run snapshot, because a result whose
+    training recipe cannot be recovered from its run directory is not a result.
+    """
+
+    ROUTES = {
+        "R01": ("linear_q", "q_learning", "handcrafted_v1"),
+        "R02": ("mlp_q", "q_learning", "handcrafted_v1"),
+        "R07": ("cnn_mlp_q", "double_dqn", "board_egocentric_v1"),
+        "R08": ("dueling_cnn_mlp_q", "double_dqn", "board_egocentric_v1"),
+    }
+    REPLAY = {"capacity": 128, "batch_size": 8, "min_size": 16, "train_every": 2, "target_update_every": 32}
+
+    def _config(self, route: str, **overrides) -> dict:
+        model, algorithm, state = self.ROUTES[route]
+        payload = config(route)
+        payload["agent"].update({"model": model, "algorithm": algorithm, "state_representation": state})
+        payload["agent"].update(overrides.pop("agent", {}))
+        payload.update(overrides)
+        if algorithm == "double_dqn":
+            payload["agent"].setdefault("replay", dict(self.REPLAY))
+        return payload
+
+    def _load(self, route: str, **overrides) -> Experiment:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "config.json"
+            write_json(path, self._config(route, **overrides))
+            return Experiment.load(path)
+
+    def test_each_implemented_route_declares_the_line_it_serves(self):
+        for route, lines in (("R01", ("M1", "M2")), ("R02", ("M3",)), ("R07", ("M4",)), ("R08", ("M4",))):
+            with self.subTest(route=route):
+                experiment = self._load(route)
+                experiment.require_implemented()
+                self.assertEqual(experiment.lines, lines)
+                self.assertEqual(resolved_runtime_config(experiment)["main_lines"], list(lines))
+
+    def test_the_state_dimension_recorded_is_the_encoder_s_own(self):
+        self.assertEqual(resolved_runtime_config(self._load("R01"))["feature_dimension"], 44)
+        # 8 board channels over a 17x17 egocentric window, plus 4 global scalars.
+        self.assertEqual(resolved_runtime_config(self._load("R07"))["feature_dimension"], 8 * 17 * 17 + 4)
+
+    def test_n_step_and_replay_reach_the_resolved_runtime_config(self):
+        experiment = self._load("R01", agent={"n_step": 3, "replay": dict(self.REPLAY)})
+        runtime = resolved_runtime_config(experiment)["config"]
+        self.assertEqual(runtime["n_step"], 3)
+        self.assertEqual(runtime["replay"]["capacity"], 128)
+        self.assertEqual(runtime["replay"]["target_update_every"], 32)
+
+    def test_an_absent_replay_block_means_no_replay_not_a_route_default(self):
+        # A route carries a default buffer only for manual invocation through
+        # environment variables.  A config file that omits the block gets fully
+        # online updating, so the snapshot can never overstate what was run.
+        self.assertIsNone(resolved_runtime_config(self._load("R01"))["config"]["replay"])
+        self.assertIsNone(resolved_runtime_config(self._load("R02"))["config"]["replay"])
+
+    def test_shaping_is_derived_from_the_reward_version_not_declared_twice(self):
+        self.assertIsNone(resolved_runtime_config(self._load("R01"))["shaping_specification"])
+        shaped = self._load("R01", reward_version="A06")
+        self.assertEqual(resolved_runtime_config(shaped)["shaping_specification"]["name"], "potential_v1")
+        # An echo that disagrees with the reward version is a config error, not
+        # a silent override of one by the other.
+        lying = self._load("R01", reward_version="A03", shaping={"name": "potential_v1"})
+        with self.assertRaises(ConfigError):
+            resolved_runtime_config(lying)
+
+    def test_the_snapshot_reloads_into_an_identical_experiment(self):
+        for route in self.ROUTES:
+            with self.subTest(route=route):
+                experiment = self._load(route, reward_version="A06", agent={"n_step": 3})
+                with tempfile.TemporaryDirectory() as temporary:
+                    path = Path(temporary) / "snapshot.json"
+                    write_json(path, experiment.snapshot())
+                    self.assertEqual(Experiment.load(path), experiment)
+
+    def test_double_dqn_without_a_buffer_is_rejected_before_any_job_runs(self):
+        payload = self._config("R07")
+        payload["agent"]["replay"] = None
+        payload["route"] = "R07"
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "config.json"
+            # Declared on a route that does not supply a default buffer either.
+            payload["route"] = "R01"
+            payload["agent"]["algorithm"] = "double_dqn"
+            write_json(path, payload)
+            with self.assertRaises(ConfigError):
+                Experiment.load(path)
+
+    def test_a_malformed_replay_block_is_rejected_with_the_agent_s_own_rules(self):
+        for replay in ({"capacity": 4, "batch_size": 32, "min_size": 32}, {"augmentation": "rot90"}, {"nonsense": 1}):
+            with self.subTest(replay=replay):
+                with self.assertRaises(ConfigError):
+                    experiment = self._load("R01", agent={"replay": replay})
+                    resolved_runtime_config(experiment)
+
+    def test_a_non_positive_n_step_is_rejected(self):
+        with self.assertRaises(ConfigError):
+            self._load("R01", agent={"n_step": 0})
+
+    def test_every_shipped_experiment_config_is_runnable_as_declared(self):
+        for path in sorted((Path(__file__).resolve().parents[2] / "experiments").glob("*.json")):
+            with self.subTest(config=path.name):
+                experiment = Experiment.load(path)
+                experiment.require_implemented()
+                resolved_runtime_config(experiment)
 
 
 if __name__ == "__main__":

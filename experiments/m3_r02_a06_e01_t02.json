@@ -1,0 +1,118 @@
+{
+  "_design_note": "Line M3 of docs/05: the only change from m2_r01_a06_e01_t02 is the function approximator, a 44-64-32-6 ReLU MLP in place of the linear head. It answers whether the handcrafted features carry interactions a linear model cannot express. Run it at whatever n and replay setting M2 selected, so that capacity is the single variable.",
+  "agent": {
+    "algorithm": "q_learning",
+    "model": "mlp_q",
+    "n_step": 1,
+    "name": "research_agent",
+    "replay": null,
+    "state_representation": "handcrafted_v1"
+  },
+  "checkpoint_evaluation": {
+    "holdout_seeds": [
+      3001,
+      3002,
+      3003
+    ],
+    "mode": "all",
+    "validation_seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation": {
+    "budget": {
+      "checkpoint_every": 50,
+      "rounds": 30
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation_suites": {
+    "classic_transfer": {
+      "budget": {
+        "checkpoint_every": 50,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "coin_heaven_diagnostic": {
+      "budget": {
+        "checkpoint_every": 50,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "coin-heaven",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    }
+  },
+  "experiment_id": "M3_R02_A06_E01_C00_T02",
+  "exploration_version": "E01",
+  "promotion": {
+    "primary_metric": "score"
+  },
+  "reward_version": "A06",
+  "route": "R02",
+  "schema_version": 1,
+  "shaping": {
+    "name": "potential_v1"
+  },
+  "terminal_on_truncation": false,
+  "training": {
+    "budget": {
+      "checkpoint_every": 50,
+      "rounds": 500
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      1001,
+      1002,
+      1003,
+      1004,
+      1005
+    ]
+  }
+}

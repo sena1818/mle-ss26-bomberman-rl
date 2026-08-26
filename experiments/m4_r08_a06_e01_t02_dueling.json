@@ -1,0 +1,125 @@
+{
+  "_design_note": "Line M4, the dueling and D4 increments on top of the anchor. Two factors change against m4_r07_a06_e01_t02_anchor, so this file is the endpoint of the ladder, not a single-factor comparison: attribute a difference by running the two increments as separate configs.",
+  "agent": {
+    "algorithm": "double_dqn",
+    "model": "dueling_cnn_mlp_q",
+    "n_step": 1,
+    "name": "research_agent",
+    "replay": {
+      "augmentation": "d4",
+      "batch_size": 32,
+      "capacity": 10000,
+      "min_size": 1000,
+      "target_update_every": 500,
+      "train_every": 1
+    },
+    "state_representation": "board_egocentric_v1"
+  },
+  "checkpoint_evaluation": {
+    "holdout_seeds": [
+      3001,
+      3002,
+      3003
+    ],
+    "mode": "all",
+    "validation_seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation": {
+    "budget": {
+      "checkpoint_every": 50,
+      "rounds": 30
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation_suites": {
+    "classic_transfer": {
+      "budget": {
+        "checkpoint_every": 50,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "coin_heaven_diagnostic": {
+      "budget": {
+        "checkpoint_every": 50,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "coin-heaven",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    }
+  },
+  "experiment_id": "M4_R08_A06_E01_C00_T02_dueling",
+  "exploration_version": "E01",
+  "promotion": {
+    "primary_metric": "score"
+  },
+  "reward_version": "A06",
+  "route": "R08",
+  "schema_version": 1,
+  "shaping": {
+    "name": "potential_v1"
+  },
+  "terminal_on_truncation": false,
+  "training": {
+    "budget": {
+      "checkpoint_every": 50,
+      "rounds": 500
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      1001,
+      1002,
+      1003,
+      1004,
+      1005
+    ]
+  }
+}

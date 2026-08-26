@@ -1,4 +1,4 @@
-"""R01 learner adapter: online one-step Q-learning."""
+"""Online one-step (and n-step) Q-learning, used by the M1--M3 lines."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from .base import Transition
 
 
 class OnlineQLearner:
-    """Online Q-learning; R02 can reuse this learner with an MLP QModel."""
+    """Fully online Q-learning: one gradient step per transition, no buffer."""
 
     def __init__(self, config: ExperimentConfig, model: QModel):
         self.config = config
@@ -27,6 +27,8 @@ class OnlineQLearner:
     def observe(self, transition: Transition) -> float:
         if not hasattr(self.model, "q_learning_update"):
             raise TypeError("OnlineQLearner requires a QModel with q_learning_update.")
+        # An n-step return already carries n discount factors, so the bootstrap
+        # term is discounted by gamma**n.  n = 1 leaves this exactly as it was.
         return self.model.q_learning_update(
             transition.state,
             transition.action_index,
@@ -34,8 +36,8 @@ class OnlineQLearner:
             transition.next_state,
             transition.next_legal_mask,
             self.config.learning_rate,
-            self.config.discount,
+            self.config.discount ** transition.n_step,
         )
 
     def end_round(self) -> None:
-        """R01 has no per-round cache; future learners clear private state here."""
+        """Nothing is cached between rounds; the n-step window lives in the runtime."""

@@ -34,6 +34,32 @@ HANDCRAFTED_V1_LAYOUT = {
 }
 
 
+# The spatial contract used by the M4 line.  The window is odd-sized and always
+# centred on the agent, so a translation of the whole board is invisible to the
+# network and the eight board symmetries act as a group on it.  Radius 8 makes
+# the window 17x17, which covers the entire official arena from any cell once
+# the outside is padded with stone.
+EGOCENTRIC_RADIUS = 8
+EGOCENTRIC_WINDOW = 2 * EGOCENTRIC_RADIUS + 1
+BOARD_CHANNELS = (
+    "stone_walls",
+    "crates",
+    "self",
+    "opponents",
+    "coins",
+    "bomb_countdown",
+    "explosions",
+    "future_danger",
+)
+BOARD_EGOCENTRIC_LAYOUT = {
+    "board_shape": (len(BOARD_CHANNELS), EGOCENTRIC_WINDOW, EGOCENTRIC_WINDOW),
+    "channels": BOARD_CHANNELS,
+    "global_dimension": 4,
+    "globals": ("can_bomb", "round_progress", "own_score", "living_opponents"),
+    "flat_order": "board channels flattened in C order, then the global scalars",
+}
+
+
 def legal_action_mask(game_state: dict) -> np.ndarray:
     """Return which of the six actions are legal in the current observed state.
 
@@ -68,6 +94,18 @@ def encode_state(game_state: dict, encoder_name: str) -> np.ndarray | None:
         return None
     if encoder_name == "handcrafted_v1":
         return handcrafted_v1(game_state)
+    if encoder_name == "board_egocentric_v1":
+        return board_egocentric_v1(game_state)
+    raise NotImplementedError(f"State encoder {encoder_name!r} has not been implemented yet.")
+
+
+def state_dimension(encoder_name: str) -> int:
+    """Return the flat length one encoder produces, without a game state."""
+    if encoder_name == "handcrafted_v1":
+        return FEATURE_DIMENSION
+    if encoder_name == "board_egocentric_v1":
+        channels, width, height = BOARD_EGOCENTRIC_LAYOUT["board_shape"]
+        return channels * width * height + BOARD_EGOCENTRIC_LAYOUT["global_dimension"]
     raise NotImplementedError(f"State encoder {encoder_name!r} has not been implemented yet.")
 
 
@@ -139,6 +177,55 @@ def encode_board_channels_v1(game_state: dict) -> np.ndarray:
         0.0,
     )
     return channels
+
+
+def board_egocentric_v1(game_state: dict) -> np.ndarray:
+    """Return the M4 state: an agent-centred board tensor plus global scalars.
+
+    The eight board channels are the frozen ``encode_board_channels_v1``
+    contract; the four scalars are the frozen ``global_features_v1`` contract.
+    The only new thing here is the framing: the board is padded with stone and
+    cropped around the agent, so the agent always sits at the window centre.
+
+    The result is flat because ``Transition.state`` is one vector for every
+    route.  The shape is public through ``BOARD_EGOCENTRIC_LAYOUT`` and is
+    restored by ``split_board_and_globals``; only the CNN model needs it.
+    """
+    channels = encode_board_channels_v1(game_state)
+    window = _egocentric_crop(channels, game_state["self"][3])
+    return np.concatenate([window.reshape(-1), global_features_v1(game_state)]).astype(np.float32)
+
+
+def split_board_and_globals(state: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Restore the (channels, width, height) board and the global scalars.
+
+    Accepts a single flat state or a batch of them; the board keeps a leading
+    batch axis exactly when the input had one.
+    """
+    shape = BOARD_EGOCENTRIC_LAYOUT["board_shape"]
+    global_dimension = BOARD_EGOCENTRIC_LAYOUT["global_dimension"]
+    board_size = int(np.prod(shape))
+    if state.shape[-1] != board_size + global_dimension:
+        raise ValueError(f"Expected a board_egocentric_v1 state of length {board_size + global_dimension}, got {state.shape[-1]}.")
+    board = state[..., :board_size].reshape(*state.shape[:-1], *shape)
+    globals_ = state[..., board_size:]
+    return board, globals_
+
+
+def _egocentric_crop(channels: np.ndarray, origin: tuple[int, int]) -> np.ndarray:
+    """Crop a fixed window around ``origin``, padding outside with stone wall.
+
+    Padding with the stone-wall channel set (and everything else zero) is the
+    honest completion: a cell beyond the arena is exactly as impassable as a
+    wall, so the network never sees a padded cell as open floor.
+    """
+    padded = np.pad(channels, ((0, 0), (EGOCENTRIC_RADIUS,) * 2, (EGOCENTRIC_RADIUS,) * 2))
+    padded[0, :EGOCENTRIC_RADIUS, :] = 1.0
+    padded[0, -EGOCENTRIC_RADIUS:, :] = 1.0
+    padded[0, :, :EGOCENTRIC_RADIUS] = 1.0
+    padded[0, :, -EGOCENTRIC_RADIUS:] = 1.0
+    x, y = origin
+    return padded[:, x:x + EGOCENTRIC_WINDOW, y:y + EGOCENTRIC_WINDOW]
 
 
 def global_features_v1(game_state: dict) -> np.ndarray:

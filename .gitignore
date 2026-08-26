@@ -115,3 +115,9 @@ agent_code/research_agent/artifacts/*.npz
 agent_code/research_agent/artifacts/checkpoints/
 agent_code/research_agent/artifacts/logs/
 runs/
+
+# Behaviour-cloning inputs are committed on purpose: the demonstration set is
+# under a megabyte compressed and the pretrained weights are a couple, and an
+# experiment config pins both by SHA-256.  Regenerating them would produce a
+# different digest, so a clone must be able to use the exact same files.
+pretraining/logs/

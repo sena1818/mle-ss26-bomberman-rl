@@ -80,6 +80,11 @@ def build_jobs(experiment: Experiment, run_dir: Path) -> list[dict]:
                 "segments": [segment.__dict__ for segment in experiment.curriculum.segments],
             }
             job["input_model_relpath"] = str(Path("inputs") / "initial_models" / f"train_seed{seed}.npz")
+        elif experiment.initial_model is not None:
+            # Same on-disk convention as a curriculum warm start, so the worker
+            # has exactly one way to be handed starting weights.
+            job["initial_model"] = {"kind": experiment.initial_model.kind, "sha256": experiment.initial_model.sha256}
+            job["input_model_relpath"] = str(Path("inputs") / "initial_models" / f"train_seed{seed}.npz")
         jobs.append(job)
 
     def add_evaluations(phase, suite: str) -> None:
@@ -167,6 +172,31 @@ def materialize_curriculum_inputs(experiment: Experiment, run_dir: Path) -> list
     return records
 
 
+def materialize_initial_model(experiment: Experiment, run_dir: Path) -> list[dict]:
+    """Copy the declared warm-start checkpoint in, once per training seed.
+
+    Copying per seed rather than sharing one file keeps a job self-contained and
+    means a worker resolves its starting weights the same way whether they came
+    from a curriculum or from behaviour cloning.
+    """
+    if experiment.initial_model is None:
+        return []
+    source = experiment.initial_model.resolve()
+    records = []
+    for seed in experiment.training.seeds:
+        destination = run_dir / "inputs" / "initial_models" / f"train_seed{seed}.npz"
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
+        records.append({
+            "train_seed": seed,
+            "kind": experiment.initial_model.kind,
+            "source_path": experiment.initial_model.path,
+            "input_checkpoint_relpath": str(destination.relative_to(run_dir)),
+            "sha256": _sha256(destination),
+        })
+    return records
+
+
 def prepare(config_path: Path, requested_run_id: str | None, allow_dirty: bool) -> Path:
     experiment = Experiment.load(config_path)
     experiment.require_implemented()
@@ -181,6 +211,7 @@ def prepare(config_path: Path, requested_run_id: str | None, allow_dirty: bool) 
     snapshot = experiment.snapshot()
     snapshot["resolved_runtime_config"] = resolved_runtime_config(experiment)
     snapshot["curriculum_inputs"] = materialize_curriculum_inputs(experiment, run_dir)
+    snapshot["initial_model_inputs"] = materialize_initial_model(experiment, run_dir)
     write_json(run_dir / "experiment_config.snapshot.json", snapshot)
     write_json(run_dir / "provenance.json", {**provenance, "config_source": str(config_path.resolve())})
     jobs = build_jobs(experiment, run_dir)
@@ -304,6 +335,8 @@ def _run_curriculum_segment(
         "BOMBERMAN_REWARD_VERSION": experiment.reward_version,
         "BOMBERMAN_EXPLORATION_VERSION": experiment.exploration_version,
         "BOMBERMAN_TERMINAL_ON_TRUNCATION": "1" if experiment.terminal_on_truncation else "0",
+        "BOMBERMAN_N_STEP": str(experiment.n_step),
+        "BOMBERMAN_REPLAY": json.dumps(experiment.replay, sort_keys=True) if experiment.replay is not None else "",
         "BOMBERMAN_TRAINING_ROUNDS": str(schedule_rounds),
         "BOMBERMAN_ROUND_OFFSET": str(round_offset),
         "BOMBERMAN_ARTIFACT_DIR": str(agent_dir.resolve()),
@@ -451,6 +484,8 @@ def execute_job(job_file: Path, *, retry: bool = False, keep_runtime: bool = Fal
         "BOMBERMAN_REWARD_VERSION": experiment.reward_version,
         "BOMBERMAN_EXPLORATION_VERSION": experiment.exploration_version,
         "BOMBERMAN_TERMINAL_ON_TRUNCATION": "1" if experiment.terminal_on_truncation else "0",
+        "BOMBERMAN_N_STEP": str(experiment.n_step),
+        "BOMBERMAN_REPLAY": json.dumps(experiment.replay, sort_keys=True) if experiment.replay is not None else "",
         "BOMBERMAN_TRAINING_ROUNDS": str(experiment.training.budget.rounds),
         "BOMBERMAN_ROUND_OFFSET": "0",
         "BOMBERMAN_ARTIFACT_DIR": str(agent_dir.resolve()),
@@ -465,6 +500,14 @@ def execute_job(job_file: Path, *, retry: bool = False, keep_runtime: bool = Fal
                "--no-gui", "--save-stats", str(stats_path), "--match-name", f"{run_dir.name}_{job['job_id']}"]
     if job["mode"] == "train":
         command.extend(("--train", "1"))
+        warm_start = _resolve_run_relative(run_dir, job.get("input_model_relpath"), "input_model_relpath")
+        if warm_start is not None:
+            # A behaviour-cloning warm start reuses the continue-training path:
+            # the weights are loaded, the optimizer and epsilon schedule are not.
+            if not warm_start.is_file():
+                raise FileNotFoundError(f"Declared warm-start checkpoint is missing: {warm_start}")
+            environment["BOMBERMAN_CONTINUE"] = "1"
+            environment["BOMBERMAN_MODEL_PATH"] = str(warm_start)
     else:
         environment["BOMBERMAN_MODEL_PATH"] = job["model_path"]
     write_json(job_dir / "command.json", {"command": command, "cwd": str(runtime), "environment": {key: environment[key] for key in environment if key.startswith("BOMBERMAN_")}})

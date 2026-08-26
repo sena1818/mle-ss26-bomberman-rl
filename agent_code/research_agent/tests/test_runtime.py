@@ -213,6 +213,99 @@ class OfficialLifecycleTest(unittest.TestCase):
             self.assertFalse(runtime.learner.transitions[0].terminal)
 
 
+class NStepAndShapingLifecycleTest(unittest.TestCase):
+    """The docs/05 lifecycle invariants must survive the M2 additions.
+
+    Longer returns and a shaping term both change *what* is learned; neither
+    may change *how many times* a step is learned from, or the count that the
+    terminal-transition regression check relies on stops meaning anything.
+    """
+
+    def _environment(self, temporary: str, **extra: str) -> dict:
+        return {
+            "BOMBERMAN_ARTIFACT_DIR": str(Path(temporary) / "agent"),
+            "BOMBERMAN_RUN_ID": "nstep_test",
+            "BOMBERMAN_SCENARIO": "loot-crate",
+            "BOMBERMAN_SEED": "3",
+            "BOMBERMAN_CHECKPOINT_EVERY": "1",
+            **extra,
+        }
+
+    def _run(self, temporary: str, *, n_step: int, reward_version: str, steps: int, died: bool,
+             final_events: list[str]):
+        config = replace(active_config(), n_step=n_step, reward_version=reward_version)
+        runtime = started_runtime(temporary, config)
+        drive_round(runtime, steps=steps, died=died, final_events=final_events)
+        return runtime
+
+    def test_a_longer_window_still_learns_from_every_step_exactly_once(self):
+        for n_step in (1, 3, 5):
+            for died in (False, True):
+                with self.subTest(n_step=n_step, died=died):
+                    with tempfile.TemporaryDirectory() as temporary:
+                        with patch.dict(os.environ, self._environment(temporary), clear=False):
+                            runtime = self._run(
+                                temporary, n_step=n_step, reward_version="A03", steps=6, died=died,
+                                final_events=["KILLED_SELF", "GOT_KILLED"] if died else ["SURVIVED_ROUND"],
+                            )
+                        transitions = runtime.learner.transitions
+                        self.assertEqual(len(transitions), 6)
+                        self.assertEqual(runtime.round_updates, 6)
+                        # Every window that *reaches* the fatal state needs no
+                        # bootstrap, so with n = 3 the last three returns are
+                        # terminal.  A truncated round bootstraps all of them.
+                        self.assertEqual(sum(t.terminal for t in transitions), min(n_step, 6) if died else 0)
+                        self.assertTrue(all(t.terminal == (t.next_state is None) for t in transitions))
+
+    def test_the_death_penalty_is_still_applied_exactly_once_under_n_step(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            with patch.dict(os.environ, self._environment(temporary), clear=False):
+                runtime = self._run(temporary, n_step=3, reward_version="A03", steps=4, died=True,
+                                    final_events=["KILLED_SELF", "GOT_KILLED"])
+            # The penalty enters exactly one one-step reward, so it appears in
+            # the n-step returns that contain that step and nowhere else.
+            self.assertAlmostEqual(runtime.round_reward, DEATH_PENALTIES["A03"], places=6)
+
+    def test_a_truncated_round_bootstraps_every_leftover_window(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            with patch.dict(os.environ, self._environment(temporary), clear=False):
+                runtime = self._run(temporary, n_step=5, reward_version="A03", steps=3, died=False,
+                                    final_events=["SURVIVED_ROUND"])
+            transitions = runtime.learner.transitions
+            self.assertEqual([t.n_step for t in transitions], [3, 2, 1])
+            self.assertTrue(all(t.next_state is not None for t in transitions))
+
+    def test_shaping_changes_the_learner_reward_but_not_the_reported_official_reward(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            with patch.dict(os.environ, self._environment(temporary), clear=False):
+                shaped = self._run(temporary, n_step=1, reward_version="A06", steps=4, died=False,
+                                   final_events=["COIN_COLLECTED", "SURVIVED_ROUND"])
+            with patch.dict(os.environ, self._environment(temporary), clear=False):
+                plain = self._run(temporary, n_step=1, reward_version="A03", steps=4, died=False,
+                                  final_events=["COIN_COLLECTED", "SURVIVED_ROUND"])
+        # A03 and A06 have byte-identical event tables, so the reported reward
+        # stays comparable; only the shaping column and the learner differ.
+        self.assertAlmostEqual(shaped.round_reward, plain.round_reward, places=6)
+        self.assertNotAlmostEqual(shaped.round_shaping_reward, 0.0)
+        self.assertEqual(plain.round_shaping_reward, 0.0)
+        shaped_rewards = [t.reward for t in shaped.learner.transitions]
+        plain_rewards = [t.reward for t in plain.learner.transitions]
+        self.assertFalse(np.allclose(shaped_rewards, plain_rewards))
+
+    def test_shaping_uses_the_terminal_potential_on_a_fatal_transition(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            with patch.dict(os.environ, self._environment(temporary), clear=False):
+                runtime = self._run(temporary, n_step=1, reward_version="A06", steps=3, died=True,
+                                    final_events=["KILLED_SELF", "GOT_KILLED"])
+            fatal = runtime.learner.transitions[-1]
+            self.assertTrue(fatal.terminal)
+            # phi(terminal) = 0, so the shaping on the fatal step is -phi(s).
+            expected = reward_for_events("A06", ["KILLED_SELF", "GOT_KILLED"]) - runtime.shaping.potential(
+                game_state(3, 1)
+            )
+            self.assertAlmostEqual(fatal.reward, expected, places=6)
+
+
 class ExperimentRuntimeTest(unittest.TestCase):
     def test_route_selection_is_runtime_configuration_not_callback_code(self):
         with patch.dict(os.environ, {"BOMBERMAN_EXPERIMENT": "R01"}, clear=False):
@@ -329,7 +422,9 @@ class ExperimentRuntimeTest(unittest.TestCase):
 
     def test_unimplemented_route_adapter_fails_at_the_internal_seam(self):
         with tempfile.TemporaryDirectory() as temporary:
-            config = replace(active_config(), network="mlp_q")
+            # ``cnn_q`` is a declared value in the config vocabulary that has no
+            # QModel adapter: the seam must fail closed rather than substitute.
+            config = replace(active_config(), network="cnn_q")
             with patch.dict(os.environ, {"BOMBERMAN_ARTIFACT_DIR": str(Path(temporary) / "agent"), "BOMBERMAN_RUN_ID": "runtime_test"}, clear=False):
                 runtime = ExperimentRuntime(config, train=True, agent_seed=1, logger=Mock())
                 with self.assertRaises(NotImplementedError):

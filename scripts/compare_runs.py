@@ -32,7 +32,13 @@ REPORTED = (
     "coins_per_crate",
     "distinct_cells",
 )
-COMPARABLE_FIELDS = ("route", "state_representation", "model", "algorithm", "reward_version", "exploration_version")
+# Every declared dimension a run can differ on.  A comparison tool that cannot
+# see a dimension will happily report "nothing changed" between an n = 1 and an
+# n = 5 arm, which is worse than having no tool at all.
+COMPARABLE_FIELDS = (
+    "route", "state_representation", "model", "algorithm",
+    "reward_version", "exploration_version", "shaping", "n_step", "replay",
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -93,6 +99,11 @@ def load_arm(run_dir: Path, suite: str, split: str, checkpoint_round: int | None
             "algorithm": agent.get("algorithm", ""),
             "reward_version": snapshot.get("reward_version", ""),
             "exploration_version": snapshot.get("exploration_version", "E00"),
+            "shaping": (snapshot.get("resolved_runtime_config", {}).get("shaping_specification") or {}).get("name", ""),
+            "n_step": str(agent.get("n_step", 1)),
+            # Canonical text so two identically-configured buffers compare equal
+            # regardless of the key order they were written in.
+            "replay": json.dumps(agent.get("replay"), sort_keys=True) if agent.get("replay") else "",
         },
         "reward_specification": snapshot.get("resolved_runtime_config", {}).get("reward_specification", {}),
         "predeclared": snapshot.get("_predeclared_design_numbers", {}),
@@ -111,7 +122,14 @@ def changed_dimensions(arms: list[dict]) -> list[str]:
 def render(arms: list[dict], changed: list[str], split: str, checkpoint_round: int | None) -> str:
     labels = [
         "_".join(
-            part for part in (arm["dimensions"]["reward_version"], arm["dimensions"]["exploration_version"])
+            part for part in (
+                arm["dimensions"]["reward_version"],
+                arm["dimensions"]["exploration_version"],
+                # Only name a dimension in the label when it is what differs,
+                # so a reward comparison keeps its short, readable headings.
+                f"n{arm['dimensions'].get('n_step', '1')}" if "n_step" in changed else "",
+                "replay" if "replay" in changed and arm["dimensions"].get("replay") else "",
+            )
             if part
         ) or arm["run_id"]
         for arm in arms
