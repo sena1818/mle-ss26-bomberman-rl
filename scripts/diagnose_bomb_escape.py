@@ -63,8 +63,8 @@ from experiment_lib import write_json  # noqa: E402
 from agent_code.research_agent.config import shaping_specification  # noqa: E402
 from agent_code.research_agent.shaping import PotentialShaping  # noqa: E402
 from agent_code.research_agent.state import (  # noqa: E402
-    HANDCRAFTED_V1_LAYOUT, _bfs_distances, _crate_adjacent_cells, escape_search,
-    handcrafted_v1,
+    HANDCRAFTED_V1_LAYOUT, HANDCRAFTED_V3_LAYOUT, _bfs_distances, _crate_adjacent_cells,
+    escape_search, handcrafted_v1, handcrafted_v3,
 )
 
 MOVES = {"UP": (0, -1), "RIGHT": (1, 0), "DOWN": (0, 1), "LEFT": (-1, 0)}
@@ -318,6 +318,15 @@ def escape_step_record(state: dict, chosen: str, shaping: PotentialShaping | Non
     record["bomb_escape_feature"] = [
         round(float(v), 6) for v in features[HANDCRAFTED_V1_LAYOUT["bomb_escape"]]
     ]
+    # The v1 block above is the historical comparison (docs/01 section 7.10).  An
+    # arm running handcrafted_v3 does not see it, so the question that decides
+    # whether more features are needed is whether *v3's* escape entries separate
+    # the fatal turn from a saving one.
+    escape_block = handcrafted_v3(state)[HANDCRAFTED_V3_LAYOUT["escape_by_direction"]]
+    record["escape_by_direction"] = {
+        name: [round(float(escape_block[2 * i]), 6), round(float(escape_block[1 + 2 * i]), 6)]
+        for i, name in enumerate(MOVES)
+    }
     return record
 
 
@@ -535,6 +544,8 @@ def main() -> None:
     trapped_at_death = 0
     indistinguishable = 0
     distinguishable_total = 0
+    v3_indistinguishable = 0
+    v3_total = 0
     for bomb in fatal:
         window = bomb["escape_window"]
         lost = next((i for i, tick in enumerate(window) if not tick["escape_exists"]), None)
@@ -558,6 +569,12 @@ def main() -> None:
             if fatal_view is not None and any(by_direction.get(name) == fatal_view for name in safer):
                 indistinguishable += 1
             distinguishable_total += 1
+        if chosen in MOVES and safer and culprit.get("escape_by_direction"):
+            escape_view = culprit["escape_by_direction"]
+            fatal_escape = escape_view.get(chosen)
+            if fatal_escape is not None and any(escape_view.get(name) == fatal_escape for name in safer):
+                v3_indistinguishable += 1
+            v3_total += 1
 
     ticks = [tick for bomb in every_bomb for tick in bomb["escape_window"]]
     decisive = [tick for tick in ticks if tick["wait_beats_every_safer_move"] is not None]
@@ -575,6 +592,10 @@ def main() -> None:
         print(f"  the fatal turn and a saving turn looked the")
         print(f"  same in handcrafted_v1's danger features       "
               f"{indistinguishable}/{distinguishable_total} ({share:.1%})")
+    if v3_total:
+        share3 = v3_indistinguishable / v3_total
+        print(f"  same in handcrafted_v3's escape entries        "
+              f"{v3_indistinguishable}/{v3_total} ({share3:.1%})   <-- what the agent actually sees")
     bearings = [entry for result in results for entry in result["bearings"]]
     if bearings:
         useful = sum(entry["bearing_names_a_route_step"] for entry in bearings)
@@ -609,6 +630,8 @@ def main() -> None:
             "fatal_trapped_on_final_tick": trapped_at_death,
             "fatal_turn_indistinguishable_in_features": indistinguishable,
             "fatal_turns_with_a_saving_alternative": distinguishable_total,
+            "fatal_turn_indistinguishable_in_v3_escape": v3_indistinguishable,
+            "fatal_turns_compared_in_v3_escape": v3_total,
             "escape_ticks": len(ticks), "escape_ticks_with_safer_move": len(decisive),
             "escape_ticks_wait_chosen": len(chose_wait), "escape_ticks_safer_chosen": len(chose_safer),
             "escape_ticks_shaping_prefers_wait": len(wait_wins),
