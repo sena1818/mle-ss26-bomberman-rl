@@ -113,10 +113,34 @@ def load_arm(run_dir: Path, suite: str, split: str, checkpoint_round: int | None
 
 
 def changed_dimensions(arms: list[dict]) -> list[str]:
-    return [
+    changed = [
         field for field in COMPARABLE_FIELDS
         if len({arm["dimensions"].get(field, "") for arm in arms}) > 1
     ]
+    # A06 names the shaping-enabled learner reward with a distinct version so
+    # that provenance can never claim an unshaped A03 run was shaped.  That
+    # version label is therefore an implementation switch, not a second causal
+    # factor, when the underlying event reward is unchanged.  Keep detecting
+    # normal reward-version changes (for example the D dose-response), but do
+    # not double-count this alias together with ``shaping``.
+    if {"reward_version", "shaping"}.issubset(changed) and event_rewards_match(arms):
+        changed.remove("reward_version")
+    return changed
+
+
+def event_rewards_match(arms: list[dict]) -> bool:
+    """Whether all arms have the same non-shaping event-reward definition."""
+    if not all(arm.get("reward_specification") for arm in arms):
+        return False
+    ignored = {"reward_version", "shaping", "notes"}
+    recipes = {
+        json.dumps(
+            {key: value for key, value in arm["reward_specification"].items() if key not in ignored},
+            sort_keys=True,
+        )
+        for arm in arms
+    }
+    return len(recipes) == 1
 
 
 def render(arms: list[dict], changed: list[str], split: str, checkpoint_round: int | None) -> str:

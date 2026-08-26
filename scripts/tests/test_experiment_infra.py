@@ -303,10 +303,16 @@ class ExperimentInfrastructureTest(unittest.TestCase):
         )
         self.assertEqual(
             compare_runs.changed_dimensions([
-                {"dimensions": {**shared, "reward_version": "A03", "shaping": ""}},
-                {"dimensions": {**shared, "reward_version": "A06", "shaping": "potential_v1"}},
+                {
+                    "dimensions": {**shared, "reward_version": "A03", "shaping": ""},
+                    "reward_specification": {"event_weights": {"COIN_COLLECTED": 1.0}, "death_penalty": -1.0},
+                },
+                {
+                    "dimensions": {**shared, "reward_version": "A06", "shaping": "potential_v1"},
+                    "reward_specification": {"event_weights": {"COIN_COLLECTED": 1.0}, "death_penalty": -1.0},
+                },
             ]),
-            ["reward_version", "shaping"],
+            ["shaping"],
         )
 
     def test_unregistered_reward_version_is_rejected_before_any_job_runs(self):
