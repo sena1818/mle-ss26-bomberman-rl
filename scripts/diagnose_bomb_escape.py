@@ -53,7 +53,9 @@ from experiment_lib import write_json  # noqa: E402
 
 from agent_code.research_agent.config import shaping_specification  # noqa: E402
 from agent_code.research_agent.shaping import PotentialShaping  # noqa: E402
-from agent_code.research_agent.state import _blast_coordinates  # noqa: E402
+from agent_code.research_agent.state import (  # noqa: E402
+    HANDCRAFTED_V1_LAYOUT, _blast_coordinates, handcrafted_v1,
+)
 
 MOVES = {"UP": (0, -1), "RIGHT": (1, 0), "DOWN": (0, 1), "LEFT": (-1, 0)}
 
@@ -255,6 +257,19 @@ def escape_step_record(state: dict, chosen: str, shaping: PotentialShaping | Non
         payoffs = [terms[name] for name in record["safer_moves"] if name in terms]
         if payoffs:
             record["wait_beats_every_safer_move"] = bool(terms["WAIT"] >= max(payoffs))
+
+    # What the agent's own state encoding says about each neighbour.  If the
+    # cell that leads out and the cell that dead-ends carry the same numbers,
+    # no learning rule can prefer one, and the failure is in the features.
+    features = handcrafted_v1(state)
+    block = features[HANDCRAFTED_V1_LAYOUT["danger_current_and_neighbors"]]
+    record["danger_by_direction"] = {
+        name: [round(float(block[2 + 2 * i]), 6), round(float(block[3 + 2 * i]), 6)]
+        for i, name in enumerate(MOVES)
+    }
+    record["bomb_escape_feature"] = [
+        round(float(v), 6) for v in features[HANDCRAFTED_V1_LAYOUT["bomb_escape"]]
+    ]
     return record
 
 
@@ -411,6 +426,8 @@ def main() -> None:
     point_of_no_return = collections.Counter()
     doomed_before_last = 0
     trapped_at_death = 0
+    indistinguishable = 0
+    distinguishable_total = 0
     for bomb in fatal:
         window = bomb["escape_window"]
         lost = next((i for i, tick in enumerate(window) if not tick["escape_exists"]), None)
@@ -426,6 +443,14 @@ def main() -> None:
                 doomed_before_last += 1
         if window and not [name for name in MOVES if name in (window[-1].get("shaping") or {})]:
             trapped_at_death += 1
+        culprit = window[lost - 1]
+        chosen, safer = culprit["action"], culprit["safer_moves"]
+        if chosen in MOVES and safer and culprit.get("danger_by_direction"):
+            by_direction = culprit["danger_by_direction"]
+            fatal_view = by_direction.get(chosen)
+            if fatal_view is not None and any(by_direction.get(name) == fatal_view for name in safer):
+                indistinguishable += 1
+            distinguishable_total += 1
 
     ticks = [tick for bomb in every_bomb for tick in bomb["escape_window"]]
     decisive = [tick for tick in ticks if tick["wait_beats_every_safer_move"] is not None]
@@ -438,6 +463,11 @@ def main() -> None:
         print(f"  {label:<44s} {count}")
     print(f"  a safer move still existed at that tick        {doomed_before_last}/{len(fatal)}")
     print(f"  no legal move at all on the final tick         {trapped_at_death}/{len(fatal)}")
+    if distinguishable_total:
+        share = indistinguishable / distinguishable_total
+        print(f"  the fatal turn and a saving turn looked the")
+        print(f"  same in handcrafted_v1's danger features       "
+              f"{indistinguishable}/{distinguishable_total} ({share:.1%})")
     print("-" * 66)
     print("escape ticks (a bomb is ticking and the agent is not yet safe)")
     print(f"  ticks recorded                               {len(ticks)}")
@@ -461,6 +491,8 @@ def main() -> None:
             "point_of_no_return": dict(point_of_no_return),
             "fatal_doomed_with_safer_move_available": doomed_before_last,
             "fatal_trapped_on_final_tick": trapped_at_death,
+            "fatal_turn_indistinguishable_in_features": indistinguishable,
+            "fatal_turns_with_a_saving_alternative": distinguishable_total,
             "escape_ticks": len(ticks), "escape_ticks_with_safer_move": len(decisive),
             "escape_ticks_wait_chosen": len(chose_wait), "escape_ticks_safer_chosen": len(chose_safer),
             "escape_ticks_shaping_prefers_wait": len(wait_wins),
