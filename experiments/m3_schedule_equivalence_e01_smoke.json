@@ -1,0 +1,60 @@
+{
+  "_design_note": "Equivalence smoke for the absolute exploration schedule. E03--E06 are compared against M3.3LX, which trained under E01, so the ablation is only single-factor if E02 -- the absolute spelling of E01 at a 2000-round budget -- trains the identical network. test_e02_is_e01_spelled_in_absolute_rounds_at_a_2000_round_budget asserts the epsilon values match on all 2000 rounds; this pair asserts the resulting weights match end to end. Run both, then diff jobs/train_seed1001/agent/latest_model.npz between the two runs: the arrays must be equal, not merely close.",
+  "agent": {
+    "algorithm": "q_learning",
+    "model": "mlp_q",
+    "n_step": 5,
+    "name": "research_agent",
+    "replay": {
+      "batch_size": 32,
+      "capacity": 50000,
+      "min_size": 1000,
+      "target_update_every": 500,
+      "train_every": 1
+    },
+    "state_representation": "handcrafted_v3"
+  },
+  "checkpoint_evaluation": {
+    "holdout_seeds": [
+      3001
+    ],
+    "mode": "latest",
+    "validation_seeds": [
+      2001
+    ]
+  },
+  "evaluation": {
+    "budget": {
+      "checkpoint_every": 2000,
+      "rounds": 2
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      2001
+    ]
+  },
+  "experiment_id": "SMOKE_R02_3_A06_E01_C00_T02_n5_2000_equivalence",
+  "exploration_version": "E01",
+  "promotion": {
+    "primary_metric": "score"
+  },
+  "reward_version": "A06",
+  "route": "R02_3",
+  "schema_version": 1,
+  "shaping": {
+    "name": "potential_v1"
+  },
+  "terminal_on_truncation": false,
+  "training": {
+    "budget": {
+      "checkpoint_every": 2000,
+      "rounds": 2000
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      1001
+    ]
+  }
+}

@@ -1,0 +1,138 @@
+{
+  "_design_note": "M3.6 exploration-schedule ablation. E01 states its high-exploration hold as 20 percent of the training budget, so every budget comparison in docs/01 sections 7.13 and 7.18 also changed the schedule and neither effect is attributable (docs/05 section 0.14). E02--E06 state both the hold and the anneal in absolute rounds. E02 is bit-identical to E01 at a 2000-round budget -- asserted for all 2000 rounds in test_e02_is_e01_spelled_in_absolute_rounds_at_a_2000_round_budget -- which is what lets the existing M3.3LX arm serve as the control without being re-run. Everything else in this config is byte-identical to that control.",
+  "_predeclared_design_numbers": {
+    "changed_factor": "exploration_version E01 -> E05: the floor drops from 0.05 to 0.02. The hold (400) and anneal (1600) are unchanged.",
+    "control": "runs/m3_3lx_oppeval_20260826/ (M3.3LX, loot-crate holdout score 32.622 at round 2000)",
+    "falsification": "If all four M3.6 arms land within 4.7 of the control, the schedule is not a lever at this budget and no future arm should spend a run on it.",
+    "prediction": "None. This variable has never been varied on its own. The 2.7x gap in docs/01 section 7.18.2 compares two arms at the same round when one had finished its schedule and the other was still at epsilon 0.24, so it is not evidence about the direction of this effect, and predicting one from it would repeat the mistake recorded in sections 7.10.5 and 7.16.4.",
+    "reporting": "Report all five training-seed distributions and every G2 threshold.",
+    "resolution_loot_crate": "The control's five training-seed scores are 38.578 / 33.911 / 31.389 / 29.722 / 29.511, sd 3.77 across seeds, so the standard error of a five-seed mean is 1.69 and two arms measured once each need a gap of 4.7 before the difference means anything. Do not read a direction into anything smaller.",
+    "resolution_tournament": "docs/01 section 7.20: the pooled 450-round classic-with-opponents score has sd 0.089, so two arms need a gap of 0.246 (coins_share: 0.022). Report coins_share alongside score.",
+    "why_now": "Until hold and anneal are absolute, no budget result is attributable, so this blocks every later long-budget arm."
+  },
+  "agent": {
+    "algorithm": "q_learning",
+    "model": "mlp_q",
+    "n_step": 5,
+    "name": "research_agent",
+    "replay": {
+      "batch_size": 32,
+      "capacity": 50000,
+      "min_size": 1000,
+      "target_update_every": 500,
+      "train_every": 1
+    },
+    "state_representation": "handcrafted_v3"
+  },
+  "checkpoint_evaluation": {
+    "holdout_seeds": [
+      3001,
+      3002,
+      3003
+    ],
+    "mode": "all",
+    "validation_seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation": {
+    "budget": {
+      "checkpoint_every": 50,
+      "rounds": 30
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation_suites": {
+    "classic_solo": {
+      "budget": {
+        "checkpoint_every": 100,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "classic_versus_opponents": {
+      "budget": {
+        "checkpoint_every": 100,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [
+        "rule_based_agent",
+        "rule_based_agent",
+        "rule_based_agent"
+      ],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    }
+  },
+  "experiment_id": "M3_6C_R02_3_A06_E05_C00_T02_n5_2000",
+  "exploration_version": "E05",
+  "promotion": {
+    "primary_metric": "score"
+  },
+  "reward_version": "A06",
+  "route": "R02_3",
+  "schema_version": 1,
+  "shaping": {
+    "name": "potential_v1"
+  },
+  "terminal_on_truncation": false,
+  "training": {
+    "budget": {
+      "checkpoint_every": 100,
+      "rounds": 2000
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      1001,
+      1002,
+      1003,
+      1004,
+      1005
+    ]
+  }
+}

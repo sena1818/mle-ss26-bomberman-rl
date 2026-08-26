@@ -409,6 +409,55 @@ class NStepAndShapingLifecycleTest(unittest.TestCase):
 
 
 class ExperimentRuntimeTest(unittest.TestCase):
+    def test_e02_is_e01_spelled_in_absolute_rounds_at_a_2000_round_budget(self):
+        """The whole exploration ablation rests on this being an identity.
+
+        E03--E06 are compared against runs/m3_3lx_oppeval_20260826, which was
+        trained under E01.  That control is only legitimate if E02 -- the arm
+        nobody needs to run -- produces the same epsilon on every one of the
+        2000 rounds.  Anything less makes the ablation two changes, not one.
+        """
+        e01 = replace(active_config(), exploration_version="E01")
+        e02 = replace(active_config(), exploration_version="E02")
+        for round_number in range(1, 2001):
+            self.assertEqual(
+                epsilon_for_training_round(e01, round_number, 2000),
+                epsilon_for_training_round(e02, round_number, 2000),
+                f"schedules diverge at round {round_number}",
+            )
+
+    def test_the_absolute_schedules_do_not_move_when_the_budget_does(self):
+        """The point of the family: budget and schedule are now independent."""
+        config = replace(active_config(), exploration_version="E02")
+        for budget in (2000, 3000, 5000):
+            self.assertEqual(epsilon_for_training_round(config, 400, budget), 0.30)
+            self.assertAlmostEqual(epsilon_for_training_round(config, 401, budget), 0.2998437, places=6)
+            self.assertEqual(epsilon_for_training_round(config, 2000, budget), 0.05)
+        # Past the anneal the floor simply holds; E01 would still be decaying.
+        self.assertEqual(epsilon_for_training_round(config, 4000, 5000), 0.05)
+        self.assertGreater(
+            epsilon_for_training_round(replace(active_config(), exploration_version="E01"), 4000, 5000),
+            0.05,
+        )
+
+    def test_each_ablation_point_varies_exactly_one_thing_from_e02(self):
+        specifications = {version: exploration_specification(version) for version in
+                          ("E02", "E03", "E04", "E05", "E06")}
+        for version, specification in specifications.items():
+            self.assertEqual(specification["kind"], "hold_then_linear_absolute")
+            self.assertEqual(specification["initial_epsilon"], 0.30)
+            self.assertEqual(
+                specification["hold_rounds"] + specification["anneal_rounds"], 2000,
+                f"{version} would not reach its floor exactly at the end of a 2000-round budget",
+            )
+        # E03/E04 move only the hold; E05/E06 move only the floor.
+        for version in ("E03", "E04"):
+            self.assertEqual(specifications[version]["final_epsilon"], 0.05)
+            self.assertNotEqual(specifications[version]["hold_rounds"], 400)
+        for version in ("E05", "E06"):
+            self.assertEqual(specifications[version]["hold_rounds"], 400)
+            self.assertNotEqual(specifications[version]["final_epsilon"], 0.05)
+
     def test_route_selection_is_runtime_configuration_not_callback_code(self):
         with patch.dict(os.environ, {"BOMBERMAN_EXPERIMENT": "R01"}, clear=False):
             self.assertEqual(active_config().name, "R01")
@@ -418,7 +467,10 @@ class ExperimentRuntimeTest(unittest.TestCase):
 
     def test_e01_schedule_is_predeclared_and_evaluation_stays_greedy(self):
         config = replace(active_config(), exploration_version="E01")
-        self.assertEqual(EXPLORATION_VERSIONS, frozenset({"E00", "E01"}))
+        self.assertEqual(
+            EXPLORATION_VERSIONS,
+            frozenset({"E00", "E01", "E02", "E03", "E04", "E05", "E06"}),
+        )
         self.assertEqual(exploration_specification("E01")["hold_fraction"], 0.20)
         # 500 rounds: 1--100 at 0.30, then decay to exactly 0.05 at round 500.
         self.assertEqual(epsilon_for_training_round(config, 1, 500), 0.30)

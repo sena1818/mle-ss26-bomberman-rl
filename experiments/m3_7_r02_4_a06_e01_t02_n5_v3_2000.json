@@ -1,0 +1,138 @@
+{
+  "_design_note": "M3.7. The sole change from M3.3LX is agent.algorithm, q_learning -> double_dqn (route R02_3 -> R02_4; the two routes differ in that one field). docs/01 section 7.16.5: in 92.1 percent of the fatal last ticks the saving move was plainly visible in handcrafted_v3 and the agent chose WAIT, and A06's shaping did not favour WAIT either (mean shaping difference -0.1290). Information and reward both point the right way and the Q values still rank WAIT first, which is what overestimation by the max operator produces. Double DQN decouples the argmax from the value.",
+  "_predeclared_design_numbers": {
+    "changed_factor": "agent.algorithm q_learning -> double_dqn (route R02_3 -> R02_4)",
+    "control": "runs/m3_3lx_oppeval_20260826/ (M3.3LX, loot-crate holdout score 32.622 at round 2000)",
+    "falsification": "score within 4.7 of the control AND the WAIT counts unchanged means overestimation is not what ranks WAIT first; stop pursuing it and report the negative result.",
+    "prediction_diagnosis": "the metric that decides this arm is not score. Re-run scripts/diagnose_bomb_escape.py and compare the section 7.18.4 counts for the control: 431 self-inflicted deaths, 202 with a plan throughout, 32 fatal last ticks where a saving move was visible and WAIT was chosen, 5392/82683 (6.5 percent) WAIT among escape ticks with a safer move.",
+    "prediction_score": "above 32.622, but the 4.7 resolution applies",
+    "reporting": "Report all five training-seed distributions and every G2 threshold.",
+    "resolution_loot_crate": "The control's five training-seed scores are 38.578 / 33.911 / 31.389 / 29.722 / 29.511, sd 3.77 across seeds, so the standard error of a five-seed mean is 1.69 and two arms measured once each need a gap of 4.7 before the difference means anything. Do not read a direction into anything smaller.",
+    "resolution_tournament": "docs/01 section 7.20: the pooled 450-round classic-with-opponents score has sd 0.089, so two arms need a gap of 0.246 (coins_share: 0.022). Report coins_share alongside score."
+  },
+  "agent": {
+    "algorithm": "double_dqn",
+    "model": "mlp_q",
+    "n_step": 5,
+    "name": "research_agent",
+    "replay": {
+      "batch_size": 32,
+      "capacity": 50000,
+      "min_size": 1000,
+      "target_update_every": 500,
+      "train_every": 1
+    },
+    "state_representation": "handcrafted_v3"
+  },
+  "checkpoint_evaluation": {
+    "holdout_seeds": [
+      3001,
+      3002,
+      3003
+    ],
+    "mode": "all",
+    "validation_seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation": {
+    "budget": {
+      "checkpoint_every": 50,
+      "rounds": 30
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation_suites": {
+    "classic_solo": {
+      "budget": {
+        "checkpoint_every": 100,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "classic_versus_opponents": {
+      "budget": {
+        "checkpoint_every": 100,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [
+        "rule_based_agent",
+        "rule_based_agent",
+        "rule_based_agent"
+      ],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    }
+  },
+  "experiment_id": "M3_7_R02_4_A06_E01_C00_T02_n5_2000",
+  "exploration_version": "E01",
+  "promotion": {
+    "primary_metric": "score"
+  },
+  "reward_version": "A06",
+  "route": "R02_4",
+  "schema_version": 1,
+  "shaping": {
+    "name": "potential_v1"
+  },
+  "terminal_on_truncation": false,
+  "training": {
+    "budget": {
+      "checkpoint_every": 100,
+      "rounds": 2000
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      1001,
+      1002,
+      1003,
+      1004,
+      1005
+    ]
+  }
+}

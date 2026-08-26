@@ -32,10 +32,15 @@ EXPLORATION_VERSION = "E00"
 # potential-based shaping (docs/05 section 4); its event table is identical to
 # A03 on purpose, so the shaping term is the only variable.
 REWARD_VERSIONS = frozenset({"A00", "A01", "A02", "A03", "A05", "A06"})
-# Exploration is versioned independently from the route and reward.  E01 is
-# deliberately the only non-constant schedule currently registered: it is the
-# predeclared, one-variable comparison against the historical E00 baseline.
-EXPLORATION_VERSIONS = frozenset({"E00", "E01"})
+# Exploration is versioned independently from the route and reward.  E01 defines
+# its hold as a *fraction* of the training budget, which means changing the
+# budget silently changes the schedule too: every budget comparison in
+# docs/01 sections 7.13 and 7.18 is confounded by it (docs/05 section 0.14).
+# The E02 family states both phases in absolute rounds so budget and schedule
+# are independent.  Each point of the ablation is its own label rather than a
+# parameter, so a finished run's snapshot names the exact schedule it saw --
+# the same discipline as A00--A06 and R02_1--R02_3.
+EXPLORATION_VERSIONS = frozenset({"E00", "E01", "E02", "E03", "E04", "E05", "E06"})
 # How a curriculum indexes its exploration schedule.  A curriculum segment is a
 # separate game process whose round counter restarts at 1, so the schedule needs
 # an explicit choice instead of an accidental one.
@@ -69,6 +74,55 @@ EXPLORATION_SCHEDULES = {
         "hold_fraction": 0.20,
         "final_epsilon": 0.05,
         "description": "epsilon is 0.30 for the first 20% of training rounds, then linearly decays to 0.05",
+    },
+    # The E02 family: hold and anneal are both counted in rounds, so a longer
+    # budget no longer stretches the schedule.  E02 is the absolute spelling of
+    # E01 at a 2000-round budget and is bit-identical to it there, which is what
+    # lets runs/m3_3lx_oppeval_20260826 serve as the control for E03--E06
+    # without being re-run.  E03/E04 vary only the hold; E05/E06 vary only the
+    # floor.  hold_rounds + anneal_rounds is 2000 in all five, so every arm
+    # reaches its floor exactly at the end of the budget and the only thing that
+    # differs is how the schedule is spent.
+    "E02": {
+        "kind": "hold_then_linear_absolute",
+        "initial_epsilon": 0.30,
+        "hold_rounds": 400,
+        "anneal_rounds": 1600,
+        "final_epsilon": 0.05,
+        "description": "epsilon is 0.30 for 400 rounds, then linearly decays to 0.05 over 1600 rounds"
+                       " (identical to E01 at a 2000-round budget)",
+    },
+    "E03": {
+        "kind": "hold_then_linear_absolute",
+        "initial_epsilon": 0.30,
+        "hold_rounds": 100,
+        "anneal_rounds": 1900,
+        "final_epsilon": 0.05,
+        "description": "epsilon is 0.30 for 100 rounds, then linearly decays to 0.05 over 1900 rounds",
+    },
+    "E04": {
+        "kind": "hold_then_linear_absolute",
+        "initial_epsilon": 0.30,
+        "hold_rounds": 1000,
+        "anneal_rounds": 1000,
+        "final_epsilon": 0.05,
+        "description": "epsilon is 0.30 for 1000 rounds, then linearly decays to 0.05 over 1000 rounds",
+    },
+    "E05": {
+        "kind": "hold_then_linear_absolute",
+        "initial_epsilon": 0.30,
+        "hold_rounds": 400,
+        "anneal_rounds": 1600,
+        "final_epsilon": 0.02,
+        "description": "E02 with the floor lowered to 0.02; the hold and anneal lengths are unchanged",
+    },
+    "E06": {
+        "kind": "hold_then_linear_absolute",
+        "initial_epsilon": 0.30,
+        "hold_rounds": 400,
+        "anneal_rounds": 1600,
+        "final_epsilon": 0.10,
+        "description": "E02 with the floor raised to 0.10; the hold and anneal lengths are unchanged",
     },
 }
 
@@ -283,6 +337,56 @@ EXPERIMENTS = {
         td_loss="huber",
         gradient_clip_norm=10.0,
     ),
+    # R02_4 and R02_5 are the two single-factor arms docs/01 section 7.16.6
+    # pointed at: the remaining self-inflicted deaths are a value-function
+    # failure, and what acts on a value function is the algorithm or its
+    # capacity, not more features.  Each is R02_3 with exactly one field moved,
+    # so a result names the one thing that changed.
+    "R02_4": ExperimentConfig(
+        name="R02_4",
+        lines=("M3",),
+        state_encoder="handcrafted_v3",
+        network="mlp_q",
+        # The only change from R02_3.  Overestimation by the max operator is the
+        # textbook cause of a stalling action ranking above a visible escape,
+        # which is what section 7.16.5 measured.
+        algorithm="double_dqn",
+        learning_rate=1e-3,
+        discount=0.95,
+        epsilon=0.15,
+        safety_filter="legality_only",
+        feature_version="handcrafted_v3",
+        reward_version=REWARD_VERSION,
+        exploration_version=EXPLORATION_VERSION,
+        terminal_on_truncation=TERMINAL_ON_TRUNCATION,
+        hidden_layers=(64, 32),
+        replay=ReplayConfig(),
+        optimizer="adam",
+        td_loss="huber",
+        gradient_clip_norm=10.0,
+    ),
+    "R02_5": ExperimentConfig(
+        name="R02_5",
+        lines=("M3",),
+        state_encoder="handcrafted_v3",
+        network="mlp_q",
+        algorithm="q_learning",
+        learning_rate=1e-3,
+        discount=0.95,
+        epsilon=0.15,
+        safety_filter="legality_only",
+        feature_version="handcrafted_v3",
+        reward_version=REWARD_VERSION,
+        exploration_version=EXPLORATION_VERSION,
+        terminal_on_truncation=TERMINAL_ON_TRUNCATION,
+        # The only change from R02_3.  mean_hidden_zero_fraction rose from 0.625
+        # at 2000 rounds to 0.745 at 5000 (docs/01 sections 7.12.4 and 7.18):
+        # three quarters of the units are silent on a typical input.
+        hidden_layers=(128, 64),
+        optimizer="adam",
+        td_loss="huber",
+        gradient_clip_norm=10.0,
+    ),
     # M4 anchor -- egocentric board tensor, CNN plus global-scalar MLP, Double
     # DQN.  docs/05 section 5.4 requires this to learn from scratch before any
     # further increment (D4 augmentation, behaviour cloning, dueling) is added.
@@ -400,6 +504,13 @@ def epsilon_for_training_round(config: ExperimentConfig, round_number: int, trai
     time or steps.  With 500 rounds its first 100 rounds use 0.30; rounds
     101--500 interpolate from just below 0.30 to exactly 0.05.  Evaluation
     never calls this function: it always uses greedy epsilon 0.
+
+    The E02 family answers the same question in absolute rounds.  It reads the
+    budget only to reject an out-of-range round, so a schedule and a budget can
+    finally be varied one at a time.  A budget longer than
+    ``hold_rounds + anneal_rounds`` simply stays at the floor for the remainder;
+    a budget shorter than that never reaches the floor, which ``Experiment``
+    rejects at config time rather than discovering mid-run.
     """
     if training_rounds < 1:
         raise ValueError("BOMBERMAN_TRAINING_ROUNDS must be positive.")
@@ -418,6 +529,18 @@ def epsilon_for_training_round(config: ExperimentConfig, round_number: int, trai
         progress = (round_number - hold_rounds) / (training_rounds - hold_rounds)
         initial = float(EXPLORATION_SCHEDULES["E01"]["initial_epsilon"])
         final = float(EXPLORATION_SCHEDULES["E01"]["final_epsilon"])
+        return initial + progress * (final - initial)
+    schedule = EXPLORATION_SCHEDULES.get(config.exploration_version)
+    if schedule is not None and schedule["kind"] == "hold_then_linear_absolute":
+        hold_rounds = int(schedule["hold_rounds"])
+        anneal_rounds = int(schedule["anneal_rounds"])
+        initial = float(schedule["initial_epsilon"])
+        final = float(schedule["final_epsilon"])
+        if round_number <= hold_rounds or anneal_rounds < 1:
+            return initial
+        if round_number >= hold_rounds + anneal_rounds:
+            return final
+        progress = (round_number - hold_rounds) / anneal_rounds
         return initial + progress * (final - initial)
     raise ValueError(
         f"Unknown exploration version {config.exploration_version!r}; declared versions: {sorted(EXPLORATION_VERSIONS)}"

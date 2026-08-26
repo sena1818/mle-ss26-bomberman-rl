@@ -764,6 +764,59 @@ class ParallelPhaseTest(unittest.TestCase):
             execute_phase(Path("/runs/x"), [], "train", 4)
 
 
+class AbsoluteExplorationScheduleTest(unittest.TestCase):
+    """The E02 family has to be registered in both registries and fail closed.
+
+    docs/01 section 7.21: E01 defines its hold as a fraction of the budget, so
+    every budget comparison also changed the schedule.  The absolute family
+    separates them, but only if a config cannot declare a schedule longer than
+    the budget it is given -- that would end training mid-anneal at an epsilon
+    nobody declared.
+    """
+
+    def _payload(self, exploration_version: str, rounds: int) -> dict:
+        payload = config(route="R02_3", reward_version="A06", exploration_version=exploration_version)
+        payload["experiment_id"] = "test_r02_3_" + exploration_version.lower()
+        payload["agent"].update({
+            "model": "mlp_q", "algorithm": "q_learning", "state_representation": "handcrafted_v3",
+        })
+        payload["training"]["budget"] = {"rounds": rounds, "checkpoint_every": max(1, rounds // 2)}
+        payload["shaping"] = {"name": "potential_v1"}
+        return payload
+
+    def _load(self, exploration_version: str, rounds: int) -> Experiment:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "config.json"
+            write_json(path, self._payload(exploration_version, rounds))
+            return Experiment.load(path)
+
+    def test_the_ablation_points_are_implemented_on_the_route_that_runs_them(self):
+        for version in ("E02", "E03", "E04", "E05", "E06"):
+            experiment = self._load(version, 2000)
+            experiment.require_implemented()
+            self.assertEqual(experiment.exploration_version, version)
+
+    def test_a_schedule_longer_than_the_budget_is_rejected_at_config_time(self):
+        experiment = self._load("E02", 1500)
+        with self.assertRaises(ConfigError) as caught:
+            experiment.require_implemented()
+        self.assertIn("never reach its floor", str(caught.exception))
+
+    def test_a_budget_longer_than_the_schedule_is_allowed_and_holds_the_floor(self):
+        experiment = self._load("E02", 5000)
+        experiment.require_implemented()
+        agent_config = replace(resolved_config(), exploration_version="E02")
+        self.assertEqual(epsilon_for_training_round(agent_config, 5000, 5000), 0.05)
+
+    def test_the_snapshot_records_the_absolute_rounds_not_just_the_label(self):
+        experiment = self._load("E04", 2000)
+        runtime = resolved_runtime_config(experiment)
+        specification = runtime["exploration_specification"]
+        self.assertEqual(specification["exploration_version"], "E04")
+        self.assertEqual(specification["hold_rounds"], 1000)
+        self.assertEqual(specification["anneal_rounds"], 1000)
+
+
 class FourMainLineDeclarationTest(unittest.TestCase):
     """The M1--M4 declarations of docs/05 must survive the config round trip.
 

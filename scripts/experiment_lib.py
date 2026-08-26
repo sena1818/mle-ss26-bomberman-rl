@@ -60,7 +60,25 @@ IMPLEMENTED_ROUTES = {
         "lines": ("M3",),
         "declaration": ("mlp_q", "q_learning", "handcrafted_v3"),
         "reward_versions": _VECTOR_REWARD_VERSIONS,
-        "exploration_versions": {"E00", "E01"},
+        # E02--E06 are the absolute-round schedule family (docs/01 section 7.21).
+        # They are opened on this route only, because this is the only route with
+        # a control arm to compare them against.
+        "exploration_versions": {"E00", "E01", "E02", "E03", "E04", "E05", "E06"},
+    },
+    # The two value-function arms (docs/01 section 7.16.6).  Both open the same
+    # exploration versions as R02_3 so they can be run on whichever schedule the
+    # ablation selects without a second registration.
+    "R02_4": {
+        "lines": ("M3",),
+        "declaration": ("mlp_q", "double_dqn", "handcrafted_v3"),
+        "reward_versions": _VECTOR_REWARD_VERSIONS,
+        "exploration_versions": {"E00", "E01", "E02", "E03", "E04", "E05", "E06"},
+    },
+    "R02_5": {
+        "lines": ("M3",),
+        "declaration": ("mlp_q", "q_learning", "handcrafted_v3"),
+        "reward_versions": _VECTOR_REWARD_VERSIONS,
+        "exploration_versions": {"E00", "E01", "E02", "E03", "E04", "E05", "E06"},
     },
     "R07": {
         "lines": ("M4",),
@@ -545,6 +563,31 @@ class Experiment:
             raise ConfigError(
                 f"Route {self.route} does not implement exploration version {self.exploration_version!r}; "
                 f"implemented: {sorted(route['exploration_versions'])}."
+            )
+        self._require_schedule_fits_budget()
+
+    def _require_schedule_fits_budget(self) -> None:
+        """Reject an absolute schedule that cannot finish inside the budget.
+
+        A fraction-based schedule always lands on its floor at the last round.
+        An absolute one need not, and a budget that ends mid-anneal would leave
+        the arm exploring at a value nobody declared -- silently, and only
+        visible afterwards in the epsilon trace.  Fail at config time instead.
+        """
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
+        from agent_code.research_agent.config import EXPLORATION_SCHEDULES
+
+        schedule = EXPLORATION_SCHEDULES.get(self.exploration_version)
+        if schedule is None or schedule.get("kind") != "hold_then_linear_absolute":
+            return
+        needed = int(schedule["hold_rounds"]) + int(schedule["anneal_rounds"])
+        budget = self.training.budget.rounds
+        if needed > budget:
+            raise ConfigError(
+                f"Exploration version {self.exploration_version} needs {needed} rounds "
+                f"(hold {schedule['hold_rounds']} + anneal {schedule['anneal_rounds']}) but the "
+                f"training budget is {budget}; the schedule would never reach its floor."
             )
 
     def snapshot(self) -> dict[str, Any]:
