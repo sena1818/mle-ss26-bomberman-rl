@@ -1,0 +1,140 @@
+{
+  "_design_note": "M3.3XL. The sole change from m3_3lx_r02_3_a06_e01_t02_n5_v3_2000_oppeval is the training budget, 2000 rounds to 5000, with checkpoints every 250 instead of every 100 so the sweep stays at twenty points and the job count stays at 665. Route R02_3, handcrafted_v3, A06, shaping, E01, task T02 solo, n=5, the fitted-Q recipe, the seeds and the evaluation protocol are unchanged, and every seed still starts from scratch. Two findings motivate it. docs/01 section 7.13.2: the 2000-round arm never stopped climbing, and its last segment was the steepest of the whole curve, so the ceiling of this recipe is still unknown. docs/01 section 7.16.5: the remaining self-inflicted deaths are a value-function failure rather than a perception one -- in 92.1 percent of the fatal last ticks the saving move was plainly visible in handcrafted_v3 and the agent chose WAIT anyway -- and more experience is the cheapest lever that acts on the value function without changing the route.",
+  "_predeclared_design_numbers": {
+    "changed_factor": "training.budget.rounds 2000 -> 5000 (checkpoint_every 100 -> 250)",
+    "control": "runs/m3_3lx_oppeval_20260826/ at round 2000",
+    "epsilon_schedule_stretches_with_the_budget": "E01 holds epsilon at 0.30 for the first 20 percent of training rounds, so this arm holds for 1000 rounds rather than 400. Its round-2000 checkpoint is therefore NOT a reproduction of the control's, and must not be read as one. Compare end of budget against end of budget.",
+    "falsification": "score at round 5000 at or below 32.622 means this recipe is at its ceiling and budget is not the lever; move to the algorithm and capacity arms instead of spending more rounds.",
+    "prediction_curve": "report whether crates_per_round saturates and at which checkpoint; the 2000-round arm never did",
+    "prediction_score": "above 32.622, the control's loot-crate holdout score at round 2000",
+    "prediction_suicides": "at or below 0.5, the G2 threshold",
+    "prediction_tournament": "above 2.087, the control's classic-with-opponents score",
+    "reporting": "Report all five training-seed distributions and every G2 threshold.",
+    "the_metric_that_decides_the_diagnosis": "Re-run scripts/diagnose_bomb_escape.py on this arm and compare the section 7.16.5 counts. If budget is the right lever, the number of fatal last ticks where a saving move was visible and the agent chose WAIT should fall. Score rising while that count holds would mean the extra budget bought collection rather than survival, which is a different claim."
+  },
+  "agent": {
+    "algorithm": "q_learning",
+    "model": "mlp_q",
+    "n_step": 5,
+    "name": "research_agent",
+    "replay": {
+      "batch_size": 32,
+      "capacity": 50000,
+      "min_size": 1000,
+      "target_update_every": 500,
+      "train_every": 1
+    },
+    "state_representation": "handcrafted_v3"
+  },
+  "checkpoint_evaluation": {
+    "holdout_seeds": [
+      3001,
+      3002,
+      3003
+    ],
+    "mode": "all",
+    "validation_seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation": {
+    "budget": {
+      "checkpoint_every": 250,
+      "rounds": 30
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation_suites": {
+    "classic_solo": {
+      "budget": {
+        "checkpoint_every": 250,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "classic_versus_opponents": {
+      "budget": {
+        "checkpoint_every": 250,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [
+        "rule_based_agent",
+        "rule_based_agent",
+        "rule_based_agent"
+      ],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    }
+  },
+  "experiment_id": "M3_3XL_R02_3_A06_E01_C00_T02_n5_5000",
+  "exploration_version": "E01",
+  "promotion": {
+    "primary_metric": "score"
+  },
+  "reward_version": "A06",
+  "route": "R02_3",
+  "schema_version": 1,
+  "shaping": {
+    "name": "potential_v1"
+  },
+  "terminal_on_truncation": false,
+  "training": {
+    "budget": {
+      "checkpoint_every": 250,
+      "rounds": 5000
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      1001,
+      1002,
+      1003,
+      1004,
+      1005
+    ]
+  }
+}
