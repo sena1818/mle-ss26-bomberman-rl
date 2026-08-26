@@ -1,0 +1,16 @@
+{
+  "agent": "research_agent",
+  "caught_in_overlapping_blasts": 9,
+  "died_to_own_bomb_only": 477,
+  "job_prefix": "eval_round02000",
+  "killed_by_others_only": 303,
+  "killers": {
+    "rule_based_agent_0": 79.0,
+    "rule_based_agent_1": 112.0,
+    "rule_based_agent_2": 112.0
+  },
+  "mismatched_jobs": [],
+  "rounds": 900,
+  "run_dir": "runs/m3_5_t03_vs3rb_20260826",
+  "survived": 111
+}

@@ -110,6 +110,11 @@ ssh -i ~/.ssh/automobility_hetzner root@46.224.43.9 \
 6. **跑完压缩**：`scripts/prune_runs.py --run-dir runs/<id> --drop-runtime --compress-logs --apply`，
    2000 局单臂能回收约 4 GiB。再用 `--slim-copy` 拉一份轻量副本回本机。
 7. **每次跑完检查 `round_end_mispredictions` 是否为 0**（`scripts/` 里的 integ 检查）。
+   拉完归档后跑 **`python scripts/verify_run_archives.py`**，确认每个目录装的确实是它名字对应的 run
+   ——`--slim-copy` 的产物在 `DEST/<run>/<run>/`，rsync 到已存在的目录会**嵌套**而不是合并，
+   而「文件名一样」不代表「内容一样」（§7.17 就是这么串档的）。
+   **完整 run 在服务器 `/root/bomberman-r01/runs/<id>/`；轻量副本不含 `framework_game.log.gz`，
+   因此本地无法重放多人对局**，要复算多 agent 诊断得拉完整 run。
 8. **每个分数都要写明「哪个 scenario + 有没有对手」**，跨这两个维度的数字一律不并列
    （§7.15.2 有一张因此作废的表）。
 

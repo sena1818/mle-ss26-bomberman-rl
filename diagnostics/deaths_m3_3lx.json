@@ -1,0 +1,16 @@
+{
+  "agent": "research_agent",
+  "caught_in_overlapping_blasts": 19,
+  "died_to_own_bomb_only": 636,
+  "job_prefix": "eval_classic_versus_opponents",
+  "killed_by_others_only": 210,
+  "killers": {
+    "rule_based_agent_0": 54.5,
+    "rule_based_agent_1": 78.0,
+    "rule_based_agent_2": 77.5
+  },
+  "mismatched_jobs": [],
+  "rounds": 900,
+  "run_dir": "runs/m3_3lx_oppeval_20260826",
+  "survived": 35
+}
