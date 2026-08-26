@@ -1,0 +1,135 @@
+{
+  "_design_note": "M3.3LX. Training is byte-for-byte the m3_3l specification -- same route, features, reward, exploration, task, budget and seeds, still solo -- and only the evaluation suites differ: this arm adds classic_versus_opponents. It exists to fill the one comparison m3_4 cannot make on its own. m3_4 shows what an agent trained against three rule_based opponents scores in the tournament setting, but without this arm there is nothing to say whether training against them helped, because the solo-trained model was never measured there. Re-running the training rather than re-scoring the stored checkpoints keeps the provenance chain intact; the training phase is deterministic and should reproduce m3_3l exactly, which is itself a check.",
+  "_predeclared_design_numbers": {
+    "comparison": "classic_versus_opponents against m3_4's same-named suite (2.227)",
+    "prediction": "unknown by design; this is the measurement that decides whether training with opponents is worth its cost, and predicting it would be predicting the answer",
+    "purpose": "the missing control for m3_4: solo-trained model, tournament evaluation",
+    "reporting": "Report all five training-seed distributions and kills, which are structurally possible in this evaluation for the first time on a solo-trained model.",
+    "reproduction_check": "loot-crate holdout at round 2000 must reproduce m3_3l's 32.622 score exactly; a mismatch means the training phase is not deterministic and every cross-arm comparison in docs/01 section 7 needs re-examination"
+  },
+  "agent": {
+    "algorithm": "q_learning",
+    "model": "mlp_q",
+    "n_step": 5,
+    "name": "research_agent",
+    "replay": {
+      "batch_size": 32,
+      "capacity": 50000,
+      "min_size": 1000,
+      "target_update_every": 500,
+      "train_every": 1
+    },
+    "state_representation": "handcrafted_v3"
+  },
+  "checkpoint_evaluation": {
+    "holdout_seeds": [
+      3001,
+      3002,
+      3003
+    ],
+    "mode": "all",
+    "validation_seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation": {
+    "budget": {
+      "checkpoint_every": 50,
+      "rounds": 30
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation_suites": {
+    "classic_solo": {
+      "budget": {
+        "checkpoint_every": 100,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "classic_versus_opponents": {
+      "budget": {
+        "checkpoint_every": 100,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [
+        "rule_based_agent",
+        "rule_based_agent",
+        "rule_based_agent"
+      ],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    }
+  },
+  "experiment_id": "M3_3LX_R02_3_A06_E01_C00_T02_n5_2000_oppeval",
+  "exploration_version": "E01",
+  "promotion": {
+    "primary_metric": "score"
+  },
+  "reward_version": "A06",
+  "route": "R02_3",
+  "schema_version": 1,
+  "shaping": {
+    "name": "potential_v1"
+  },
+  "terminal_on_truncation": false,
+  "training": {
+    "budget": {
+      "checkpoint_every": 100,
+      "rounds": 2000
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      1001,
+      1002,
+      1003,
+      1004,
+      1005
+    ]
+  }
+}
