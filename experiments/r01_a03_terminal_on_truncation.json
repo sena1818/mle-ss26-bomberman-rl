@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "experiment_id": "R01_A03_terminal_on_truncation",
+  "route": "R01",
+  "agent": {
+    "name": "research_agent",
+    "model": "linear_q",
+    "algorithm": "q_learning",
+    "state_representation": "handcrafted_v1"
+  },
+  "reward_version": "A03",
+  "terminal_on_truncation": true,
+  "_design_note": "Single-factor ablation of terminal_on_truncation against the canonical A03_E00 arm (runs/r01_a03_nolag_20260826). The sole difference is the TD target of a round that survives to the MAX_STEPS limit: false bootstraps it as a time-limit truncation (Pardo et al. 2018), true cuts the return with target = r. Reward version, exploration, state, model, learner, seeds, budgets, checkpoint policy and every evaluation suite are byte-for-byte identical by construction. A round that ends because nothing is left to do is unaffected: that is a real terminal state under either setting. See docs/05 sections 1.5 and 1.10.",
+  "_predeclared_design_numbers": {
+    "p_star": 0.689,
+    "surviving_training_rounds_in_canonical_a03": "12 / 2500",
+    "note": "The switch can only touch rounds that reach the step limit. The canonical A03 arm has 12 such rounds in 2500, so the predeclared expectation is a small effect. A large one would mean the switch reaches something other than the truncated rounds and must be investigated rather than reported."
+  },
+  "training": {
+    "scenario": "classic",
+    "opponents": [],
+    "seeds": [
+      1001,
+      1002,
+      1003,
+      1004,
+      1005
+    ],
+    "budget": {
+      "rounds": 500,
+      "checkpoint_every": 50
+    }
+  },
+  "evaluation": {
+    "scenario": "classic",
+    "opponents": [],
+    "seeds": [
+      2001,
+      2002,
+      2003
+    ],
+    "budget": {
+      "rounds": 30,
+      "checkpoint_every": 50
+    }
+  },
+  "checkpoint_evaluation": {
+    "mode": "all",
+    "validation_seeds": [
+      2001,
+      2002,
+      2003
+    ],
+    "holdout_seeds": [
+      3001,
+      3002,
+      3003
+    ]
+  },
+  "evaluation_suites": {
+    "coin_heaven_diagnostic": {
+      "scenario": "coin-heaven",
+      "opponents": [],
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ],
+      "budget": {
+        "rounds": 30,
+        "checkpoint_every": 50
+      },
+      "checkpoint_evaluation": {
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ],
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ]
+      }
+    },
+    "loot_crate_diagnostic": {
+      "scenario": "loot-crate",
+      "opponents": [],
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ],
+      "budget": {
+        "rounds": 30,
+        "checkpoint_every": 50
+      },
+      "checkpoint_evaluation": {
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ],
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ]
+      }
+    }
+  },
+  "promotion": {
+    "primary_metric": "score"
+  }
+}
