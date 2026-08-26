@@ -1,0 +1,136 @@
+{
+  "_design_note": "M3 first arm: a controlled replacement of M2's R01 linear Q approximator with R02's 44-64-32-6 ReLU MLP. Reward A06, exploration E01, the C00 Loot-Crate task, 500-round fresh starts, n=5 returns, online Q-learning, and no replay are otherwise identical to m2_r01_a06_e01_t02_n5.",
+  "_predeclared_design_numbers": {
+    "primary_control": "runs/m2_a06_n5_20260826/",
+    "primary_evaluation": "Loot-Crate holdout @500",
+    "focus_metrics": [
+      "coins",
+      "official score",
+      "bomb_rate",
+      "crates_per_round",
+      "approximate_safe_bomb_rate",
+      "suicides",
+      "wait_fraction",
+      "steps",
+      "rounds_with_bombs"
+    ],
+    "reporting": "Report the full distribution across all five training seeds.",
+    "gate": "Apply every G2 threshold to the Loot-Crate primary evaluation.",
+    "coin_heaven_scope": "Coin-Heaven is a transfer evaluation; it is not evidence that the T01 single-task G1 gate passed."
+  },
+  "agent": {
+    "algorithm": "q_learning",
+    "model": "mlp_q",
+    "n_step": 5,
+    "name": "research_agent",
+    "replay": null,
+    "state_representation": "handcrafted_v1"
+  },
+  "checkpoint_evaluation": {
+    "holdout_seeds": [
+      3001,
+      3002,
+      3003
+    ],
+    "mode": "all",
+    "validation_seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation": {
+    "budget": {
+      "checkpoint_every": 50,
+      "rounds": 30
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation_suites": {
+    "classic_transfer": {
+      "budget": {
+        "checkpoint_every": 50,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "coin_heaven_diagnostic": {
+      "budget": {
+        "checkpoint_every": 50,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "coin-heaven",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    }
+  },
+  "experiment_id": "M3_R02_A06_E01_C00_T02_n5",
+  "exploration_version": "E01",
+  "promotion": {
+    "primary_metric": "score"
+  },
+  "reward_version": "A06",
+  "route": "R02",
+  "schema_version": 1,
+  "shaping": {
+    "name": "potential_v1"
+  },
+  "terminal_on_truncation": false,
+  "training": {
+    "budget": {
+      "checkpoint_every": 50,
+      "rounds": 500
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      1001,
+      1002,
+      1003,
+      1004,
+      1005
+    ]
+  }
+}
