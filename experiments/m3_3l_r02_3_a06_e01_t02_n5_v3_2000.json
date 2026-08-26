@@ -1,0 +1,135 @@
+{
+  "_design_note": "M3.3L. The sole change from m3_3_r02_3_a06_e01_t02_n5_v3 is the training budget, 500 rounds to 2000, with checkpoints every 100 rounds instead of every 50 so the sweep stays at twenty points. Route R02_3, handcrafted_v3, A06, shaping, E01, task T02, n=5, the fitted-Q recipe, the seeds and the evaluation protocol are unchanged, and every seed still starts from scratch. It exists because all three M3 arms were still climbing at round 500 (docs/01 section 7.11.6): crates_per_round went from 29.31 at round 450 to 39.91 at round 500, so none of them had reached the end of its budget and no claim about the ceiling of this recipe could be made.",
+  "_predeclared_design_numbers": {
+    "changed_factor": "training.budget.rounds 500 -> 2000 (checkpoint_every 50 -> 100)",
+    "control": "runs/m3_3_v3_20260826/ at round 500",
+    "falsification": "score at round 2000 at or below the control's 14.671 means this recipe is already at its ceiling by 500 rounds and the remaining headroom is not in the budget; do not then spend more budget on M4 arms either without re-checking.",
+    "not_a_clean_replication_of_the_first_500_rounds": "E01 holds epsilon at 0.30 for the first 20 percent of training rounds and then decays it linearly, so a 2000-round budget holds for 400 rounds rather than 100. The first 500 rounds of this arm are therefore NOT the same trajectory as the 500-round arm, and its round-500 checkpoint must not be read as a reproduction of it. The comparison that carries weight is end of budget against end of budget.",
+    "prediction_curve": "report the first checkpoint at which crates_per_round stops rising",
+    "prediction_score": "above 14.671, the round-500 value of the control",
+    "prediction_suicides": "still at or below 0.5, the G2 threshold",
+    "primary_evaluation": "Loot-Crate holdout at the final checkpoint",
+    "reporting": "Report all five training-seed distributions and every G2 threshold."
+  },
+  "agent": {
+    "algorithm": "q_learning",
+    "model": "mlp_q",
+    "n_step": 5,
+    "name": "research_agent",
+    "replay": {
+      "batch_size": 32,
+      "capacity": 50000,
+      "min_size": 1000,
+      "target_update_every": 500,
+      "train_every": 1
+    },
+    "state_representation": "handcrafted_v3"
+  },
+  "checkpoint_evaluation": {
+    "holdout_seeds": [
+      3001,
+      3002,
+      3003
+    ],
+    "mode": "all",
+    "validation_seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation": {
+    "budget": {
+      "checkpoint_every": 50,
+      "rounds": 30
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation_suites": {
+    "classic_transfer": {
+      "budget": {
+        "checkpoint_every": 50,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "coin_heaven_diagnostic": {
+      "budget": {
+        "checkpoint_every": 50,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "coin-heaven",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    }
+  },
+  "experiment_id": "M3_3L_R02_3_A06_E01_C00_T02_n5_2000",
+  "exploration_version": "E01",
+  "promotion": {
+    "primary_metric": "score"
+  },
+  "reward_version": "A06",
+  "route": "R02_3",
+  "schema_version": 1,
+  "shaping": {
+    "name": "potential_v1"
+  },
+  "terminal_on_truncation": false,
+  "training": {
+    "budget": {
+      "checkpoint_every": 100,
+      "rounds": 2000
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      1001,
+      1002,
+      1003,
+      1004,
+      1005
+    ]
+  }
+}
