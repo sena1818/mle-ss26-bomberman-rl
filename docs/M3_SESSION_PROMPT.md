@@ -132,6 +132,10 @@ ssh -i ~/.ssh/automobility_hetzner root@46.224.43.9 \
 - **`rule_based_agent` 不确定**：`callbacks.py:69` 调用 `np.random.seed()`（无参数）。
   **带对手的臂不可复现**——同一个 eval job 连跑四次，30 局合计 score 是 76 / 64 / 69 / 62。
   §0.2 的「逐位一致」只适用于 solo 臂。
+- **比赛设置的噪声地板已量出（§7.20 / §0.16）**：15 个 holdout job 池化的 450 局数字，
+  重复 20 次的 `sd` 是 **score 0.089 / `coins_share` 0.0079**。
+  **两个臂各测一次，score 差不到 `0.246`、`coins_share` 差不到 `0.022` 就不可分辨。**
+  逐 seed 的比赛成绩单次带 `±0.44` 噪声，**不要按单次结果给 seed 排序**。
 - **solo 臂是确定的**，已由 `M3.3LX` 复现 `M3.3L` 逐位验证（§7.14.1）。
 
 ## 一条方法论提醒
