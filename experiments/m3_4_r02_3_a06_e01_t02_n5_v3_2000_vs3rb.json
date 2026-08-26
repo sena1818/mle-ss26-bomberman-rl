@@ -1,0 +1,147 @@
+{
+  "_design_note": "M3.4. The sole change from m3_3l_r02_3_a06_e01_t02_n5_v3_2000 is that training and primary evaluation now face three rule_based_agent opponents instead of playing solo. Route R02_3, handcrafted_v3, A06, shaping, E01, task T02, n=5, the fitted-Q recipe, the 2000-round budget, the seeds and the checkpoint protocol are unchanged. Keeping the task at loot-crate is deliberate: it isolates the opponents as the one changed factor, and leaves the coin signal at the density that was shown to be learnable. The classic_versus_opponents suite is the actual tournament setting and classic_solo is the bridge back to the solo arms.",
+  "_predeclared_design_numbers": {
+    "changed_factor": "training.opponents [] -> three rule_based_agent (task unchanged)",
+    "control": "runs/m3_3l_v3_2000_20260826/ (identical except training.opponents was empty)",
+    "falsification": "bomb_rate collapsing towards zero, or score identically zero, means three rule_based opponents leave no learnable signal at this budget; drop to one rule_based agent or to peaceful_agent rather than changing the reward.",
+    "first_arm_where_kills_are_possible": "KILLED_OPPONENT has carried weight 5.0 in the A03/A06 reward table and REWARD_KILL is 5 in the official scoring, but with an empty opponent list the event could never fire. Every number in docs/01 sections 7.6 to 7.13 was produced with kills structurally impossible. Report kills.",
+    "opponents": "three rule_based_agent, the strongest scripted agent in the repository",
+    "prediction_bomb_rate": "stays at or above 0.02",
+    "prediction_kills": "greater than zero on at least one training seed",
+    "prediction_score": "below the solo arm's 32.622 on loot-crate, because three opponents compete for the same 50 coins and end rounds early",
+    "reporting": "Report all five training-seed distributions and every G2 threshold."
+  },
+  "agent": {
+    "algorithm": "q_learning",
+    "model": "mlp_q",
+    "n_step": 5,
+    "name": "research_agent",
+    "replay": {
+      "batch_size": 32,
+      "capacity": 50000,
+      "min_size": 1000,
+      "target_update_every": 500,
+      "train_every": 1
+    },
+    "state_representation": "handcrafted_v3"
+  },
+  "checkpoint_evaluation": {
+    "holdout_seeds": [
+      3001,
+      3002,
+      3003
+    ],
+    "mode": "all",
+    "validation_seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation": {
+    "budget": {
+      "checkpoint_every": 100,
+      "rounds": 30
+    },
+    "opponents": [
+      "rule_based_agent",
+      "rule_based_agent",
+      "rule_based_agent"
+    ],
+    "scenario": "loot-crate",
+    "seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation_suites": {
+    "classic_solo": {
+      "budget": {
+        "checkpoint_every": 100,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "classic_versus_opponents": {
+      "budget": {
+        "checkpoint_every": 100,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [
+        "rule_based_agent",
+        "rule_based_agent",
+        "rule_based_agent"
+      ],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    }
+  },
+  "experiment_id": "M3_4_R02_3_A06_E01_C00_T02_n5_2000_vs3rb",
+  "exploration_version": "E01",
+  "promotion": {
+    "primary_metric": "score"
+  },
+  "reward_version": "A06",
+  "route": "R02_3",
+  "schema_version": 1,
+  "shaping": {
+    "name": "potential_v1"
+  },
+  "terminal_on_truncation": false,
+  "training": {
+    "budget": {
+      "checkpoint_every": 100,
+      "rounds": 2000
+    },
+    "opponents": [
+      "rule_based_agent",
+      "rule_based_agent",
+      "rule_based_agent"
+    ],
+    "scenario": "loot-crate",
+    "seeds": [
+      1001,
+      1002,
+      1003,
+      1004,
+      1005
+    ]
+  }
+}

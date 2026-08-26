@@ -1,0 +1,146 @@
+{
+  "_design_note": "M3.5. Trains directly in the tournament setting: classic with three rule_based_agent opponents. Relative to m3_3l this changes two factors at once, the task and the opponents, and is therefore NOT a controlled attribution -- m3_4 is the controlled arm. It is run because the tournament setting is what the submission is graded on and a direct measurement of it is worth having. The docs/01 section 2.1 argument against training on classic was computed for solo play, where the auxiliary-to-official ratio kappa is 3.31; with opponents a kill is worth 5 official points, which may or may not change that ratio. This arm measures the outcome rather than settling the argument.",
+  "_predeclared_design_numbers": {
+    "changed_factors": "training.scenario loot-crate -> classic AND training.opponents [] -> three rule_based_agent; two factors, so no attribution claim is made",
+    "control": "runs/m3_3l_v3_2000_20260826/ (identical except training.opponents was empty)",
+    "falsification": "if this arm beats m3_4 on classic with opponents, the section 2.1 conclusion does not survive contact with opponents and must be rewritten rather than cited.",
+    "first_arm_where_kills_are_possible": "KILLED_OPPONENT has carried weight 5.0 in the A03/A06 reward table and REWARD_KILL is 5 in the official scoring, but with an empty opponent list the event could never fire. Every number in docs/01 sections 7.6 to 7.13 was produced with kills structurally impossible. Report kills.",
+    "not_a_controlled_comparison": "m3_4 is the single-factor arm. Read this one against m3_4's classic_versus_opponents suite, not against m3_3l.",
+    "opponents": "three rule_based_agent, the strongest scripted agent in the repository",
+    "prediction": "weaker than m3_4 on the same classic-with-opponents evaluation, because classic's coin density is 5.5 times sparser and section 2.1 predicts the crate signal cannot be made dense enough without exceeding the official maximum",
+    "reporting": "Report all five training-seed distributions and every G2 threshold."
+  },
+  "agent": {
+    "algorithm": "q_learning",
+    "model": "mlp_q",
+    "n_step": 5,
+    "name": "research_agent",
+    "replay": {
+      "batch_size": 32,
+      "capacity": 50000,
+      "min_size": 1000,
+      "target_update_every": 500,
+      "train_every": 1
+    },
+    "state_representation": "handcrafted_v3"
+  },
+  "checkpoint_evaluation": {
+    "holdout_seeds": [
+      3001,
+      3002,
+      3003
+    ],
+    "mode": "all",
+    "validation_seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation": {
+    "budget": {
+      "checkpoint_every": 100,
+      "rounds": 30
+    },
+    "opponents": [
+      "rule_based_agent",
+      "rule_based_agent",
+      "rule_based_agent"
+    ],
+    "scenario": "classic",
+    "seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation_suites": {
+    "classic_solo": {
+      "budget": {
+        "checkpoint_every": 100,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "loot_crate_versus_opponents": {
+      "budget": {
+        "checkpoint_every": 100,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [
+        "rule_based_agent",
+        "rule_based_agent",
+        "rule_based_agent"
+      ],
+      "scenario": "loot-crate",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    }
+  },
+  "experiment_id": "M3_5_R02_3_A06_E01_C00_T03_n5_2000_vs3rb",
+  "exploration_version": "E01",
+  "promotion": {
+    "primary_metric": "score"
+  },
+  "reward_version": "A06",
+  "route": "R02_3",
+  "schema_version": 1,
+  "shaping": {
+    "name": "potential_v1"
+  },
+  "terminal_on_truncation": false,
+  "training": {
+    "budget": {
+      "checkpoint_every": 100,
+      "rounds": 2000
+    },
+    "opponents": [
+      "rule_based_agent",
+      "rule_based_agent",
+      "rule_based_agent"
+    ],
+    "scenario": "classic",
+    "seeds": [
+      1001,
+      1002,
+      1003,
+      1004,
+      1005
+    ]
+  }
+}
