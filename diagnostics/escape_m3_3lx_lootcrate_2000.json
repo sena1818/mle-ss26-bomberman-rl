@@ -1,0 +1,58 @@
+{
+  "bomb_to_death_ticks": {
+    "4": 332,
+    "5": 99
+  },
+  "bombs": 27091,
+  "bombs_with_escape": 27091,
+  "deaths_with_a_plan_throughout": 202,
+  "escape_ticks": 108132,
+  "escape_ticks_safer_chosen": 75092,
+  "escape_ticks_shaping_prefers_wait": 8935,
+  "escape_ticks_wait_chosen": 5392,
+  "escape_ticks_with_safer_move": 82683,
+  "fatal": 431,
+  "fatal_doomed_with_safer_move_available": 229,
+  "fatal_trapped_on_final_tick": 229,
+  "fatal_turn_indistinguishable_in_features": 76,
+  "fatal_turn_indistinguishable_in_v3_escape": 0,
+  "fatal_turns_compared_in_v3_escape": 179,
+  "fatal_turns_with_a_saving_alternative": 179,
+  "fatal_with_escape": 431,
+  "job_prefix": "eval_round02000",
+  "last_actions": {
+    "DOWN": 22,
+    "LEFT": 72,
+    "RIGHT": 76,
+    "UP": 91,
+    "WAIT": 170
+  },
+  "mismatched_jobs": [],
+  "of_those_with_a_refused_move": 0,
+  "point_of_no_return": {
+    "never lost a plan": 202,
+    "tick 1 after the bomb, by choosing DOWN": 7,
+    "tick 1 after the bomb, by choosing LEFT": 6,
+    "tick 1 after the bomb, by choosing RIGHT": 13,
+    "tick 1 after the bomb, by choosing UP": 9,
+    "tick 1 after the bomb, by choosing WAIT": 3,
+    "tick 2 after the bomb, by choosing DOWN": 20,
+    "tick 2 after the bomb, by choosing LEFT": 3,
+    "tick 2 after the bomb, by choosing RIGHT": 3,
+    "tick 2 after the bomb, by choosing UP": 8,
+    "tick 2 after the bomb, by choosing WAIT": 28,
+    "tick 3 after the bomb, by choosing DOWN": 18,
+    "tick 3 after the bomb, by choosing LEFT": 21,
+    "tick 3 after the bomb, by choosing RIGHT": 62,
+    "tick 3 after the bomb, by choosing UP": 9,
+    "tick 3 after the bomb, by choosing WAIT": 19
+  },
+  "refused_by": {},
+  "reward_version": "A06",
+  "run_dir": "runs/m3_3lx_oppeval_20260826",
+  "shortest_escape_steps": {
+    "2": 197,
+    "3": 207,
+    "4": 27
+  }
+}
