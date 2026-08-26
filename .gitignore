@@ -121,3 +121,6 @@ runs/
 # experiment config pins both by SHA-256.  Regenerating them would produce a
 # different digest, so a clone must be able to use the exact same files.
 pretraining/logs/
+
+# git worktrees created for isolated experiment runs
+.worktrees/
