@@ -371,10 +371,43 @@ def replay_job(job_dir: Path, shaping: PotentialShaping | None) -> dict:
             bombs_left_before = agent.bombs_left
             # Ticks after a bomb, while it is still ticking, are the escape the
             # agent has to execute; record what it saw and what it chose.
+            tick_record = None
             if (pending is not None and before is not None and not died_this_round
                     and step_number - pending["step"] <= s.BOMB_TIMER):
-                pending["escape_window"].append(escape_step_record(before, chosen, shaping))
+                tick_record = escape_step_record(before, chosen, shaping)
+                pending["escape_window"].append(tick_record)
             world.do_step()
+            if tick_record is not None:
+                # A move the world refused leaves the agent where it was and
+                # raises INVALID_ACTION.  During an escape that is the difference
+                # between "walked the wrong way" and "was not allowed to walk",
+                # and only the second is caused by somebody else standing there.
+                blocked = chosen in MOVES and "INVALID_ACTION" in agent.events
+                tick_record["move_was_blocked"] = bool(blocked)
+                tick_record["blocked_by"] = None
+                if blocked:
+                    dx, dy = MOVES[chosen]
+                    target = (before["self"][3][0] + dx, before["self"][3][1] + dy)
+                    field = np.asarray(before["field"])
+                    x, y = target
+                    in_bounds = 0 <= x < field.shape[0] and 0 <= y < field.shape[1]
+                    after = world.get_state_for_agent(agent)
+                    # Agents act one after another inside a step, so a cell that
+                    # was empty when the state was observed can be taken by an
+                    # opponent that moved first.  Checking only the observed
+                    # state would miss exactly the case worth finding.
+                    was_occupied = any(tuple(o[3]) == target for o in before["others"])
+                    now_occupied = bool(after) and any(tuple(o[3]) == target for o in after["others"])
+                    if not in_bounds or field[x, y] != 0:
+                        tick_record["blocked_by"] = "wall or crate"
+                    elif was_occupied:
+                        tick_record["blocked_by"] = "opponent standing there"
+                    elif now_occupied:
+                        tick_record["blocked_by"] = "opponent moved in first"
+                    elif any(tuple(pos) == target for pos, _ in before["bombs"]):
+                        tick_record["blocked_by"] = "bomb"
+                    else:
+                        tick_record["blocked_by"] = "unexplained"
             placed = (not died_this_round and chosen == "BOMB"
                       and bombs_left_before and not agent.bombs_left)
             if placed:
@@ -576,6 +609,18 @@ def main() -> None:
                 v3_indistinguishable += 1
             v3_total += 1
 
+    # Deaths where a survivable plan was on offer at every tick: in solo play
+    # these were 3.6% of self-inflicted deaths, with opponents they are the
+    # largest single bucket, so what actually went wrong in them decides whether
+    # more features would help at all.
+    never_lost = [bomb for bomb in fatal
+                  if bomb["escape_window"] and all(t["escape_exists"] for t in bomb["escape_window"])]
+    blocked_runs = [bomb for bomb in never_lost
+                    if any(t.get("move_was_blocked") for t in bomb["escape_window"])]
+    blocked_by = collections.Counter(
+        t.get("blocked_by") for bomb in never_lost for t in bomb["escape_window"]
+        if t.get("move_was_blocked"))
+
     ticks = [tick for bomb in every_bomb for tick in bomb["escape_window"]]
     decisive = [tick for tick in ticks if tick["wait_beats_every_safer_move"] is not None]
     wait_wins = [tick for tick in decisive if tick["wait_beats_every_safer_move"]]
@@ -605,6 +650,13 @@ def main() -> None:
         print(f"  steps audited                                {len(bearings)}")
         print(f"  bearing names at least one route step        {useful} ({useful / len(bearings):.1%})")
         print(f"  every direction the bearing suggests is wrong{wrong:>6} ({wrong / len(bearings):.1%})")
+    if never_lost:
+        print("-" * 66)
+        print("deaths where a survivable plan existed at every recorded tick")
+        print(f"  such deaths                                  {len(never_lost)}")
+        print(f"  at least one move the world refused          {len(blocked_runs)}"
+              f" ({len(blocked_runs) / len(never_lost):.1%})")
+        print(f"  what refused it                              {dict(blocked_by.most_common())}")
     print("-" * 66)
     print("escape ticks (a bomb is ticking and the agent is not yet safe)")
     print(f"  ticks recorded                               {len(ticks)}")
@@ -632,6 +684,9 @@ def main() -> None:
             "fatal_turns_with_a_saving_alternative": distinguishable_total,
             "fatal_turn_indistinguishable_in_v3_escape": v3_indistinguishable,
             "fatal_turns_compared_in_v3_escape": v3_total,
+            "deaths_with_a_plan_throughout": len(never_lost),
+            "of_those_with_a_refused_move": len(blocked_runs),
+            "refused_by": {str(k): v for k, v in blocked_by.items()},
             "escape_ticks": len(ticks), "escape_ticks_with_safer_move": len(decisive),
             "escape_ticks_wait_chosen": len(chose_wait), "escape_ticks_safer_chosen": len(chose_safer),
             "escape_ticks_shaping_prefers_wait": len(wait_wins),
