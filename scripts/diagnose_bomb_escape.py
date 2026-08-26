@@ -651,12 +651,35 @@ def main() -> None:
         print(f"  bearing names at least one route step        {useful} ({useful / len(bearings):.1%})")
         print(f"  every direction the bearing suggests is wrong{wrong:>6} ({wrong / len(bearings):.1%})")
     if never_lost:
+        # If the plan was still there at the last tick, the only remaining
+        # question is whether the agent could see it and declined, or could not
+        # see it.  Those two call for opposite fixes, so they are counted apart.
+        last_ticks = [bomb["escape_window"][-1] for bomb in never_lost]
+        with_option = [t for t in last_ticks if t["safer_moves"]]
+        took_it = [t for t in with_option if t["action"] in t["safer_moves"]]
+        waited = [t for t in with_option if t["action"] == "WAIT"]
+        visible = invisible = 0
+        for tick in with_option:
+            escape_view = tick.get("escape_by_direction") or {}
+            chosen_view = escape_view.get(tick["action"])
+            saving = [escape_view.get(name) for name in tick["safer_moves"]]
+            if chosen_view is not None and saving and all(v == chosen_view for v in saving):
+                invisible += 1
+            elif saving:
+                visible += 1
         print("-" * 66)
         print("deaths where a survivable plan existed at every recorded tick")
         print(f"  such deaths                                  {len(never_lost)}")
         print(f"  at least one move the world refused          {len(blocked_runs)}"
               f" ({len(blocked_runs) / len(never_lost):.1%})")
         print(f"  what refused it                              {dict(blocked_by.most_common())}")
+        print(f"  a safer move was on offer at the last tick   {len(with_option)}/{len(never_lost)}")
+        print(f"    and the agent took it anyway               {len(took_it)}")
+        print(f"    and the agent waited instead               {len(waited)}")
+        if visible + invisible:
+            print(f"    the saving move was visible in v3         {visible}"
+                  f" ({visible / (visible + invisible):.1%})")
+            print(f"    the saving move was indistinguishable     {invisible}")
     print("-" * 66)
     print("escape ticks (a bomb is ticking and the agent is not yet safe)")
     print(f"  ticks recorded                               {len(ticks)}")
