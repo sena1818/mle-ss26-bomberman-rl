@@ -1,17 +1,20 @@
-"""The runtime's transition pipeline: one held-back step, then an n-step window.
+"""The runtime's transition pipeline: encode a step, then an n-step window.
 
 Two separate problems are solved here, in this order.
 
-**Terminality.** The official framework decides whether a round ends *after* it
-has already delivered the step through ``game_events_occurred``, so terminality
-is not knowable at delivery time.  ``PendingTransition`` is one transition held
-back until the next callback resolves it.
+**Encoding.** ``EncodedTransition`` carries one step after its states have been
+turned into feature vectors, together with the potentials captured while the
+game states were still available.  It is a value passed straight through, not a
+buffer: the runtime commits every step at the moment the framework delivers it,
+so that the next action is chosen from parameters that already include it.  See
+docs/05 section 1.10 for why holding a step back was removed.
 
 **Credit assignment.** ``NStepAssembler`` turns the resolved one-step
 transitions into n-step ones.  A bomb dropped at ``t`` explodes at ``t+4``, so
 the events that justify the bomb land four or five transitions later; ``n = 1``
 has to propagate that through four bootstraps, while ``n = 5`` carries the real
-reward back in one update.  See docs/05 section 5.3.
+reward back in one update.  At ``n = 1`` the window emits on push, so the
+assembler is a pass-through and adds no delay of its own.  See docs/05 section 5.3.
 
 Every pushed one-step transition becomes the head of exactly one emitted
 n-step transition, so the number of learner updates in a round still equals the
@@ -30,8 +33,8 @@ from ..learners.base import Transition
 
 
 @dataclass
-class PendingTransition:
-    """One encoded transition held back until its terminality is known."""
+class EncodedTransition:
+    """One step with its states already encoded, ready to be committed."""
 
     key: tuple[int, int]
     state: np.ndarray

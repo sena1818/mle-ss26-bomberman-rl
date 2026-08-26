@@ -22,6 +22,7 @@ from agent_code.research_agent.config import (
 from agent_code.research_agent.learners import OnlineQLearner
 from agent_code.research_agent.models import LinearQModel, build_model
 from agent_code.research_agent.runtime import ExperimentRuntime
+from agent_code.research_agent.config import MAX_STEPS
 from agent_code.research_agent.runtime.experiment import (
     DEATH_PENALTIES,
     REWARD_TABLES,
@@ -30,7 +31,13 @@ from agent_code.research_agent.runtime.experiment import (
 )
 
 
-def game_state(step: int = 1, round_number: int = 1) -> dict:
+def game_state(step: int = 1, round_number: int = 1, *, cleared: bool = False) -> dict:
+    """One agent-visible state.
+
+    ``cleared`` removes the last collectable coin from a board that already has
+    no crates, no bombs and no opponents, which is exactly the condition
+    ``environment.time_to_stop`` treats as "nothing left to do".
+    """
     field = np.zeros((9, 9), dtype=int)
     field[[0, -1], :] = -1
     field[:, [0, -1]] = -1
@@ -41,7 +48,7 @@ def game_state(step: int = 1, round_number: int = 1) -> dict:
         "self": ("research_agent", 0, True, (3, 3)),
         "others": [],
         "bombs": [],
-        "coins": [(4, 3)],
+        "coins": [] if cleared else [(4, 3)],
         "explosion_map": np.zeros_like(field),
         "user_input": None,
     }
@@ -73,7 +80,15 @@ def started_runtime(temporary: str, config=None, *, train: bool = True) -> Exper
     return runtime
 
 
-def drive_round(runtime, *, steps: int, died: bool, final_events: list[str], round_number: int = 1) -> None:
+def drive_round(
+    runtime,
+    *,
+    steps: int,
+    died: bool,
+    final_events: list[str],
+    round_number: int = 1,
+    end_reason: str | None = None,
+) -> None:
     """Reproduce the official per-round callback sequence exactly.
 
     ``environment.do_step`` calls ``send_game_events`` -- which skips an agent
@@ -81,14 +96,31 @@ def drive_round(runtime, *, steps: int, died: bool, final_events: list[str], rou
     ``end_of_round`` with the same stored state, action and event list.  A
     surviving agent therefore has its last step delivered twice; a dead agent
     never has its fatal step delivered through ``game_events_occurred``.
+
+    Both states of one delivery carry the *same* step number: ``do_step`` stores
+    ``last_game_state`` and then fetches the successor without changing
+    ``self.step``.  ``time_to_stop`` compares that same counter against
+    ``MAX_STEPS``, which is why the successor is what terminality is read from.
+
+    A surviving round must say *why* it ended, because the runtime now reads that
+    from the delivered successor state instead of being told afterwards:
+
+    * ``"truncation"`` numbers the steps so the last delivery is ``MAX_STEPS``;
+    * ``"task_complete"`` hands over a cleared board on the last delivery.
     """
+    if not died and end_reason not in ("truncation", "task_complete"):
+        raise ValueError("a surviving round must declare why it ended")
     delivered = steps - 1 if died else steps
+    offset = MAX_STEPS - steps if end_reason == "truncation" else 0
     for step in range(1, delivered + 1):
-        events = final_events if (not died and step == steps) else []
+        last = not died and step == steps
         runtime.observe(
-            game_state(step, round_number), "WAIT", game_state(step + 1, round_number), list(events)
+            game_state(offset + step, round_number),
+            "WAIT",
+            game_state(offset + step, round_number, cleared=last and end_reason == "task_complete"),
+            list(final_events) if last else [],
         )
-    runtime.end_round(game_state(steps, round_number), "WAIT", list(final_events))
+    runtime.end_round(game_state(offset + steps, round_number), "WAIT", list(final_events))
 
 
 class OfficialLifecycleTest(unittest.TestCase):
@@ -115,7 +147,8 @@ class OfficialLifecycleTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             with patch.dict(os.environ, self._environment(temporary), clear=False):
                 runtime = started_runtime(temporary)
-                drive_round(runtime, steps=5, died=False, final_events=["COIN_COLLECTED", "SURVIVED_ROUND"])
+                drive_round(runtime, steps=5, died=False, final_events=["COIN_COLLECTED", "SURVIVED_ROUND"],
+                            end_reason="truncation")
 
             transitions = runtime.learner.transitions
             self.assertEqual(len(transitions), 5, "one update per step, never two for the last one")
@@ -130,7 +163,7 @@ class OfficialLifecycleTest(unittest.TestCase):
             with patch.dict(os.environ, self._environment(temporary), clear=False):
                 runtime = started_runtime(temporary)
                 self.assertFalse(runtime.config.terminal_on_truncation)
-                drive_round(runtime, steps=4, died=False, final_events=["SURVIVED_ROUND"])
+                drive_round(runtime, steps=4, died=False, final_events=["SURVIVED_ROUND"], end_reason="truncation")
 
             final = runtime.learner.transitions[-1]
             self.assertFalse(final.terminal)
@@ -142,7 +175,7 @@ class OfficialLifecycleTest(unittest.TestCase):
             config = replace(active_config(), terminal_on_truncation=True)
             with patch.dict(os.environ, self._environment(temporary), clear=False):
                 runtime = started_runtime(temporary, config)
-                drive_round(runtime, steps=4, died=False, final_events=["SURVIVED_ROUND"])
+                drive_round(runtime, steps=4, died=False, final_events=["SURVIVED_ROUND"], end_reason="truncation")
 
             final = runtime.learner.transitions[-1]
             self.assertTrue(final.terminal)
@@ -190,14 +223,82 @@ class OfficialLifecycleTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             with patch.dict(os.environ, self._environment(temporary), clear=False):
                 runtime = started_runtime(temporary)
-                drive_round(runtime, steps=3, died=False, final_events=["SURVIVED_ROUND"], round_number=1)
-                self.assertIsNone(runtime._pending)
+                drive_round(runtime, steps=3, died=False, final_events=["SURVIVED_ROUND"], round_number=1,
+                            end_reason="truncation")
+                self.assertIsNone(runtime._delivered_key)
                 drive_round(runtime, steps=2, died=True, final_events=["KILLED_SELF"], round_number=2)
-                self.assertIsNone(runtime._pending)
+                self.assertIsNone(runtime._delivered_key)
 
             self.assertEqual(len(runtime.learner.transitions), 5)
             self.assertEqual(runtime.round_updates, 2, "per-round metrics reset on a new round")
             self.assertEqual(runtime.training_updates, 5)
+
+
+    def test_a_step_is_learned_before_the_next_action_is_chosen(self):
+        """One-step Q-learning must not lag the policy it is training.
+
+        ``do_step`` chooses the next action in ``poll_and_run_agents`` *before*
+        ``send_game_events`` delivers the previous step, so a runtime that holds
+        a transition back until the next delivery makes every action come from
+        parameters that exclude the step just observed.  That is a different
+        algorithm, and it measurably changed results; see docs/05 section 1.10.
+        """
+        with tempfile.TemporaryDirectory() as temporary:
+            with patch.dict(os.environ, self._environment(temporary), clear=False):
+                runtime = started_runtime(temporary)
+                before = runtime.model.weights.copy()
+                runtime.observe(game_state(1), "WAIT", game_state(1), ["COIN_COLLECTED"])
+                # The update has already happened, so the parameters the next
+                # act() will read differ from the ones that produced this step.
+                self.assertEqual(len(runtime.learner.transitions), 1)
+                self.assertFalse(np.array_equal(before, runtime.model.weights))
+                runtime.select_action(game_state(2))
+
+    def test_a_completed_task_is_terminal_regardless_of_the_truncation_switch(self):
+        """Clearing the board ends the MDP; the step limit only truncates it.
+
+        ``time_to_stop`` checks "nothing left to do" before it checks the step
+        limit, and the two are not the same event: the first has a true
+        remaining return of zero, the second does not.  Sharing one switch
+        between them would cut the bootstrap on a round that merely ran out of
+        time, or keep it on a round that genuinely finished.
+        """
+        for terminal_on_truncation in (False, True):
+            with self.subTest(terminal_on_truncation=terminal_on_truncation):
+                with tempfile.TemporaryDirectory() as temporary:
+                    config = replace(active_config(), terminal_on_truncation=terminal_on_truncation)
+                    with patch.dict(os.environ, self._environment(temporary), clear=False):
+                        runtime = started_runtime(temporary, config)
+                        drive_round(runtime, steps=3, died=False, final_events=["SURVIVED_ROUND"],
+                                    end_reason="task_complete")
+
+                    final = runtime.learner.transitions[-1]
+                    self.assertEqual(len(runtime.learner.transitions), 3)
+                    self.assertTrue(final.terminal, "a cleared board is a real terminal state")
+                    self.assertIsNone(final.next_state)
+                    self.assertEqual(runtime.round_end_mispredictions, 0)
+
+    def test_a_round_end_the_runtime_did_not_predict_is_counted(self):
+        """The smoke-stage approximation is measured, not assumed.
+
+        ``round_end_reason`` cannot see an explosion that has decayed to smoke,
+        so its "nothing left to do" test is necessary but can be early or late.
+        Every disagreement with what the framework actually did is counted and
+        written into ``round_end``.
+        """
+        with tempfile.TemporaryDirectory() as temporary:
+            with patch.dict(os.environ, self._environment(temporary), clear=False):
+                runtime = started_runtime(temporary)
+                # A board that still has a coin, at a step well below the limit:
+                # nothing here says the round is about to end, yet it does.
+                runtime.observe(game_state(7), "WAIT", game_state(7), [])
+                self.assertEqual(runtime.round_end_mispredictions, 0)
+                runtime.end_round(game_state(7), "WAIT", ["SURVIVED_ROUND"])
+
+            self.assertEqual(runtime.round_end_mispredictions, 1)
+            self.assertEqual(len(runtime.learner.transitions), 1, "still learned exactly once")
+            record = json.loads((Path(temporary) / "agent" / "agent.jsonl").read_text().splitlines()[-1])
+            self.assertEqual(record["round_end_mispredictions"], 1)
 
     def test_unusable_action_is_skipped_without_dropping_the_previous_step(self):
         """A timeout or silenced agent error has no six-action index."""
@@ -235,7 +336,8 @@ class NStepAndShapingLifecycleTest(unittest.TestCase):
              final_events: list[str]):
         config = replace(active_config(), n_step=n_step, reward_version=reward_version)
         runtime = started_runtime(temporary, config)
-        drive_round(runtime, steps=steps, died=died, final_events=final_events)
+        drive_round(runtime, steps=steps, died=died, final_events=final_events,
+                    end_reason=None if died else "truncation")
         return runtime
 
     def test_a_longer_window_still_learns_from_every_step_exactly_once(self):

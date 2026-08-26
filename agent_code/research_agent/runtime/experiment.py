@@ -12,6 +12,7 @@ import numpy as np
 from ..artifacts import append_jsonl, checkpoint_interval, checkpoint_path, latest_model_path, model_path, run_id
 from ..config import (
     ACTIONS,
+    MAX_STEPS,
     ExperimentConfig,
     epsilon_for_training_round,
     exploration_specification,
@@ -21,7 +22,7 @@ from ..learners import Learner, Transition, build_learner
 from ..models import QModel, build_model, load_model
 from ..shaping import PotentialShaping, build_shaping
 from ..state import encode_state, legal_action_mask, state_dimension
-from .transitions import NStepAssembler, PendingTransition
+from .transitions import EncodedTransition, NStepAssembler
 
 
 REWARD_TABLES = {
@@ -143,6 +144,49 @@ def _is_unusable_action(action: str | None) -> bool:
     return action not in ACTIONS
 
 
+ROUND_CONTINUES = None
+TASK_COMPLETE = "task_complete"
+TRUNCATION = "truncation"
+
+
+def round_end_reason(new_game_state: dict | None) -> str | None:
+    """Return why the round ends after the step that produced this state.
+
+    ``None`` means it continues.  This mirrors ``environment.time_to_stop`` in
+    the order that function checks its conditions, so that terminality is known
+    at delivery time and no step has to be held back.
+
+    The two reasons are not interchangeable and must not share one switch:
+
+    * ``TASK_COMPLETE`` -- nothing collectable or destructible is left and no
+      opponent is alive.  The remaining true return is zero, so this is a real
+      terminal state and its target is ``r`` regardless of configuration.
+    * ``TRUNCATION`` -- the step limit was reached while the world was still
+      going.  The MDP has not ended, so the target bootstraps unless
+      ``terminal_on_truncation`` says otherwise (Pardo et al. 2018).
+
+    One approximation is unavoidable and is therefore measured rather than
+    assumed.  ``time_to_stop`` requires ``len(self.explosions) == 0``, but an
+    explosion stays in that list for two further steps as harmless smoke, and
+    ``explosion_map`` only exposes its dangerous stage.  The condition below is
+    therefore *necessary* but can fire up to two steps early.  ``ExperimentRuntime``
+    counts every disagreement between this prediction and what the framework
+    actually did and writes the count into ``round_end``; see
+    ``round_end_mispredictions``.
+    """
+    if new_game_state is None:
+        return ROUND_CONTINUES
+    if (not new_game_state["others"]
+            and not (new_game_state["field"] == 1).any()
+            and not new_game_state["coins"]
+            and not new_game_state["bombs"]
+            and not new_game_state["explosion_map"].any()):
+        return TASK_COMPLETE
+    if int(new_game_state["step"]) >= MAX_STEPS:
+        return TRUNCATION
+    return ROUND_CONTINUES
+
+
 class ExperimentRuntime:
     """Deep module hiding route-specific model and learner adapters.
 
@@ -167,7 +211,12 @@ class ExperimentRuntime:
         self.learner: Learner | None = None
         self.training_updates = 0
         self.round_number: int | None = None
-        self._pending: PendingTransition | None = None
+        # Only the identity of the last delivered step is kept, never the step
+        # itself: keeping the transition is what used to delay learning by one
+        # action.  See docs/05 section 1.10.
+        self._delivered_key: tuple[int, int] | None = None
+        self._predicted_round_end = False
+        self.round_end_mispredictions = 0
         # Shaping is derived from the reward version and shares the learner's
         # gamma, which is what makes the policy-invariance argument hold.
         self.shaping: PotentialShaping | None = build_shaping(config)
@@ -234,13 +283,16 @@ class ExperimentRuntime:
         return action
 
     def observe(self, old_game_state: dict | None, action: str, new_game_state: dict | None, events: list[str]) -> None:
-        """Official ``game_events_occurred`` adapter.
+        """Official ``game_events_occurred`` adapter; learns from the step at once.
 
-        The transition is stashed rather than learned from immediately.  The
-        framework calls this hook before it evaluates ``time_to_stop``, so at
-        this moment it is still unknown whether the step just reported is the
-        last one of the round.  Deferring by exactly one transition is what
-        removes that ambiguity; terminality is decided in ``end_round``.
+        One-step Q-learning does not need the next action to form its target, so
+        a transition can be learned the moment it is delivered -- and must be, if
+        the next action is to be chosen from parameters that already include it.
+        ``round_end_reason`` supplies the terminality the framework will not
+        announce until afterwards, so nothing has to be held back.
+
+        ``end_round`` then only has to tell the redelivered survivor step (this
+        one, already learned) from the fatal step that never arrived here.
         """
         if old_game_state is None or self.model is None or self.learner is None:
             return
@@ -248,66 +300,92 @@ class ExperimentRuntime:
         if self.round_number != round_number:
             self.round_number = round_number
             self._start_round()
-        # The previous transition is now known to be non-terminal: the round
-        # continued far enough to report another step.
-        self._commit_pending(terminal=False)
+        elif self._predicted_round_end:
+            # The previous step was predicted to end the round and did not.  Only
+            # the smoke-stage approximation in ``round_end_reason`` can cause this.
+            self.round_end_mispredictions += 1
+            self.logger.warning("Predicted a round end at step %s that did not happen", self._delivered_key)
         if _is_unusable_action(action):
             # A timeout or a silenced agent error has no six-action index.  The
             # step is skipped rather than mapped onto an action never chosen.
             self.logger.warning("Skipping a transition with unusable action %r", action)
+            self._delivered_key = None
+            self._predicted_round_end = False
             return
-        self._pending = PendingTransition(
-            key=(round_number, int(old_game_state["step"])),
-            state=encode_state(old_game_state, self.config.state_encoder),
-            action_index=ACTIONS.index(action),
-            next_state=encode_state(new_game_state, self.config.state_encoder),
-            next_legal_mask=legal_action_mask(new_game_state) if new_game_state is not None else None,
-            events=list(events),
-            potential=self._potential(old_game_state),
-            next_potential=self._potential(new_game_state),
+        reason = round_end_reason(new_game_state)
+        self._commit(
+            EncodedTransition(
+                key=(round_number, int(old_game_state["step"])),
+                state=encode_state(old_game_state, self.config.state_encoder),
+                action_index=ACTIONS.index(action),
+                next_state=encode_state(new_game_state, self.config.state_encoder),
+                next_legal_mask=legal_action_mask(new_game_state) if new_game_state is not None else None,
+                events=list(events),
+                potential=self._potential(old_game_state),
+                next_potential=self._potential(new_game_state),
+            ),
+            terminal=self._is_terminal(reason),
         )
+        self._delivered_key = (round_number, int(old_game_state["step"]))
+        self._predicted_round_end = reason is not ROUND_CONTINUES
+
+    def _is_terminal(self, reason: str | None) -> bool:
+        """Map a round-end reason onto a TD target.
+
+        A completed task is a real terminal state: the remaining return is zero,
+        so ``target = r`` regardless of configuration.  A step-limit truncation
+        is not, and bootstraps unless ``terminal_on_truncation`` overrides it.
+        """
+        if reason == TASK_COMPLETE:
+            return True
+        if reason == TRUNCATION:
+            return self.config.terminal_on_truncation
+        return False
 
     def end_round(self, last_game_state: dict | None, last_action: str, events: list[str]) -> None:
-        """Official ``end_of_round`` adapter; resolves the final transition once.
+        """Official ``end_of_round`` adapter; commits the fatal step, if any.
 
         Two framework paths reach this hook and they are not symmetric.  A
         surviving agent has *already* had this exact step delivered through
         ``game_events_occurred``, because ``send_game_events`` runs before
-        ``time_to_stop``.  A dead agent has not: ``send_game_events`` skips a
-        dead agent, so its final -- and only fatal -- transition arrives here
-        for the first time.  Committing unconditionally double-counts the first
-        case; ignoring this payload drops the death penalty in the second.
+        ``time_to_stop``; ``observe`` has therefore already learned from it once,
+        with the target its end reason implies.  A dead agent has not:
+        ``send_game_events`` skips a dead agent, so its final -- and only fatal --
+        transition arrives here for the first time.  Committing unconditionally
+        double-counts the first case; ignoring this payload drops the death
+        penalty in the second.  The ``(round, step)`` key tells them apart.
         """
         if last_game_state is None or self.model is None or self.learner is None:
             return
-        if _is_unusable_action(last_action):
-            self._commit_pending(terminal=False)
+        key = (int(last_game_state["round"]), int(last_game_state["step"]))
+        if key == self._delivered_key:
+            # Survived: already learned exactly once in ``observe``.  The events
+            # here are a superset (they add SURVIVED_ROUND), which no registered
+            # reward version weights, so re-reading them would change nothing.
+            if not self._predicted_round_end:
+                self.round_end_mispredictions += 1
+                self.logger.warning("Round ended at step %s without being predicted", key)
+        elif _is_unusable_action(last_action):
+            # No six-action index, so the fatal step cannot become a target.
+            self.logger.warning("Skipping a final transition with unusable action %r", last_action)
         else:
-            key = (int(last_game_state["round"]), int(last_game_state["step"]))
-            if self._pending is not None and self._pending.key == key:
-                # Survived: the redelivered step is the still-uncommitted pending
-                # transition.  ``events`` here is a superset of the stashed copy
-                # (it also carries SURVIVED_ROUND), so it replaces it.
-                self._commit(self._pending, terminal=self.config.terminal_on_truncation, events=list(events))
-                self._pending = None
-            else:
-                # Died: flush the last reported step, then learn from the fatal
-                # transition that was never delivered to game_events_occurred.
-                self._commit_pending(terminal=False)
-                self._commit(
-                    PendingTransition(
-                        key=key,
-                        state=encode_state(last_game_state, self.config.state_encoder),
-                        action_index=ACTIONS.index(last_action),
-                        next_state=None,
-                        next_legal_mask=None,
-                        events=list(events),
-                        potential=self._potential(last_game_state),
-                        next_potential=self._terminal_potential(),
-                    ),
-                    terminal=True,
-                )
-        self._pending = None
+            # Died: this transition never reached ``game_events_occurred`` and is
+            # the only one carrying KILLED_SELF / GOT_KILLED.
+            self._commit(
+                EncodedTransition(
+                    key=key,
+                    state=encode_state(last_game_state, self.config.state_encoder),
+                    action_index=ACTIONS.index(last_action),
+                    next_state=None,
+                    next_legal_mask=None,
+                    events=list(events),
+                    potential=self._potential(last_game_state),
+                    next_potential=self._terminal_potential(),
+                ),
+                terminal=True,
+            )
+        self._delivered_key = None
+        self._predicted_round_end = False
         # A truncated round leaves shorter windows behind; they are bootstrapped
         # from the last observed state rather than silently discarded.
         self._apply_all(self._assembler.flush())
@@ -335,20 +413,14 @@ class ExperimentRuntime:
             "shaping_reward": self.round_shaping_reward,
             "mean_abs_td_error": self.round_abs_td_error / max(1, self.round_updates),
             "updates_this_round": self.round_updates,
+            "round_end_mispredictions": self.round_end_mispredictions,
             "events": self.round_event_counts,
             "checkpoint": str(saved_checkpoint) if saved_checkpoint else None,
             "latest_model": str(latest_path),
         })
         self.logger.info("%s round=%d updates=%d official_reward=%+.1f checkpoint=%s", self.config.name, round_number, self.training_updates, self.round_reward, saved_checkpoint)
 
-    def _commit_pending(self, *, terminal: bool) -> None:
-        """Learn from the held-back transition, if there is one."""
-        if self._pending is None:
-            return
-        pending, self._pending = self._pending, None
-        self._commit(pending, terminal=terminal)
-
-    def _commit(self, pending: PendingTransition, *, terminal: bool, events: list[str] | None = None) -> None:
+    def _commit(self, pending: EncodedTransition, *, terminal: bool, events: list[str] | None = None) -> None:
         """Resolve one transition and hand it to the n-step window.
 
         Resolving is not the same as learning from it.  With ``n_step = 1`` the
@@ -427,6 +499,10 @@ class ExperimentRuntime:
         if leftover:
             self.logger.warning("Discarding %d unflushed transitions from the previous round", leftover)
             self._assembler.reset()
+        # A round that ended without the official hook leaves these set; the new
+        # round must not inherit the previous round's delivery identity.
+        self._delivered_key = None
+        self._predicted_round_end = False
         self._reset_round_metrics()
 
     def _reset_round_metrics(self) -> None:
