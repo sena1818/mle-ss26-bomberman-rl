@@ -173,21 +173,31 @@ EXPLORATION_SCHEDULES = {
     # 0.11 and the cold start it was built for was gone.  Counting the schedule
     # in steps puts it in the same unit as min_size and the replay capacity, so
     # "explore until the buffer is ready, then anneal" means what it says.
+    #
+    # ``anneal_steps`` is 50,000 and that number is measured, not chosen for
+    # roundness.  A step-counted anneal has a feedback loop a round-counted one
+    # does not: epsilon only falls as steps accumulate, and steps only
+    # accumulate as the agent survives.  A first attempt at 200,000 never
+    # escaped the random regime -- 2,000 rounds produced 18,627 steps and left
+    # epsilon at 0.96, because at epsilon 1.00 a round is ten steps long.  At
+    # the measured 10 steps/round at epsilon 1.0 rising to 30 near epsilon 0.3,
+    # 50,000 steps is roughly 2,000-2,500 rounds, so the floor is reached
+    # around round 3,000 of a 10,000-round budget.
     "E09": {
         "kind": "hold_then_linear_steps",
         "initial_epsilon": 1.00,
         "hold_steps": 10_000,
-        "anneal_steps": 200_000,
+        "anneal_steps": 50_000,
         "final_epsilon": 0.05,
         "description": "epsilon is 1.00 for 10,000 environment steps -- exactly the replay"
                        " min_size, so the first gradient step sees a full buffer at full"
-                       " exploration -- then decays to 0.05 over 200,000 steps",
+                       " exploration -- then decays to 0.05 over 50,000 steps",
     },
     "E10": {
         "kind": "hold_then_linear_steps",
         "initial_epsilon": 0.20,
         "hold_steps": 10_000,
-        "anneal_steps": 200_000,
+        "anneal_steps": 50_000,
         "final_epsilon": 0.05,
         "description": "E09 with the start lowered to 0.20; hold and anneal lengths are"
                        " unchanged (warm start from a behaviour-cloned policy)",

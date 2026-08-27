@@ -655,15 +655,34 @@ class StepCountedScheduleTest(unittest.TestCase):
     """
 
     def test_the_hold_is_the_replay_min_size(self):
+        """So the first gradient step sees a full buffer at full exploration."""
         schedule = EXPLORATION_SCHEDULES["E09"]
         self.assertEqual(schedule["hold_steps"], EXPERIMENTS["R07"].replay.min_size)
+
+    def test_the_anneal_is_short_enough_to_escape_the_random_regime(self):
+        """A step-counted anneal has a feedback loop a round-counted one lacks.
+
+        Epsilon only falls as steps accumulate and steps only accumulate as the
+        agent survives, so an anneal that is too long never completes: the
+        pilot measured 2,000 rounds producing 18,627 steps and leaving epsilon
+        at 0.96.  At the measured 10 steps per round under full exploration,
+        50,000 steps is a few thousand rounds, which a 10,000-round budget
+        traverses with room to spare.
+        """
+        schedule = EXPLORATION_SCHEDULES["E09"]
+        measured_steps_per_round_at_full_exploration = 10
+        rounds_to_floor = (
+            (schedule["hold_steps"] + schedule["anneal_steps"])
+            / measured_steps_per_round_at_full_exploration
+        )
+        self.assertLess(rounds_to_floor, 10_000)
 
     def test_epsilon_follows_environment_steps(self):
         config = replace(active_config(), exploration_version="E09")
         self.assertEqual(epsilon_for_training_step(config, 0), 1.00)
         self.assertEqual(epsilon_for_training_step(config, 10_000), 1.00)
-        self.assertAlmostEqual(epsilon_for_training_step(config, 110_000), 0.525)
-        self.assertEqual(epsilon_for_training_step(config, 210_000), 0.05)
+        self.assertAlmostEqual(epsilon_for_training_step(config, 35_000), 0.525)
+        self.assertEqual(epsilon_for_training_step(config, 60_000), 0.05)
         self.assertEqual(epsilon_for_training_step(config, 3_000_000), 0.05)
 
     def test_e10_differs_from_e09_in_the_start_and_nothing_else(self):

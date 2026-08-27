@@ -437,7 +437,10 @@ class ExperimentRuntime:
             "epsilon": self.round_end_epsilon,
             "gradient_steps_this_round": self.round_gradient_steps,
             "gradient_steps": self.gradient_steps,
+            # ``learner_step`` is the buffer state as the round ended;
+            # ``learner_gradient_step`` is the last step that actually updated.
             "learner_step": self.round_last_step or None,
+            "learner_gradient_step": self.round_last_gradient_step or None,
             "model_diagnostics": self._round_model_diagnostics(),
             "round_end_mispredictions": self.round_end_mispredictions,
             "events": self.round_event_counts,
@@ -494,6 +497,8 @@ class ExperimentRuntime:
                 self._record_model_diagnostics()
             if step:
                 self.round_last_step = step
+                if step.get("gradient_applied"):
+                    self.round_last_gradient_step = step
 
     def _record_model_diagnostics(self) -> None:
         """Accumulate optional model-side stability diagnostics for this round."""
@@ -571,6 +576,11 @@ class ExperimentRuntime:
         self.round_gradient_steps = 0
         self.round_gradient_abs_td_error = 0.0
         self.round_last_step: dict[str, Any] = {}
+        # Separate, because most observes are not gradient steps: with
+        # train_every 4 only a quarter are, so the last observe of a round
+        # almost never carries loss or Q statistics.  Recording only that one
+        # made every round report them as null.
+        self.round_last_gradient_step: dict[str, Any] = {}
         self.round_end_epsilon: float | None = None
         self.round_reward = 0.0
         self.round_shaping_reward = 0.0
