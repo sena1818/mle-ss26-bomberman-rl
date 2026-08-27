@@ -229,6 +229,24 @@ LEARNING_RATE_SCHEDULES = {
         "description": "linear decay to 20% of the route's learning_rate over 2500 rounds,"
                        " then held there",
     },
+    # L01 was picked to have the step small before the plateau section 7.26.2
+    # found at round 2250; it was never tuned, and it turned out to carry the
+    # largest effect measured on this line (+1.10 on the tournament suite,
+    # t = +20).  L02 and L03 vary one knob each so the shape can be attributed:
+    # L02 keeps the length and lowers the floor, L03 keeps the floor and doubles
+    # the length.  Both stay in absolute rounds, for the reason E01 taught.
+    "L02": {
+        "kind": "linear_absolute",
+        "decay_rounds": 2500,
+        "final_fraction": 0.05,
+        "description": "L01's decay length with a floor of 5% instead of 20%",
+    },
+    "L03": {
+        "kind": "linear_absolute",
+        "decay_rounds": 5000,
+        "final_fraction": 0.2,
+        "description": "L01's floor reached over 5000 rounds instead of 2500",
+    },
 }
 LEARNING_RATE_SCHEDULE_VERSIONS = frozenset(LEARNING_RATE_SCHEDULES)
 

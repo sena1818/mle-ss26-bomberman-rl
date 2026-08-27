@@ -472,6 +472,10 @@ class Experiment:
     algorithm: str
     reward_version: str
     exploration_version: str
+    # Declared here rather than only on the route so that a schedule sweep does
+    # not need one new route per point, the way reward and exploration versions
+    # already work.  None means "whatever the route declares".
+    learning_rate_schedule: str | None
     state_representation: str
     training: Phase
     evaluation: Phase
@@ -567,6 +571,9 @@ class Experiment:
                 algorithm=agent["algorithm"],
                 reward_version=safe_identifier(raw["reward_version"], "reward_version"),
                 exploration_version=safe_identifier(raw.get("exploration_version", "E00"), "exploration_version"),
+                learning_rate_schedule=(
+                    safe_identifier(raw["learning_rate_schedule"], "learning_rate_schedule")
+                    if raw.get("learning_rate_schedule") is not None else None),
                 state_representation=agent["state_representation"],
                 training=training,
                 evaluation=evaluation,
@@ -686,6 +693,7 @@ class Experiment:
             "main_lines": list(self.lines),
             "reward_version": self.reward_version,
             "exploration_version": self.exploration_version,
+            "learning_rate_schedule": self.learning_rate_schedule,
             "training": asdict(self.training),
             "evaluation": asdict(self.evaluation),
             "checkpoint_evaluation": asdict(self.checkpoint_evaluation),
@@ -787,6 +795,9 @@ def resolved_runtime_config(experiment: Experiment) -> dict[str, Any]:
             config,
             reward_version=experiment.reward_version,
             exploration_version=experiment.exploration_version,
+            learning_rate_schedule=(experiment.learning_rate_schedule
+                                    if experiment.learning_rate_schedule is not None
+                                    else config.learning_rate_schedule),
             terminal_on_truncation=experiment.terminal_on_truncation,
             n_step=experiment.n_step,
             # An absent ``agent.replay`` means no replay, never "whatever the

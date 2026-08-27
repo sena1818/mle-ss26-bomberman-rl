@@ -1,0 +1,146 @@
+{
+  "_design_note": "Shape of the decay, one knob at a time. L01 was chosen to have the step small before the round-2250 plateau and was never tuned, yet it carries the largest effect measured on this line (+1.0976 on the tournament suite against F2, t = +20.2). Two variants separate its two parameters: L02 keeps the length and lowers the floor, L03 keeps the floor and doubles the length. Neither is predicted to win; the point is to learn which knob the effect lives on.",
+  "_predeclared_design_numbers": {
+    "changed_factor": "learning_rate_schedule L01 -> L03: the same 20% floor is reached over 5000 rounds instead of 2500",
+    "control": "runs/m3_lr_decay_5000_vs3rb_20260827/ -- R02_9 with L01: repeat-measured tournament score 3.6371 (sd 0.121 over ten repeats), coins_share 0.3449, primary-suite 16.596",
+    "falsification": "Both variants within the resolvable gap of L01 means the effect is not sensitive to the shape in this range, and L01 can be kept without further tuning.",
+    "prediction": "None stated. L01 was never tuned; whether it is near the right shape is unknown.",
+    "reporting": "All five training-seed distributions, coins_share, the death split, the checkpoint curve (the control's did not flatten, unlike every constant-rate arm), and the ten repeat measurements individually.",
+    "resolution_primary": "The control's cross-seed sd on the loot-crate-with-opponents suite is 0.97, so a five-seed mean has standard error 0.43 and two arms measured once each need a gap of about 1.2.",
+    "resolution_tournament": "Ten repeats of classic_versus_opponents against the control's ten. A single measurement settles nothing (section 7.26.3)."
+  },
+  "agent": {
+    "algorithm": "double_dqn",
+    "model": "mlp_q",
+    "n_step": 5,
+    "name": "research_agent",
+    "replay": {
+      "batch_size": 32,
+      "capacity": 50000,
+      "min_size": 1000,
+      "target_update_every": 500,
+      "train_every": 1
+    },
+    "state_representation": "handcrafted_v3"
+  },
+  "checkpoint_evaluation": {
+    "holdout_seeds": [
+      3001,
+      3002,
+      3003
+    ],
+    "mode": "all",
+    "validation_seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation": {
+    "budget": {
+      "checkpoint_every": 250,
+      "rounds": 30
+    },
+    "opponents": [
+      "rule_based_agent",
+      "rule_based_agent",
+      "rule_based_agent"
+    ],
+    "scenario": "loot-crate",
+    "seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation_suites": {
+    "classic_solo": {
+      "budget": {
+        "checkpoint_every": 250,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "classic_versus_opponents": {
+      "budget": {
+        "checkpoint_every": 250,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [
+        "rule_based_agent",
+        "rule_based_agent",
+        "rule_based_agent"
+      ],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    }
+  },
+  "experiment_id": "M3_L03_R02_9_A06_E02_C00_T02_n5_5000_vs3rb",
+  "exploration_version": "E02",
+  "learning_rate_schedule": "L03",
+  "promotion": {
+    "primary_metric": "score"
+  },
+  "reward_version": "A06",
+  "route": "R02_9",
+  "schema_version": 1,
+  "shaping": {
+    "name": "potential_v1"
+  },
+  "terminal_on_truncation": false,
+  "training": {
+    "budget": {
+      "checkpoint_every": 250,
+      "rounds": 5000
+    },
+    "opponents": [
+      "rule_based_agent",
+      "rule_based_agent",
+      "rule_based_agent"
+    ],
+    "scenario": "loot-crate",
+    "seeds": [
+      1001,
+      1002,
+      1003,
+      1004,
+      1005
+    ]
+  }
+}
