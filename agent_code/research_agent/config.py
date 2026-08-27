@@ -486,6 +486,31 @@ EXPERIMENTS = {
     # (the arena's symmetry group acts on an agent-centred window), it costs
     # nothing at sample time, and holding it back would only make the anchor a
     # weaker base for every increment measured against it.
+    # R02_8 is R02_7 at the step size R02_6 found.  M3.11 ran width and
+    # double_dqn together at 1e-3 and landed on mean_hidden_zero_fraction 0.790,
+    # the same signature as M3.8's 0.791, which M3.10 showed is what the step
+    # size produces at this width -- so that arm could not answer whether the
+    # combination works.  This one can.
+    "R02_8": ExperimentConfig(
+        name="R02_8",
+        lines=("M3",),
+        state_encoder="handcrafted_v3",
+        network="mlp_q",
+        algorithm="double_dqn",
+        learning_rate=5e-4,
+        discount=0.95,
+        epsilon=0.15,
+        safety_filter="legality_only",
+        feature_version="handcrafted_v3",
+        reward_version=REWARD_VERSION,
+        exploration_version=EXPLORATION_VERSION,
+        terminal_on_truncation=TERMINAL_ON_TRUNCATION,
+        hidden_layers=(128, 64),
+        replay=ReplayConfig(),
+        optimizer="adam",
+        td_loss="huber",
+        gradient_clip_norm=10.0,
+    ),
     "R07": ExperimentConfig(
         name="R07",
         lines=("M4",),

@@ -1,0 +1,142 @@
+{
+  "_design_note": "M3.14. The combination arm M3.11 should have been. M3.11 put (128, 64) and double_dqn together at learning rate 1e-3 and scored 24.882, resolvably below the control -- but it ended on mean_hidden_zero_fraction 0.790, the same value M3.8 reached at the same width and step size, and M3.10 showed that halving the step size brings that number back to 0.659 and the score back to within noise of the control. M3.11 therefore measured the step size again, not the combination. This arm is M3.11 with learning rate 5e-4, the only change.",
+  "_predeclared_design_numbers": {
+    "changed_factor": "learning_rate 1e-3 -> 5e-4 (route R02_7 -> R02_8); width and algorithm unchanged",
+    "control_a": "runs/m3_10_wide_lr5e4_20260827/ (31.576) -- same width and step size, q_learning",
+    "control_b": "runs/m3_7_double_dqn_20260827/ (31.771) -- same algorithm and step size, (64, 32)",
+    "control_c": "runs/m3_3lx_oppeval_20260826/ (32.622) -- none of the three",
+    "control_d": "runs/m3_11_wide_ddqn_20260827/ (24.882) -- same arm at 1e-3",
+    "falsification": "Landing within 4.7 of M3.11's 24.882 means the step size is not what sank that arm and the combination itself is harmful.",
+    "prediction": "None stated.",
+    "prediction_diagnostics": "Report mean_hidden_zero_fraction. Landing near 0.66 rather than 0.79 confirms that number tracks the step size at this width, which is the claim section 7.21.6 has to be rewritten around.",
+    "reporting": "Report all five training-seed distributions, every G2 threshold, coins_share, and mean_hidden_zero_fraction.",
+    "resolution_loot_crate": "The control's five training-seed scores are 38.578 / 33.911 / 31.389 / 29.722 / 29.511, sd 3.77, so a five-seed mean has standard error 1.69 and two arms measured once each need a gap of 4.7.",
+    "resolution_tournament": "docs/01 section 7.20: tournament score needs 0.246, coins_share 0.022.",
+    "what_would_make_this_worth_keeping": "M3.10 already matches the control on score with resolvably fewer suicides (0.171 against 0.453, non-overlapping across seeds). This arm is only interesting if it beats M3.10 on suicides or on the tournament suite; matching it means the algorithm adds nothing on top of the retuned width."
+  },
+  "agent": {
+    "algorithm": "double_dqn",
+    "model": "mlp_q",
+    "n_step": 5,
+    "name": "research_agent",
+    "replay": {
+      "batch_size": 32,
+      "capacity": 50000,
+      "min_size": 1000,
+      "target_update_every": 500,
+      "train_every": 1
+    },
+    "state_representation": "handcrafted_v3"
+  },
+  "checkpoint_evaluation": {
+    "holdout_seeds": [
+      3001,
+      3002,
+      3003
+    ],
+    "mode": "all",
+    "validation_seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation": {
+    "budget": {
+      "checkpoint_every": 50,
+      "rounds": 30
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation_suites": {
+    "classic_solo": {
+      "budget": {
+        "checkpoint_every": 100,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "classic_versus_opponents": {
+      "budget": {
+        "checkpoint_every": 100,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [
+        "rule_based_agent",
+        "rule_based_agent",
+        "rule_based_agent"
+      ],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    }
+  },
+  "experiment_id": "M3_14_R02_8_A06_E01_C00_T02_n5_2000",
+  "exploration_version": "E01",
+  "promotion": {
+    "primary_metric": "score"
+  },
+  "reward_version": "A06",
+  "route": "R02_8",
+  "schema_version": 1,
+  "shaping": {
+    "name": "potential_v1"
+  },
+  "terminal_on_truncation": false,
+  "training": {
+    "budget": {
+      "checkpoint_every": 100,
+      "rounds": 2000
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      1001,
+      1002,
+      1003,
+      1004,
+      1005
+    ]
+  }
+}
