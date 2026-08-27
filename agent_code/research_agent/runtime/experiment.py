@@ -210,6 +210,12 @@ class ExperimentRuntime:
         self.model: QModel | None = None
         self.learner: Learner | None = None
         self.training_updates = 0
+        # Observing a transition and applying a gradient are different events.
+        # A replay learner below ``min_size``, or on a step that is not a
+        # multiple of ``train_every``, observes without updating anything.
+        # Counting the two together is what made a stalled run indistinguishable
+        # from a converged one.
+        self.gradient_steps = 0
         self.round_number: int | None = None
         # Only the identity of the last delivered step is kept, never the step
         # itself: keeping the transition is what used to delay learning by one
@@ -399,7 +405,10 @@ class ExperimentRuntime:
             "runtime_config": asdict(self.config),
             "agent_seed": self.agent_seed,
             "round": round_number,
+            # Observed transitions, which is what the checkpoint filename has
+            # always encoded.  Gradient steps are the separate, smaller number.
             "updates": self.training_updates,
+            "gradient_steps": self.gradient_steps,
         }
         latest_path = latest_model_path()
         self.model.save(latest_path, metadata=metadata)
@@ -411,8 +420,18 @@ class ExperimentRuntime:
             **metadata,
             "official_reward": self.round_reward,
             "shaping_reward": self.round_shaping_reward,
+            # Kept over observes for continuity with every published run.
+            # ``mean_abs_td_error_per_gradient_step`` is the one to read: the
+            # other divides by steps that never updated anything.
             "mean_abs_td_error": self.round_abs_td_error / max(1, self.round_updates),
+            "mean_abs_td_error_per_gradient_step": (
+                self.round_gradient_abs_td_error / self.round_gradient_steps
+                if self.round_gradient_steps else None
+            ),
             "updates_this_round": self.round_updates,
+            "gradient_steps_this_round": self.round_gradient_steps,
+            "gradient_steps": self.gradient_steps,
+            "learner_step": self.round_last_step or None,
             "model_diagnostics": self._round_model_diagnostics(),
             "round_end_mispredictions": self.round_end_mispredictions,
             "events": self.round_event_counts,
@@ -461,7 +480,14 @@ class ExperimentRuntime:
             self.training_updates += 1
             self.round_updates += 1
             self.round_abs_td_error += abs(td_error)
-            self._record_model_diagnostics()
+            step = self.learner.step_diagnostics() if hasattr(self.learner, "step_diagnostics") else {}
+            if step.get("gradient_applied", True):
+                self.gradient_steps += 1
+                self.round_gradient_steps += 1
+                self.round_gradient_abs_td_error += abs(td_error)
+                self._record_model_diagnostics()
+            if step:
+                self.round_last_step = step
 
     def _record_model_diagnostics(self) -> None:
         """Accumulate optional model-side stability diagnostics for this round."""
@@ -536,6 +562,9 @@ class ExperimentRuntime:
 
     def _reset_round_metrics(self) -> None:
         self.round_updates = 0
+        self.round_gradient_steps = 0
+        self.round_gradient_abs_td_error = 0.0
+        self.round_last_step: dict[str, Any] = {}
         self.round_reward = 0.0
         self.round_shaping_reward = 0.0
         self.round_abs_td_error = 0.0

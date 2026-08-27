@@ -286,3 +286,59 @@ class QuantisedBoardStorageTest(unittest.TestCase):
         batch = buffer.sample(1)
         np.testing.assert_array_equal(batch["next_states"][0], np.zeros_like(vector))
         self.assertTrue(bool(batch["terminals"][0]))
+
+
+class GradientTelemetryTest(unittest.TestCase):
+    """Telling "did not update" apart from "updated to a TD error of zero"."""
+
+    def _learner(self, **overrides):
+        settings = ReplayConfig(capacity=64, batch_size=4, min_size=8, train_every=4, **overrides)
+        config = replace(validate_config(EXPERIMENTS["R01"]), replay=settings)
+        return ReplayQLearner(config, LinearQModel(STATE_WIDTH, seed=0), seed=0)
+
+    def test_a_step_below_min_size_reports_no_gradient_and_the_buffer_level(self):
+        learner = self._learner()
+        learner.observe(transition(1.0))
+        step = learner.step_diagnostics()
+        self.assertFalse(step["gradient_applied"])
+        self.assertEqual(step["gradient_steps"], 0)
+        self.assertEqual(step["replay_size"], 1)
+        self.assertNotIn("mean_abs_td_error", step)
+
+    def test_only_every_train_every_th_full_step_applies_a_gradient(self):
+        learner = self._learner()
+        applied = []
+        for index in range(24):
+            learner.observe(transition(float(index)))
+            applied.append(learner.step_diagnostics()["gradient_applied"])
+        # The buffer reaches min_size on the 8th observe, so the first seven
+        # cannot update and the 8th is eligible (8 % train_every == 0).
+        self.assertEqual(sum(applied[:7]), 0, "nothing may update below min_size")
+        self.assertTrue(applied[7])
+        self.assertEqual(learner.gradient_steps, sum(applied))
+        self.assertEqual(learner.step_diagnostics()["gradient_steps"], learner.gradient_steps)
+        self.assertEqual(sum(applied), 5)
+
+    def test_a_real_gradient_step_reports_the_values_it_used(self):
+        learner = self._learner()
+        for index in range(24):
+            learner.observe(transition(float(index)))
+        step = learner.step_diagnostics()
+        self.assertTrue(step["gradient_applied"])
+        for key in ("replay_size", "mean_abs_td_error", "mean_target", "target_synchronised"):
+            self.assertIn(key, step)
+        self.assertGreaterEqual(step["replay_size"], 8)
+
+    def test_the_target_network_synchronisation_is_visible(self):
+        learner = self._learner(target_update_every=1)
+        for index in range(24):
+            learner.observe(transition(float(index)))
+        self.assertTrue(learner.step_diagnostics()["target_synchronised"])
+
+    def test_an_online_learner_calls_every_step_a_gradient_step(self):
+        from agent_code.research_agent.learners import OnlineQLearner
+
+        config = validate_config(EXPERIMENTS["R01"])
+        learner = OnlineQLearner(config, LinearQModel(STATE_WIDTH, seed=0))
+        learner.observe(transition(1.0))
+        self.assertEqual(learner.step_diagnostics(), {"gradient_applied": True, "gradient_steps": 1})

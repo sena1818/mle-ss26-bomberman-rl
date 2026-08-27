@@ -1,0 +1,98 @@
+{
+  "git_commit": "548789496eba65ada1d56538b2166e4dd527862a",
+  "measured_at_utc": "2026-08-27T11:15:20+00:00",
+  "prepared_at_utc": "2026-08-27T11:15:20+00:00",
+  "repeats": 60,
+  "routes": [
+    {
+      "act_seconds": {
+        "p99": 0.0002632989571429784
+      },
+      "batch_size": 32,
+      "encode_seconds": {
+        "p50": 3.108347300440073e-05,
+        "p99": 9.585858788341254e-05
+      },
+      "environment_steps_per_second": 190.81560602315045,
+      "fit_batch_seconds": {
+        "p50": 0.00970152101945132
+      },
+      "gradient_step_seconds": {
+        "p50": 0.020340645918622613,
+        "p99": 0.021788950755726545
+      },
+      "gradient_steps_per_second": 49.16264724339275,
+      "inference_seconds": {
+        "p50": 0.00012441654689610004,
+        "p99": 0.0001674403692595659
+      },
+      "model": "cnn_mlp_q",
+      "official_budget_margin": 1898.9820750732658,
+      "projected_training_job": {
+        "environment_steps": 3000000,
+        "hours": 4.367217916296795,
+        "minutes": 262.0330749778077,
+        "rounds": 10000,
+        "seconds": 15721.984498668462,
+        "steps_per_round": 300
+      },
+      "replay_ratio": 8.0,
+      "route": "R07",
+      "setup_seconds": {
+        "construction": 0.951788250124082,
+        "first_forward": 0.0005826668348163366,
+        "first_in_process": true,
+        "total": 0.9523709169588983
+      },
+      "state_dimension": 2029,
+      "train_every": 4
+    },
+    {
+      "act_seconds": {
+        "p99": 0.0002858302113600073
+      },
+      "batch_size": 32,
+      "encode_seconds": {
+        "p50": 3.085436765104532e-05,
+        "p99": 7.715407526120534e-05
+      },
+      "environment_steps_per_second": 188.9440066606459,
+      "fit_batch_seconds": {
+        "p50": 0.009704895550385118
+      },
+      "gradient_step_seconds": {
+        "p50": 0.020495291450060904,
+        "p99": 0.022057858745101837
+      },
+      "gradient_steps_per_second": 48.79169454294481,
+      "inference_seconds": {
+        "p50": 0.00013789604417979717,
+        "p99": 0.00020867613609880197
+      },
+      "model": "dueling_cnn_mlp_q",
+      "official_budget_margin": 1749.2902433964293,
+      "projected_training_job": {
+        "environment_steps": 3000000,
+        "hours": 4.410477728621724,
+        "minutes": 264.6286637173034,
+        "rounds": 10000,
+        "seconds": 15877.719823038206,
+        "steps_per_round": 300
+      },
+      "replay_ratio": 8.0,
+      "route": "R08",
+      "setup_seconds": {
+        "construction": 0.001275000162422657,
+        "first_forward": 0.00022341683506965637,
+        "first_in_process": false,
+        "total": 0.0014984169974923134
+      },
+      "state_dimension": 2029,
+      "train_every": 4
+    }
+  ],
+  "scenario": "classic",
+  "torch_import_seconds": 0.6767963750753552,
+  "torch_threads": 1,
+  "worktree_dirty": true
+}

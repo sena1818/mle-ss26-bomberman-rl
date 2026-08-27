@@ -1,17 +1,23 @@
 {
-  "_design_note": "M4 dueling increment: identical to the anchor apart from the value/advantage split in the head. Declared with a weak prior and run last. Dueling helps where the action values within a state are close together; in Bomberman the opposite is often true -- next to a live bomb, two neighbouring moves are life and death -- so a small effect is expected.",
+  "_design_note": "Opponent exposure: the ONLY change from the anchor is training.opponents. It exists because of a structural gap, not a hunch. Training solo leaves the opponents plane and the living_opponents scalar identically zero for the whole run, so the first-layer weights that read them receive zero gradient and keep their random initialisation; at tournament evaluation those inputs become non-zero for the first time and inject an untrained random projection. handcrafted_v1 had the same structural gap (its opponent-bearing entries are also zero when solo), and docs/01 section 7.19 measured that closing it moved coins_share 18.6 -> 22.0 percent (3.0 sigma, above the 0.022 threshold) and survival 3.9 -> 17.4 percent, at a cost of 68 percent on solo classic. So the handcrafted evidence points at doing this, not away from it. Trained from scratch rather than fine-tuned from the anchor's checkpoints: fine-tuning would be cheaper but needs checkpoint warm-start, which INITIAL_MODEL_KINDS deliberately does not implement, and it would break the fresh-start rule every other arm in this project follows.",
   "_predeclared_design_numbers": {
-    "changed_factor": "model (cnn_mlp_q -> dueling_cnn_mlp_q).",
+    "budget_curve": "docs/05 section 0.18 found that on the handcrafted line, training past 2000 rounds made the competition-setting score worse, reproduced across two arms. Whether that holds for a model with three orders of magnitude more parameters is open; report classic_versus_opponents at every evaluated checkpoint rather than only at the end.",
+    "changed_factor": "training.opponents [] -> three rule_based_agent. Nothing else moves.",
     "control": "The M4 anchor arm at the same budget and seeds.",
-    "prediction": "None. The mechanism argument points slightly against it; the arm exists to measure rather than to confirm.",
+    "expected_cost": "docs/01 section 7.15: expect solo classic to fall substantially. Report it rather than hiding it; the submitted agent is scored with opponents.",
+    "falsification": "If coins_share does not move by 0.022, opponent exposure is not the bridge to G-B and the zero-gradient argument, however sound structurally, does not cash out.",
+    "gate": "Learning from scratch, judged on VALIDATION seeds only so that holdout stays unselected. All three must hold: (a) the mean loot-crate validation score over the last two evaluated checkpoints exceeds the mean over the first two by more than the 4.7 resolution; (b) the final validation score is above an untrained-CNN control, which the smoke measured at score 0.0 with wait_fraction 0.998 and distinct_cells 1.9; (c) the policy is not degenerate -- distinct_cells > 20, bomb_rate > 0.01, wait_fraction < 0.6. Point-to-point monotonicity is NOT required and must not be used: an RL curve that dips once is not a failed arm.",
+    "known_limitation": "Training is solo, so the opponents plane and the living_opponents scalar are identically zero throughout and the weights reading them keep their initialisation. At tournament evaluation those inputs become non-zero for the first time. This arm therefore cannot answer whether the representation helps against opponents; the opponent-exposure arm exists for that.",
+    "prediction": "classic_versus_opponents coins_share exceeds the anchor's by more than 0.022. No prediction on official score, which docs/01 section 7.20 shows resolves worse.",
     "reporting": "Quote evaluation_summary.json reportable_result, never selected_checkpoint: the latter maximises over train_seed x checkpoint_round and is biased upward. Report all five training-seed distributions, every G2 threshold, and coins_share alongside score for every arm that has opponents.",
+    "reproducibility": "rule_based_agent calls np.random.seed() with no argument (callbacks.py:69), so ARMS WITH OPPONENTS ARE NOT BIT-REPRODUCIBLE -- neither training nor evaluation. Every number from this arm carries that second noise source on top of training seed variance.",
     "resolution_loot_crate": "docs/01 section 7.21: the five-seed spread of the handcrafted control gives sd 3.77, so two arms measured once each need a gap of 4.7. That threshold covers training variance; the tournament one below does not.",
     "resolution_tournament": "docs/01 section 7.20: pooled 450-round classic-with-opponents score has sd 0.089, so two arms need a gap of 0.246 (coins_share: 0.022). This was measured by re-running ONE fixed set of checkpoints, so it is evaluation noise only and does NOT cover training variance. Use it for a paired same-seed difference, never to bless a maximum taken over seeds.",
     "selection_protocol": "Pool the five training seeds at each checkpoint round; pick the round on the pooled VALIDATION curve; freeze it; then read the holdout numbers at that round. Holdout is never used to decide whether to continue an arm."
   },
   "agent": {
     "algorithm": "double_dqn",
-    "model": "dueling_cnn_mlp_q",
+    "model": "cnn_mlp_q",
     "n_step": 3,
     "name": "research_agent",
     "replay": {
@@ -147,14 +153,14 @@
       ]
     }
   },
-  "experiment_id": "M4_R08_A06_E07_C00_T02_n3_10000",
+  "experiment_id": "M4_R07_A06_E07_C00_T02opp_n3_10000",
   "exploration_version": "E07",
   "promotion": {
     "primary_metric": "score",
     "selection_suite": "classic_versus_opponents"
   },
   "reward_version": "A06",
-  "route": "R08",
+  "route": "R07",
   "schema_version": 1,
   "shaping": {
     "name": "potential_v1"
@@ -165,7 +171,11 @@
       "checkpoint_every": 500,
       "rounds": 10000
     },
-    "opponents": [],
+    "opponents": [
+      "rule_based_agent",
+      "rule_based_agent",
+      "rule_based_agent"
+    ],
     "scenario": "loot-crate",
     "seeds": [
       1001,

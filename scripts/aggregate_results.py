@@ -38,7 +38,8 @@ from experiment_lib import Experiment, ROOT, RUNS_ROOT, write_json
 
 METRICS = ("score", "coins", "kills", "suicides", "invalid_actions", "steps", "inference_seconds")
 ROUND_METRICS = ("bomb_rate", "wait_fraction", "approximate_safe_bomb_rate", "distinct_cells")
-JOB_METRICS = ("crates_per_round", "crates_per_bomb", "coins_per_crate", "official_wait_fraction")
+JOB_METRICS = ("crates_per_round", "crates_per_bomb", "coins_per_crate", "official_wait_fraction",
+               "coins_share")
 DIAGNOSTIC_METRICS = ("rounds_with_bombs", "selected_invalid_actions")
 ALL_METRICS = METRICS + ROUND_METRICS + JOB_METRICS + DIAGNOSTIC_METRICS
 PROMOTION_ROOT = RUNS_ROOT / "promoted"
@@ -79,6 +80,18 @@ METRIC_DEFINITIONS = {
         "formula": "mean over rounds of the number of distinct visited cells",
         "source": "agent JSONL position field",
         "note": "absent for runs recorded before the position field existed; detects two-cycle policies",
+    },
+    "coins_share": {
+        "granularity": "job",
+        "formula": "official by_agent[self].coins / sum of by_agent[*].coins",
+        "note": (
+            "The competition metric with the least noise. official score is coins + 5 * kills, "
+            "and docs/01 section 7.20 measured the kill term at 11 percent of the score but 35 "
+            "percent of its variance; a share also divides out how many coins the round happened "
+            "to reveal. Undefined, not zero, when nobody collected anything, and equal to 1.0 by "
+            "construction in a solo evaluation -- only compare it across arms evaluated with the "
+            "same opponents."
+        ),
     },
     "crates_per_round": {"granularity": "job", "formula": "official by_agent.crates / rounds"},
     "crates_per_bomb": {"granularity": "job", "formula": "official by_agent.crates / by_agent.bombs"},
@@ -229,6 +242,10 @@ def one_evaluation(job_dir: Path, agent_name: str) -> dict[str, float | None]:
         "crates_per_round": crates / rounds,
         "crates_per_bomb": _ratio(crates, bombs),
         "coins_per_crate": _ratio(float(agent.get("coins", 0.0)), crates),
+        "coins_share": _ratio(
+            float(agent.get("coins", 0.0)),
+            sum(float(one.get("coins", 0.0)) for one in stats["by_agent"].values()),
+        ),
         "official_wait_fraction": _ratio(steps - moves - bombs - invalid, steps),
         "rounds_with_bombs": float(sum(1 for counter in actions.values() if counter.get("BOMB", 0))),
     }
@@ -350,6 +367,14 @@ def aggregate(run_dir: Path) -> dict:
                 "checkpoint_round": checkpoint_round,
                 "metrics": _metric_block(items),
                 "variance_decomposition": _variance_decomposition(by_round_seed[checkpoint_round]),
+                # The per-seed spread at one round.  Reporting only the pooled
+                # mean has already hidden a split once: docs/05 section 0.9 has
+                # an arm whose mean passed the suicide gate while two of its
+                # five seeds did not.
+                "per_train_seed": {
+                    str(train_seed): _metric_block(seed_samples)
+                    for train_seed, seed_samples in sorted(by_round_seed[checkpoint_round].items())
+                },
             }
             for checkpoint_round, items in sorted(
                 by_round.items(), key=lambda item: 10 ** 9 if item[0] is None else int(item[0])
@@ -368,6 +393,7 @@ def aggregate(run_dir: Path) -> dict:
         validation_candidates = candidate_records(name, "validation")
         validation_curve = checkpoint_curve_records(name, "validation")
         selected = max(validation_candidates, key=candidate_key) if validation_candidates else None
+        reportable = reportable_result(validation_curve, name, "validation")
         summary = {
             "scenario": next(iter(suite_scenarios)),
             "evaluation_jobs": sum(len(items) for items in by_role.values()),
@@ -376,7 +402,19 @@ def aggregate(run_dir: Path) -> dict:
             "holdout_seeds": list(policy.holdout_seeds),
             "checkpoint_candidates": validation_candidates,
             "validation_checkpoint_curve": validation_curve,
+            # Winner's curse warning, deliberately in the artifact and not only
+            # in the docs: this maximises over train_seed x checkpoint_round --
+            # 100 policies for an M4 arm.  It is the right rule for choosing a
+            # model to *submit* and the wrong one for quoting an arm's result,
+            # because the maximum of 100 noisy draws is biased upward and the
+            # docs/01 section 7.20 threshold measured evaluation noise only, not
+            # training variance.  Report ``reportable_result`` instead.
             "selected_checkpoint": selected,
+            "selected_checkpoint_purpose": (
+                "submission candidate only; biased upward by selection over "
+                "train_seed x checkpoint_round. Quote reportable_result."
+            ),
+            "reportable_result": reportable,
             "variance_decomposition": _variance_decomposition(by_train_seed[name]["validation"]),
         }
         pooled_validation = _metric_block(validation)
@@ -435,6 +473,10 @@ def aggregate(run_dir: Path) -> dict:
         "metric_definitions": METRIC_DEFINITIONS,
         "checkpoint_candidates": primary["checkpoint_candidates"],
         "selected_checkpoint": selected,
+        "promotion_selection_suite": experiment.promotion_selection_suite,
+        # The number to quote for this arm.  ``selected_checkpoint`` above is a
+        # maximum over train_seed x checkpoint_round and is biased upward.
+        "reportable_result": primary.get("reportable_result"),
         "evaluation_suites": suites,
     }
     if "holdout_metrics" in primary:
@@ -456,6 +498,55 @@ def promotion_key(summary: dict) -> tuple[float, float, float, float, str]:
     )
 
 
+
+def round_key(record: dict) -> tuple[float, float, float, float, int]:
+    """Rank one training round using every seed pooled at that round.
+
+    Selecting a round rather than a (seed, round) pair is what removes the
+    winner's curse from the seed axis: the quantity being maximised is already
+    an average over the five training seeds, so a single lucky seed moves it by
+    a fifth instead of carrying the whole result.
+    """
+    metrics = record["metrics"]
+    checkpoint_round = record.get("checkpoint_round")
+    return (
+        float(metrics["score"]["mean"]),
+        -float(metrics["score"]["std"]),
+        -float(metrics["suicides"]["mean"]),
+        float(metrics["coins"]["mean"]),
+        -(10 ** 9 if checkpoint_round is None else int(checkpoint_round)),
+    )
+
+
+def reportable_result(curve: list[dict], suite: str, role: str) -> dict | None:
+    """Choose one training round from the pooled curve and describe it fully.
+
+    The protocol this implements, in order: pool all training seeds at each
+    round; pick the round on the pooled validation curve; freeze it; then
+    report what every seed did at that round.  The per-seed spread is part of
+    the result, not a footnote -- docs/05 section 0.9 has an arm whose pooled
+    mean passed while two of five seeds did not.
+    """
+    if not curve:
+        return None
+    best = max(curve, key=round_key)
+    decomposition = best.get("variance_decomposition") or {}
+    return {
+        "checkpoint_round": best["checkpoint_round"],
+        "selection_role": role,
+        "selection_rule": (
+            "argmax over the pooled validation curve of mean score, then -std, "
+            "then -suicides, then coins, then the earlier round"
+        ),
+        "metrics": best["metrics"],
+        "per_train_seed": best.get("per_train_seed"),
+        "variance_decomposition": decomposition,
+        "note": (
+            "Selection used validation seeds only. Holdout numbers for this "
+            "round are a separate, unselected measurement; quote those."
+        ),
+    }
+
 def candidate_key(candidate: dict) -> tuple[float, float, float, float, int, int]:
     """Rank one checkpoint. Selection always uses validation metrics only."""
     metrics = candidate["metrics"]
@@ -473,8 +564,18 @@ def candidate_key(candidate: dict) -> tuple[float, float, float, float, int, int
 
 
 def best_source_checkpoint(summary: dict) -> Path:
-    """Choose the checkpoint with the best fixed greedy-evaluation summary."""
-    candidates = summary["checkpoint_candidates"]
+    """Choose the checkpoint with the best fixed greedy-evaluation summary.
+
+    Which suite decides is declared by ``promotion.selection_suite`` rather
+    than always being the primary one: the primary evaluation is loot-crate and
+    the competition is ``classic`` with opponents, so promoting on the primary
+    suite by default would choose the submitted agent on a task nobody scores.
+    """
+    suite = summary.get("promotion_selection_suite", "primary")
+    if suite == "primary":
+        candidates = summary["checkpoint_candidates"]
+    else:
+        candidates = summary["evaluation_suites"][suite]["checkpoint_candidates"]
     if not candidates:
         raise FileNotFoundError("No training checkpoint is available for promotion")
     chosen = max(candidates, key=candidate_key)
@@ -503,6 +604,7 @@ def maybe_promote(summary: dict) -> bool:
     write_json(root / "promotion_rule.json", {
         "rule": "maximize mean official score; then minimize score std; then minimize mean suicides; then maximize mean coins; then lexical run_id",
         "checkpoint_rule": "same order within a run, then smaller training seed, then earlier checkpoint round",
+        "selection_suite": summary.get("promotion_selection_suite", "primary"),
         "selection_split": "validation evaluation seeds only; holdout seeds are reported, never used to select",
         "primary_scenario": scenario,
         "writer": "scripts/aggregate_results.py only",

@@ -48,6 +48,7 @@ class ReplayQLearner:
         self.rng = np.random.default_rng(seed)
         self.observed_transitions = 0
         self.gradient_steps = 0
+        self.last_step: dict = {"gradient_applied": False, "gradient_steps": 0, "replay_size": 0}
 
     def select_action(self, state: np.ndarray, legal_mask: np.ndarray, epsilon: float, generator: np.random.Generator) -> int:
         legal_indices = np.flatnonzero(legal_mask)
@@ -56,6 +57,17 @@ class ReplayQLearner:
         if generator.random() < epsilon:
             return int(generator.choice(legal_indices))
         return int(np.argmax(np.where(legal_mask, self.model.q_values(state), -np.inf)))
+
+    def step_diagnostics(self) -> dict:
+        """Report what the most recent ``observe`` did, not what it returned.
+
+        Most observes here do not update anything: the buffer is below
+        ``min_size``, or the step is not a multiple of ``train_every``.  Those
+        return a TD error of ``0.0``, which reads exactly like a converged one.
+        ``gradient_applied`` is the field that separates them, and
+        ``replay_size`` is what says which of the two reasons applied.
+        """
+        return dict(self.last_step)
 
     def observe(self, transition: Transition) -> float:
         self.buffer.append(
@@ -69,14 +81,35 @@ class ReplayQLearner:
         )
         self.observed_transitions += 1
         if len(self.buffer) < self.settings.min_size or self.observed_transitions % self.settings.train_every:
+            self.last_step = {
+                "gradient_applied": False,
+                "gradient_steps": self.gradient_steps,
+                "replay_size": len(self.buffer),
+            }
             return 0.0
         batch = self.buffer.sample(self.settings.batch_size)
         if self.settings.augmentation == "d4":
             batch = self._augment(batch)
-        td_errors = self.model.fit_batch(batch["states"], batch["action_indices"], self._targets(batch))
+        targets = self._targets(batch)
+        td_errors = self.model.fit_batch(batch["states"], batch["action_indices"], targets)
         self.gradient_steps += 1
-        if self.gradient_steps % self.settings.target_update_every == 0:
+        synchronised = self.gradient_steps % self.settings.target_update_every == 0
+        if synchronised:
             self.target_model.copy_parameters_from(self.model)
+        self.last_step = {
+            "gradient_applied": True,
+            "gradient_steps": self.gradient_steps,
+            "replay_size": len(self.buffer),
+            "target_synchronised": synchronised,
+            "mean_abs_td_error": float(np.abs(td_errors).mean()),
+            "mean_target": float(np.mean(targets)),
+        }
+        # Q statistics and the gradient norm come from the batch the model has
+        # just put through the network.  Recomputing them here would cost
+        # another forward pass -- about a quarter of the step -- for numbers the
+        # model already holds.
+        if hasattr(self.model, "training_diagnostics"):
+            self.last_step.update(self.model.training_diagnostics())
         return float(np.abs(td_errors).mean())
 
     def end_round(self) -> None:

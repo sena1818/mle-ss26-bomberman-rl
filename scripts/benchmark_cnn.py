@@ -24,6 +24,7 @@ Run it single-threaded (the default) to get the number a parallel worker sees;
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 import os
 import sys
@@ -91,6 +92,44 @@ def measure_torch_import() -> float:
     return float(completed.stdout.strip())
 
 
+
+def _time_learner_step(config, model, state: np.ndarray, repeats: int) -> list[float]:
+    """Time one *whole* learner update, not just the weight step.
+
+    ``fit_batch`` is a minority of a Double DQN update.  The rest is drawing the
+    batch, decoding it out of uint8, relabelling it under a D4 element, and --
+    the expensive part -- two forward passes over the next states, one through
+    the online network to pick the argmax and one through the target network to
+    value it.  Measuring only ``fit_batch`` understated a gradient step by more
+    than half, and every schedule built on that number inherited the error.
+    """
+    from agent_code.research_agent.learners.base import Transition
+    from agent_code.research_agent.learners.replay_q import ReplayQLearner
+
+    if config.replay is None:
+        return [0.0]
+    learner = ReplayQLearner(config, model, seed=0)
+    mask = np.ones(len(ACTIONS), dtype=bool)
+
+    def transition(index: int) -> Transition:
+        return Transition(state=state, action_index=index % len(ACTIONS), reward=0.1,
+                          next_state=state, next_legal_mask=mask, terminal=False,
+                          n_step=config.n_step)
+
+    counter = itertools.count()
+    # Fill past min_size first, so the timed observes are the ones that update.
+    for _ in range(config.replay.min_size + config.replay.train_every):
+        learner.observe(transition(next(counter)))
+    if not learner.step_diagnostics().get("gradient_applied", False):
+        for _ in range(config.replay.train_every):
+            learner.observe(transition(next(counter)))
+
+    def one_update() -> None:
+        for _ in range(config.replay.train_every):
+            learner.observe(transition(next(counter)))
+
+    return _time(one_update, repeats)
+
 def benchmark_route(route: str, *, game_state: dict, repeats: int, steps_per_round: int, rounds: int,
                     first_in_process: bool) -> dict:
     from agent_code.research_agent.models import build_model
@@ -115,7 +154,8 @@ def benchmark_route(route: str, *, game_state: dict, repeats: int, steps_per_rou
     states = np.repeat(state[None, :], batch_size, axis=0)
     actions = np.arange(batch_size) % len(ACTIONS)
     targets = np.zeros(batch_size, dtype=np.float32)
-    gradient = _time(lambda: model.fit_batch(states, actions, targets), repeats)
+    fit_only = _time(lambda: model.fit_batch(states, actions, targets), repeats)
+    gradient = _time_learner_step(config, model, state, repeats)
 
     # A gradient step happens once every ``train_every`` environment steps, so
     # its cost is amortised.  Charging one per step -- which this projection did
@@ -142,6 +182,10 @@ def benchmark_route(route: str, *, game_state: dict, repeats: int, steps_per_rou
         "inference_seconds": {"p50": float(np.median(inference)), "p99": float(np.percentile(inference, 99))},
         "act_seconds": {"p99": worst_act},
         "official_budget_margin": OFFICIAL_STEP_BUDGET_SECONDS / worst_act,
+        # ``fit_batch_seconds`` is kept separately because it is what the
+        # earlier version of this script reported; the two together say how much
+        # of an update is the weight step and how much is everything around it.
+        "fit_batch_seconds": {"p50": float(np.median(fit_only))},
         "gradient_step_seconds": {"p50": float(np.median(gradient)), "p99": float(np.percentile(gradient, 99))},
         "gradient_steps_per_second": 1.0 / float(np.median(gradient)),
         "environment_steps_per_second": 1.0 / per_step,

@@ -445,6 +445,31 @@ class ExperimentInfrastructureTest(unittest.TestCase):
             self.assertAlmostEqual(sample["crates_per_bomb"], 2.0)
             self.assertAlmostEqual(sample["coins_per_crate"], 2 / 6)
             self.assertAlmostEqual(sample["official_wait_fraction"], (6 - 2 - 3 - 0) / 6)
+            # Solo evaluation: the agent took every coin anyone took.
+            self.assertAlmostEqual(sample["coins_share"], 1.0)
+
+    def test_coins_share_is_measured_against_every_agent_on_the_board(self):
+        """The G-B metric. docs/01 section 7.20: it resolves what score cannot."""
+        with tempfile.TemporaryDirectory() as temporary:
+            job_dir = Path(temporary) / "job"
+            (job_dir / "agent").mkdir(parents=True)
+            write_json(job_dir / "official_stats.json", {
+                "by_agent": {
+                    "research_agent": {"score": 3, "coins": 3, "kills": 0, "suicides": 0,
+                                       "invalid": 0, "steps": 8, "bombs": 1, "crates": 2, "moves": 6},
+                    "rule_based_agent": {"coins": 5}, "rule_based_agent_1": {"coins": 4},
+                    "rule_based_agent_2": {"coins": 0},
+                },
+                "by_round": {"Round 01": {"coins": 3, "kills": 0, "suicides": 0, "steps": 8}},
+            })
+            (job_dir / "agent" / "agent.jsonl").write_text(
+                json.dumps({"kind": "action", "round": 1, "action": "UP", "position": [1, 1],
+                            "selected_action_was_legal": True, "inference_seconds": 0.01}) + "\n",
+                encoding="utf-8")
+            sample = aggregate_results.one_evaluation(job_dir, "research_agent")
+            self.assertAlmostEqual(sample["coins_share"], 3 / 12)
+            self.assertIn("coins_share", aggregate_results.ALL_METRICS)
+            self.assertIn("coins_share", aggregate_results.METRIC_DEFINITIONS)
 
     def test_undefined_ratios_are_omitted_rather_than_counted_as_zero(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -465,6 +490,8 @@ class ExperimentInfrastructureTest(unittest.TestCase):
             self.assertIsNone(sample["approximate_safe_bomb_rate"])
             self.assertIsNone(sample["crates_per_bomb"])
             self.assertIsNone(sample["coins_per_crate"])
+            # Nobody collected anything: a share of nothing is undefined, not 0.
+            self.assertIsNone(sample["coins_share"])
             self.assertEqual(sample["bomb_rate"], 0.0)
             block = aggregate_results._metric_block([sample, sample])
             self.assertEqual(block["approximate_safe_bomb_rate"]["count"], 0)

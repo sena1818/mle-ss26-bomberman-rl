@@ -112,7 +112,11 @@ IMPLEMENTED_ROUTES = {
     },
 }
 MAIN_LINES = ("M1", "M2", "M3", "M4")
-CHECKPOINT_MODES = {"latest", "all"}
+# "rounds" evaluates an explicitly listed subset.  "all" times a long budget by
+# a small checkpoint_every produces hundreds of evaluation jobs per suite, and
+# for the opponent suite those are both the slowest jobs and the only
+# irreproducible ones (rule_based_agent seeds itself from system entropy).
+CHECKPOINT_MODES = {"latest", "all", "rounds"}
 # How a run may be warm-started from weights produced outside it.  Only
 # behaviour cloning is implemented; "checkpoint" is reserved and fails closed.
 INITIAL_MODEL_KINDS = {"behaviour_cloning"}
@@ -312,6 +316,7 @@ class CheckpointEvaluation:
     mode: str = "latest"
     validation_seeds: tuple[int, ...] = ()
     holdout_seeds: tuple[int, ...] = ()
+    rounds: tuple[int, ...] = ()
 
     @classmethod
     def parse(cls, value: Any, label: str, evaluation: "Phase") -> "CheckpointEvaluation":
@@ -334,6 +339,24 @@ class CheckpointEvaluation:
                 raise ConfigError(f"{label}.{key} must not repeat a seed")
             return seeds
 
+        rounds: tuple[int, ...] = ()
+        if mode == "rounds":
+            if "rounds" not in value:
+                raise ConfigError(f"{label}.mode 'rounds' needs an explicit {label}.rounds list")
+            try:
+                rounds = tuple(int(one) for one in value["rounds"])
+            except (TypeError, ValueError) as exc:
+                raise ConfigError(f"{label}.rounds must be a list of integers") from exc
+            if not rounds or len(set(rounds)) != len(rounds) or sorted(rounds) != list(rounds):
+                raise ConfigError(f"{label}.rounds must be a non-empty ascending list without repeats")
+            if rounds[0] < 1:
+                raise ConfigError(f"{label}.rounds must be positive training round numbers")
+        elif value.get("rounds"):
+            # An empty list is how this dataclass round-trips through its own
+            # snapshot; a populated one under another mode is a typo that would
+            # otherwise be ignored, and ignoring it would silently evaluate
+            # hundreds of checkpoints the author meant to exclude.
+            raise ConfigError(f"{label}.rounds is only meaningful with mode 'rounds'")
         validation = seed_list("validation_seeds", evaluation.seeds)
         holdout = seed_list("holdout_seeds", ())
         if not validation:
@@ -343,13 +366,24 @@ class CheckpointEvaluation:
             raise ConfigError(
                 f"{label}: holdout seeds must not also select checkpoints; overlapping seeds {overlap}"
             )
-        return cls(mode=mode, validation_seeds=validation, holdout_seeds=holdout)
+        return cls(mode=mode, validation_seeds=validation, holdout_seeds=holdout, rounds=rounds)
 
     def checkpoint_rounds(self, training: "Phase") -> tuple[int | None, ...]:
         """Return the checkpoint rounds to evaluate; ``None`` means latest."""
         if self.mode == "latest":
             return (None,)
         every = training.budget.checkpoint_every
+        if self.mode == "rounds":
+            offending = [one for one in self.rounds
+                         if one % every or one > training.budget.rounds]
+            if offending:
+                raise ConfigError(
+                    f"checkpoint_evaluation.rounds {offending} are not saved checkpoints: each must be "
+                    f"a multiple of checkpoint_every ({every}) and at most the budget "
+                    f"({training.budget.rounds})"
+                )
+            final = training.budget.rounds
+            return self.rounds if final in self.rounds else self.rounds + (None,)
         rounds = tuple(range(every, training.budget.rounds + 1, every))
         if not rounds:
             raise ConfigError("checkpoint_evaluation.mode 'all' needs checkpoint_every <= rounds")
@@ -436,6 +470,12 @@ class Experiment:
     training: Phase
     evaluation: Phase
     promotion_primary_metric: str
+    # Which evaluation suite chooses the model that gets promoted.  The final
+    # target is the tournament, but the primary suite is loot-crate, so leaving
+    # this implicit means the submitted agent is chosen on a task it is not
+    # scored on.  Declared, recorded in the snapshot, and defaulting to the
+    # historical behaviour so no finished run changes meaning.
+    promotion_selection_suite: str = "primary"
     curriculum: Curriculum | None = None
     evaluation_suites: tuple[EvaluationSuite, ...] = ()
     checkpoint_evaluation: CheckpointEvaluation = CheckpointEvaluation()
@@ -525,6 +565,7 @@ class Experiment:
                 training=training,
                 evaluation=evaluation,
                 promotion_primary_metric=raw["promotion"]["primary_metric"],
+                promotion_selection_suite=str(raw["promotion"].get("selection_suite", "primary")),
                 curriculum=Curriculum.parse(raw["curriculum"], training) if "curriculum" in raw else None,
                 evaluation_suites=suites,
                 checkpoint_evaluation=CheckpointEvaluation.parse(
@@ -550,6 +591,14 @@ class Experiment:
                 raise ConfigError(f"agent.{name} is not a declared R01-R07 value")
         if experiment.promotion_primary_metric != "score":
             raise ConfigError("promotion.primary_metric is currently fixed to 'score'")
+        suite = experiment.promotion_selection_suite
+        declared_suites = {one.name for one in experiment.evaluation_suites}
+        if suite != "primary" and suite not in declared_suites:
+            declared = ", ".join(sorted(declared_suites)) or "none"
+            raise ConfigError(
+                f"promotion.selection_suite {suite!r} is not a declared evaluation suite "
+                f"(declared: {declared}); use 'primary' for the main evaluation"
+            )
         if experiment.n_step < 1:
             raise ConfigError("agent.n_step must be a positive integer")
         if experiment.algorithm == "double_dqn" and experiment.replay is None:
@@ -631,7 +680,10 @@ class Experiment:
             "checkpoint_evaluation": asdict(self.checkpoint_evaluation),
             "terminal_on_truncation": self.terminal_on_truncation,
             "shaping": self.shaping,
-            "promotion": {"primary_metric": self.promotion_primary_metric},
+            "promotion": {
+                "primary_metric": self.promotion_primary_metric,
+                "selection_suite": self.promotion_selection_suite,
+            },
         }
         if self.design_note:
             snapshot["_design_note"] = self.design_note

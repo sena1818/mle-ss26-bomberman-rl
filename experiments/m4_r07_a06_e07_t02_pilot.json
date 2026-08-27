@@ -1,0 +1,105 @@
+{
+  "_design_note": "Recipe-faithful pilot. Two throwaway training seeds (1901/1902, deliberately NOT the five the real arms use, so this cannot contaminate them) and no holdout seeds at all, because nothing here is a result. Everything that costs resources is the real recipe: 100k replay, min_size 10000, E07, train_every 4, D4, n=3. It answers operational questions before twenty CPU-hours are committed: does the buffer actually reach 10000 inside E07's 100-round hold, at which round does the first gradient step happen, are loss / q_mean / gradient norm finite and bounded, does the validation trend rise while distinct_cells and bomb_rate stay off the floor, and what are the real RSS, disk and end-to-end throughput per seed.",
+  "_predeclared_design_numbers": {
+    "checks": "1) round_end learner_step.replay_size reaches 10000, and at what round; 2) the first round whose gradient_steps_this_round exceeds 0; 3) loss, q_mean, q_max, last_gradient_l2_norm all finite, and the gradient norm not pinned at the clip of 10; 4) validation score rises from the first to the last evaluated checkpoint; 5) distinct_cells > 20 and bomb_rate > 0.01 at the last checkpoint -- not the standing-still policy the smoke measured; 6) measured wall clock per training seed, peak RSS, and run directory size before compression.",
+    "purpose": "Operational validation only. NO scientific claim may be quoted from this run.",
+    "stop_condition": "If check 1 or 2 shows the first gradient landing after E07's anneal has begun, min_size or the schedule is wrong and the five-seed arms must not start."
+  },
+  "agent": {
+    "algorithm": "double_dqn",
+    "model": "cnn_mlp_q",
+    "n_step": 3,
+    "name": "research_agent",
+    "replay": {
+      "augmentation": "d4",
+      "batch_size": 32,
+      "capacity": 100000,
+      "min_size": 10000,
+      "target_update_every": 500,
+      "train_every": 4
+    },
+    "state_representation": "board_egocentric_v2"
+  },
+  "checkpoint_evaluation": {
+    "holdout_seeds": [],
+    "mode": "rounds",
+    "rounds": [
+      250,
+      500,
+      1000,
+      1500,
+      2000
+    ],
+    "validation_seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation": {
+    "budget": {
+      "checkpoint_every": 250,
+      "rounds": 30
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation_suites": {
+    "classic_versus_opponents": {
+      "budget": {
+        "checkpoint_every": 250,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [
+        "rule_based_agent",
+        "rule_based_agent",
+        "rule_based_agent"
+      ],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    }
+  },
+  "experiment_id": "M4_R07_A06_E07_C00_T02_pilot",
+  "exploration_version": "E07",
+  "promotion": {
+    "primary_metric": "score",
+    "selection_suite": "primary"
+  },
+  "reward_version": "A06",
+  "route": "R07",
+  "schema_version": 1,
+  "shaping": {
+    "name": "potential_v1"
+  },
+  "terminal_on_truncation": false,
+  "training": {
+    "budget": {
+      "checkpoint_every": 250,
+      "rounds": 2000
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      1901,
+      1902
+    ]
+  }
+}

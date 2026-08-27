@@ -117,6 +117,7 @@ class CnnMlpQModel:
         ).to(self.device)
         self.optimizer = torch.optim.Adam(self.network.parameters(), lr=self.learning_rate)
         self.metadata: dict = {}
+        self._diagnostics: dict = {}
 
     @property
     def model_type(self) -> str:
@@ -145,9 +146,30 @@ class CnnMlpQModel:
         self.optimizer.zero_grad(set_to_none=True)
         loss.backward()
         # A single clipped step keeps one unlucky batch from destroying a run.
-        torch.nn.utils.clip_grad_norm_(self.network.parameters(), 10.0)
+        # ``clip_grad_norm_`` returns the norm it measured *before* clipping,
+        # which is the number worth logging: a run whose gradients are pinned at
+        # the clip for thousands of steps is diverging, and one whose norm falls
+        # to zero has stopped learning.  Both look identical downstream.
+        gradient_norm = torch.nn.utils.clip_grad_norm_(self.network.parameters(), 10.0)
         self.optimizer.step()
+        with torch.no_grad():
+            self._diagnostics = {
+                "loss": float(loss.detach()),
+                "last_gradient_l2_norm": float(gradient_norm),
+                "q_mean": float(predictions.mean()),
+                "q_max": float(predictions.max()),
+                "q_min": float(predictions.min()),
+            }
         return (wanted - selected.detach()).cpu().numpy()
+
+    def training_diagnostics(self) -> dict:
+        """Return the statistics of the most recent gradient step.
+
+        Everything here is read off tensors the step already produced, so it
+        costs nothing.  Empty before the first step rather than zero-filled: a
+        missing measurement and a measured zero must not look alike.
+        """
+        return dict(self._diagnostics)
 
     def fit_policy_batch(self, states: np.ndarray, action_indices: np.ndarray) -> float:
         """One supervised step cloning a demonstrator's action choice.

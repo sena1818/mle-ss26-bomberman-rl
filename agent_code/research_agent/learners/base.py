@@ -41,4 +41,17 @@ class Learner(Protocol):
         batch it drew, or 0.0 for a step that only filled the buffer.
         """
 
+    def step_diagnostics(self) -> dict:
+        """Describe what the last ``observe`` actually did.
+
+        ``observe`` returns a TD error for continuity, but a batch learner that
+        only filled its buffer also returns ``0.0``, which is indistinguishable
+        from a real zero error.  The runtime needs to tell those apart before it
+        can say whether a stalled run is a buffer that never filled, a value
+        function that diverged, or exploration that never found anything.
+
+        Required key: ``gradient_applied``.  Everything else is
+        learner-specific and recorded only when present.
+        """
+
     def end_round(self) -> None: ...
