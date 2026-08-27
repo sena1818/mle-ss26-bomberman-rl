@@ -50,6 +50,8 @@ for path in (str(ROOT), str(ROOT / "scripts")):
 import settings as s  # noqa: E402
 from environment import WorldArgs  # noqa: E402
 from experiment_lib import write_json  # noqa: E402
+from agent_code.research_agent.config import SHAPING_SPECIFICATIONS  # noqa: E402
+from agent_code.research_agent.shaping import PotentialShaping  # noqa: E402
 from agent_code.research_agent.state import _blast_coordinates, escape_search  # noqa: E402
 from diagnose_bomb_escape import (  # noqa: E402
     ReplayWorld, jsonable, official_totals, read_actions,
@@ -60,7 +62,7 @@ def manhattan(a: tuple[int, int], b: tuple[int, int]) -> int:
     return abs(a[0] - b[0]) + abs(a[1] - b[1])
 
 
-def replay_job(job_dir: Path) -> dict:
+def replay_job(job_dir: Path, discount: float) -> dict:
     """Replay one job and count every step where a kill was available."""
     snapshot = json.loads((job_dir / "job.snapshot.json").read_text(encoding="utf-8"))
     actions = read_actions(job_dir)
@@ -82,6 +84,14 @@ def replay_job(job_dir: Path) -> dict:
 
     counts = collections.Counter()
     nearest = collections.Counter()
+    # The potential the shaping would see, computed by the shaping itself so the
+    # diagnostic and the agent can never drift apart (the discipline section
+    # 7.11 applied to escape_search).  A07 minus A06 is exactly the new term.
+    v1 = PotentialShaping(SHAPING_SPECIFICATIONS["A06"], discount)
+    v2 = PotentialShaping(SHAPING_SPECIFICATIONS["A07"], discount)
+    delta = lambda s: v2.potential(s) - v1.potential(s)
+    # Drops that created the state A07 rewards, still open for their follow-up.
+    open_drops: list[dict] = []
     for _ in range(int(snapshot["budget"]["rounds"])):
         world.new_round()
         world.user_input = None
@@ -91,6 +101,20 @@ def replay_job(job_dir: Path) -> dict:
             chosen = actions.get((round_number, step_number, agent.name), "WAIT")
             if state is not None:
                 counts["steps_alive"] += 1
+                # Follow every qualifying drop for the four ticks a bomb lives:
+                # an n-step window ending on a zero delta contributes nothing,
+                # whatever n is, so this is A07's real activation rate.
+                current = delta(state)
+                for drop in open_drops:
+                    drop["age"] += 1
+                    if drop["age"] <= 4:
+                        counts["followed_tick_%d" % drop["age"]] += 1
+                        if current > 0:
+                            counts["still_threatening_tick_%d" % drop["age"]] += 1
+                            own = set(_blast_coordinates(drop["origin"], np.asarray(state["field"])))
+                            if any(tuple(o[3]) in own for o in state["others"]):
+                                counts["still_threatened_by_that_bomb_tick_%d" % drop["age"]] += 1
+                open_drops = [d for d in open_drops if d["age"] < 4]
                 others = [tuple(o[3]) for o in state["others"]]
                 own = tuple(state["self"][3])
                 has_bomb = bool(state["self"][2])
@@ -115,6 +139,8 @@ def replay_job(job_dir: Path) -> dict:
                     if adjacent:
                         counts["rule_based_trigger_adjacent"] += 1
                         counts["rule_based_trigger_took_it"] += chosen == "BOMB"
+                    if caught and chosen == "BOMB":
+                        open_drops.append({"origin": own, "age": 0})
             world.do_step()
         # A round always ends inside do_step: the last agent dying and the step
         # limit both make time_to_stop() true, so there is nothing to close here.
@@ -136,6 +162,7 @@ def parse_args() -> argparse.Namespace:
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--run-dir", type=Path, required=True)
     parser.add_argument("--job-prefix", default="eval_classic_versus_opponents")
+    parser.add_argument("--discount", type=float, default=0.95)
     parser.add_argument("--out", type=Path)
     return parser.parse_args()
 
@@ -150,7 +177,7 @@ def main() -> None:
     nearest = collections.Counter()
     reproduced = 0
     for job in jobs:
-        result = replay_job(job)
+        result = replay_job(job, args.discount)
         total.update(result["counts"])
         nearest.update(result["nearest_opponent_distance"])
         expected = official_totals(result["official"])
@@ -185,6 +212,13 @@ def main() -> None:
     trigger = total["rule_based_trigger_adjacent"]
     line("such steps", trigger, armed)
     line("of those, the agent dropped", total["rule_based_trigger_took_it"], trigger)
+    print("-" * 70)
+    print("  after a drop that covered an opponent, is the potential still raised?")
+    print("  (an n-step window ending on a zero delta contributes nothing, whatever n)")
+    for tick in (1, 2, 3, 4):
+        base = total["followed_tick_%d" % tick]
+        line(f"tick {tick}: any opponent still in some blast", total[f"still_threatening_tick_{tick}"], base)
+        line(f"tick {tick}:   ... in THAT bomb's blast", total[f"still_threatened_by_that_bomb_tick_{tick}"], base)
     print("-" * 70)
     print("  distance to the nearest opponent, over every step alive")
     shown = sum(nearest.values())
