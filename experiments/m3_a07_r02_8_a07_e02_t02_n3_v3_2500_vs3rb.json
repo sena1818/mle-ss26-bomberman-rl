@@ -1,20 +1,22 @@
 {
-  "_design_note": "The opponent-shaping arm. Its only difference from F2 is reward_version A06 -> A07, which adds one term to the potential and leaves every event weight and the death penalty byte-identical. Motivated by a measurement, not a story: scripts/diagnose_kill_opportunities.py replayed F2 over 900 tournament rounds and found it standing 9,930 times where a bomb would have caught an opponent, able to escape after dropping in 97.9 percent of those, and dropping in 8.0 percent. On rule_based_agent's own trigger -- an opponent within one step -- it dropped 218 times out of 3,299. The agent reaches the position and declines the bomb, so this is a decision problem and shaping the decision has a target. Counting training events explains why it cannot fix itself: F2 saw 820 KILLED_OPPONENT against 156,870 COIN_COLLECTED, so the largest weight in the table carries 1.7 percent of the positive reward mass.",
+  "_design_note": "The opponent-shaping arm, at n=3 rather than n=5, and the reason is not a preference. Potential-based shaping contributes gamma^n * phi(s_t+n) - phi(s_t) to an n-step target -- the telescoping that gives policy invariance. A bomb's observable life is exactly BOMB_TIMER+1 = 5 transitions, so with n_step=5 the window around a bomb drop starts before the bomb exists and ends after it is gone, both endpoints carry delta-phi = 0, and the new term contributes EXACTLY zero to the target of the very decision it was written to shape. Measured, not argued: the per-state delta-phi is [0, .3, .3, .3, .3, 0], the per-step A07-A06 shaping is [+.285, -.015, -.015, -.015, -.300], and the n=5 target difference is -0.000000. The contribution is +0.257 at n=3, +0.244 at n=4 and 0.000 at every n >= 5. Section 7.27.1 measured n=3 as indistinguishable from n=5 (+0.63 against a 2.85 gap), so moving off the resonance costs nothing measurable. Motivation for the term itself is unchanged: diagnose_kill_opportunities.py found F2 standing 9,930 times where a bomb would have caught an opponent, able to escape after dropping in 97.9 percent of them, and dropping in 8.0 percent; on rule_based_agent's adjacency trigger, 218 of 3,299. And 820 KILLED_OPPONENT against 156,870 COIN_COLLECTED is why it cannot fix itself.",
   "_predeclared_design_numbers": {
-    "changed_factor": "reward_version A06 -> A07 (shaping potential_v1 -> potential_v2); the event table and death penalty are identical, so the new term is the only variable",
-    "control": "runs/m3_f2_wide_ddqn_5000_vs3rb_20260827/ -- repeat-measured tournament score 2.5396 (sd 0.121 over ten repeats), coins_share 0.2548, kills 0.0556/round, survival 14.3%",
+    "changed_factor": "reward_version A06 -> A07 (shaping potential_v1 -> potential_v2). The event table and death penalty are identical, and n_step and the budget match the control exactly, so the new term is the only variable.",
+    "control": "runs/m3_n3_2500_vs3rb_20260827/ -- A06, n=3, 2500 rounds, three opponents: loot-crate-with-opponents score 12.882, coins_share 0.2513, suicides 0.576",
     "falsification": "Take-up unchanged means the shaping term does not reach the decision and the kill gap is not closable this way; record the negative result and stop.",
     "prediction": "None stated. Five mechanism hypotheses were overturned by measurement this round.",
     "reporting": "All five training-seed distributions, coins_share, kills, the death split, the take-up numbers, and the ten repeat measurements individually.",
+    "resolution_loot_crate": "This suite is loot-crate WITH opponents; its control's cross-seed sd gives a 95% resolvable gap of about 2.85, not the 4.7 derived from the solo control (section 7.27.1).",
     "resolution_tournament": "Section 7.26.3: one measurement settles nothing. Repeat the classic_versus_opponents suite ten times against F2's ten.",
     "the_cost_to_watch": "F2 already loses 42.1 percent of its deaths to opponents against M3.4's 34.0. Pushing it toward opponents is expected to raise that; report the death split and the survival rate next to the score, and treat a score gain bought with a survival collapse the way section 7.25.3 treated M3.13's.",
     "the_metric_that_decides_it": "Re-run diagnose_kill_opportunities.py. The number that has to move is the 8.0 percent take-up of blast-covering positions, and the 6.6 percent on rule_based's adjacency trigger. Tournament score moving without those moving would not be this term working.",
-    "why_it_cannot_corrupt_the_objective": "potential-based shaping is policy-invariant (Ng, Harada & Russell 1999). If declining the bomb is genuinely optimal, A07 cannot teach otherwise; it can only speed up learning the 5.0 that KILLED_OPPONENT already carries."
+    "why_it_cannot_corrupt_the_objective": "potential-based shaping is policy-invariant (Ng, Harada & Russell 1999). If declining the bomb is genuinely optimal, A07 cannot teach otherwise; it can only speed up learning the 5.0 that KILLED_OPPONENT already carries.",
+    "why_not_n5": "At n_step=5 the term contributes exactly zero to the bomb-drop target, because a bomb lives exactly 5 transitions and potential shaping telescopes over the window. Running it at n=5 would test a mechanism the arm cannot deliver."
   },
   "agent": {
     "algorithm": "double_dqn",
     "model": "mlp_q",
-    "n_step": 5,
+    "n_step": 3,
     "name": "research_agent",
     "replay": {
       "batch_size": 32,
@@ -40,7 +42,7 @@
   },
   "evaluation": {
     "budget": {
-      "checkpoint_every": 250,
+      "checkpoint_every": 125,
       "rounds": 30
     },
     "opponents": [
@@ -58,7 +60,7 @@
   "evaluation_suites": {
     "classic_solo": {
       "budget": {
-        "checkpoint_every": 250,
+        "checkpoint_every": 125,
         "rounds": 30
       },
       "checkpoint_evaluation": {
@@ -84,7 +86,7 @@
     },
     "classic_versus_opponents": {
       "budget": {
-        "checkpoint_every": 250,
+        "checkpoint_every": 125,
         "rounds": 30
       },
       "checkpoint_evaluation": {
@@ -113,7 +115,7 @@
       ]
     }
   },
-  "experiment_id": "M3_A07_R02_8_A07_E02_C00_T02_n5_5000_vs3rb",
+  "experiment_id": "M3_A07_R02_8_A07_E02_C00_T02_n3_2500_vs3rb",
   "exploration_version": "E02",
   "promotion": {
     "primary_metric": "score"
@@ -127,8 +129,8 @@
   "terminal_on_truncation": false,
   "training": {
     "budget": {
-      "checkpoint_every": 250,
-      "rounds": 5000
+      "checkpoint_every": 125,
+      "rounds": 2500
     },
     "opponents": [
       "rule_based_agent",

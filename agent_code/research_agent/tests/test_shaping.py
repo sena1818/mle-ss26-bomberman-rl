@@ -9,6 +9,7 @@ any aggregate metric.
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
 from dataclasses import replace
 
 import numpy as np
@@ -84,6 +85,61 @@ class OpponentBlastPotentialTest(unittest.TestCase):
         from agent_code.research_agent.runtime.experiment import REWARD_TABLES, DEATH_PENALTIES
         self.assertEqual(REWARD_TABLES["A06"], REWARD_TABLES["A07"])
         self.assertEqual(DEATH_PENALTIES["A06"], DEATH_PENALTIES["A07"])
+
+
+class ShapingSurvivesTheNStepReturnTest(unittest.TestCase):
+    """A potential term can telescope to nothing inside the n-step window.
+
+    Shaping contributes ``gamma^n phi(s_t+n) - phi(s_t)`` to an n-step target --
+    the telescoping that gives policy invariance in the first place.  A bomb
+    lives exactly BOMB_TIMER+1 = 5 transitions, so at n_step=5 the window around
+    a drop starts before the bomb exists and ends after it is gone, both
+    endpoints carry the same potential, and potential_v2's term contributes
+    EXACTLY zero to the target of the decision it was written to shape.
+
+    This is not hypothetical: A07 was first configured at n=5 and would have
+    measured nothing.  The guard is that any arm running potential_v2 has to
+    keep its n_step below the bomb's life.
+    """
+
+    def setUp(self):
+        self.v1 = PotentialShaping(SHAPING_SPECIFICATIONS["A06"], discount=0.95)
+        self.v2 = PotentialShaping(SHAPING_SPECIFICATIONS["A07"], discount=0.95)
+        # Drop a bomb covering an opponent, sit out the fuse, bomb gone.
+        self.traj = ([game_state(others=[(5, 3)], coins=[(6, 3)])]
+                     + [game_state(others=[(5, 3)], coins=[(6, 3)], bombs=[((3, 3), timer)])
+                        for timer in (3, 2, 1, 0)]
+                     + [game_state(others=[(5, 3)], coins=[(6, 3)])])
+
+    def _contribution(self, n: int) -> float:
+        """What the new term adds to the bomb-drop transition's own n-step target."""
+        delta = [self.v2.potential(s) - self.v1.potential(s) for s in self.traj]
+        end = min(n, len(self.traj) - 1)
+        return 0.95 ** n * delta[end] - delta[0]
+
+    def test_the_term_cancels_exactly_at_the_bomb_lifetime(self):
+        self.assertAlmostEqual(self._contribution(5), 0.0, places=12)
+        self.assertAlmostEqual(self._contribution(8), 0.0, places=12)
+
+    def test_the_term_survives_below_the_bomb_lifetime(self):
+        for n in (1, 2, 3, 4):
+            self.assertGreater(self._contribution(n), 0.2, f"n={n} carries no signal")
+
+    def test_every_arm_using_potential_v2_stays_off_the_resonance(self):
+        """The configs are the thing that can silently drift back onto it."""
+        import json
+        experiments = Path(__file__).resolve().parents[3] / "experiments"
+        checked = 0
+        for path in sorted(experiments.glob("*.json")):
+            config = json.loads(path.read_text(encoding="utf-8"))
+            if (config.get("shaping") or {}).get("name") != "potential_v2":
+                continue
+            checked += 1
+            n_step = config["agent"]["n_step"]
+            self.assertLess(n_step, 5,
+                            f"{path.name} runs potential_v2 at n_step={n_step}, where the opponent "
+                            f"term contributes exactly zero to the bomb-drop target")
+        self.assertGreater(checked, 0, "no potential_v2 config found to check")
 
 
 class PotentialShapingTest(unittest.TestCase):
