@@ -1,7 +1,7 @@
 {
-  "_design_note": "F2, the tournament candidate for submission, and the arm the closing batch was built to reach. It puts the safest recipe measured (M3.10: (128, 64) at 5e-4) on the best tournament setting measured (M3.13: opponent training at 5000 rounds, repeat-measured 2.4293 against M3.4's 2.1436, t = +7.9). Neither has been combined with the other. Note that M3.13 wins on collection, not survival -- its coins_share is the project's highest at 0.2402 while its survival rate is its lowest at 2.8 percent -- so the open question is whether M3.10's safety adds to that or trades against it.",
+  "_design_note": "F2, the tournament candidate for submission, and the arm the closing batch was built to reach. It puts the safest recipe measured (M3.10: (128, 64) at 5e-4) on the best tournament setting measured (M3.13: opponent training at 5000 rounds, repeat-measured 2.4293 against M3.4's 2.1436, t = +7.9). Neither has been combined with the other. Note that M3.13 wins on collection, not survival -- its coins_share is the project's highest at 0.2402 while its survival rate is its lowest at 2.8 percent -- so the open question is whether M3.10's safety adds to that or trades against it. Updated to R02_8: double_dqn has a resolvable tournament benefit (M3.12 over M3.4, t = +3.69, section 7.25.1) and the retuned step size is what makes width work at all (section 7.24.1), so this arm carries both.",
   "_predeclared_design_numbers": {
-    "changed_factor": "route R02_3 -> R02_6 relative to M3.13: hidden (64,32) -> (128,64) and learning_rate 1e-3 -> 5e-4. Budget, schedule, task, opponents and seeds are M3.13's.",
+    "changed_factor": "route R02_3 -> R02_8 relative to M3.13: hidden (64,32) -> (128,64), learning_rate 1e-3 -> 5e-4, algorithm q_learning -> double_dqn. Budget, schedule, task, opponents and seeds are M3.13's.",
     "control": "runs/m3_13_budget5000_vs3rb_20260827/ -- repeat-measured score 2.4293 (sd 0.057), coins_share 0.2402, survival 2.8 percent",
     "falsification": "Not resolvably above 2.4293 means the retuned width adds nothing on top of opponent training at this budget, and M3.13 is the submission.",
     "prediction": "None stated.",
@@ -12,7 +12,7 @@
     "the_metric_that_decides_it": "Repeat the classic_versus_opponents suite five times and compare the pooled means against M3.13's five, the way M3.4/M3.12/M3.13 were compared. A single measurement of this suite decides nothing. Report coins_share and the death split alongside score."
   },
   "agent": {
-    "algorithm": "q_learning",
+    "algorithm": "double_dqn",
     "model": "mlp_q",
     "n_step": 5,
     "name": "research_agent",
@@ -119,7 +119,7 @@
     "primary_metric": "score"
   },
   "reward_version": "A06",
-  "route": "R02_6",
+  "route": "R02_8",
   "schema_version": 1,
   "shaping": {
     "name": "potential_v1"
