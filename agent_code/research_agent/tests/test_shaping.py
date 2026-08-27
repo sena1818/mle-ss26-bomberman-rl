@@ -14,7 +14,7 @@ from dataclasses import replace
 
 import numpy as np
 
-from agent_code.research_agent.config import SHAPING_SPECIFICATIONS, active_config, shaping_specification
+from agent_code.research_agent.config import BOMB_TIMER, SHAPING_SPECIFICATIONS, active_config, shaping_specification
 from agent_code.research_agent.shaping import PotentialShaping, build_shaping
 
 
@@ -121,6 +121,30 @@ class ShapingSurvivesTheNStepReturnTest(unittest.TestCase):
         self.assertAlmostEqual(self._contribution(5), 0.0, places=12)
         self.assertAlmostEqual(self._contribution(8), 0.0, places=12)
 
+    def test_potential_v1_danger_term_has_the_same_resonance(self):
+        """The resonance is not a property of A07; A06 has it too.
+
+        A06's danger term is on exactly while a bomb threatens the cell and off
+        on both sides of it, which is the same transient shape as A07's
+        opponent term.  So every A06 arm at n >= 5 shapes the bomb-drop
+        transition by exactly nothing -- including the whole M2/M3 line, which
+        ran A06 at n=5.  M4 runs A06 at n=3 for this reason and must not be
+        moved to 5.
+        """
+        danger_only = dict(SHAPING_SPECIFICATIONS["A06"], coin_weight=0.0)
+        shaping = PotentialShaping(danger_only, discount=0.95)
+        phi = [shaping.potential(state) for state in self.traj]
+
+        def contribution(n: int) -> float:
+            return 0.95 ** n * phi[min(n, len(self.traj) - 1)] - phi[0]
+
+        for n in (5, 8):
+            self.assertAlmostEqual(contribution(n), 0.0, places=12,
+                                   msg=f"A06's danger term should vanish at n={n}")
+        for n in (1, 2, 3, 4):
+            self.assertLess(contribution(n), -0.2,
+                            f"A06's danger term should still penalise the drop at n={n}")
+
     def test_the_term_survives_below_the_bomb_lifetime(self):
         for n in (1, 2, 3, 4):
             self.assertGreater(self._contribution(n), 0.2, f"n={n} carries no signal")
@@ -140,6 +164,31 @@ class ShapingSurvivesTheNStepReturnTest(unittest.TestCase):
                             f"{path.name} runs potential_v2 at n_step={n_step}, where the opponent "
                             f"term contributes exactly zero to the bomb-drop target")
         self.assertGreater(checked, 0, "no potential_v2 config found to check")
+
+    def test_every_m4_arm_stays_below_the_bomb_lifetime(self):
+        """M4 runs A06, and A06 has the resonance too -- see the test above.
+
+        Scoped to the M4 configs on purpose.  The M2/M3 arms that ran A06 at
+        n=5 are finished and published; that their danger term contributed
+        nothing to the drop transition is a finding for that line to record,
+        not something a test can retroactively forbid.  What a test can do is
+        stop the M4 line from drifting onto the same resonance -- the more so
+        because n=5 would be the natural thing to try if bomb-escape safety
+        turned out to be M4's problem, and it is exactly the wrong move.
+        """
+        import json
+        experiments = Path(__file__).resolve().parents[3] / "experiments"
+        checked = 0
+        for path in sorted(experiments.glob("m4_*.json")):
+            config = json.loads(path.read_text(encoding="utf-8"))
+            if not (config.get("shaping") or {}).get("name"):
+                continue
+            n_step = config["agent"]["n_step"]
+            self.assertLess(n_step, BOMB_TIMER + 1,
+                            f"{path.name} shapes at n_step={n_step}, at or above the bomb's "
+                            f"{BOMB_TIMER + 1}-transition life, where the danger term telescopes away")
+            checked += 1
+        self.assertGreater(checked, 0, "no shaped M4 config found to check")
 
 
 class PotentialShapingTest(unittest.TestCase):
