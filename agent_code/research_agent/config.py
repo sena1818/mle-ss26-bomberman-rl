@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 import json
+import math
 import os
 
 
@@ -246,6 +247,18 @@ LEARNING_RATE_SCHEDULES = {
         "decay_rounds": 5000,
         "final_fraction": 0.2,
         "description": "L01's floor reached over 5000 rounds instead of 2500",
+    },
+    # L04 shares L01's endpoints and length exactly, so the ONLY thing that
+    # differs is the shape between them: cosine spends longer near the initial
+    # rate and drops fastest in the middle, where linear falls at a constant
+    # rate throughout.  Keeping the endpoints identical is what makes the
+    # comparison about the shape rather than about the floor or the length,
+    # which L02 and L03 already vary one at a time.
+    "L04": {
+        "kind": "cosine_absolute",
+        "decay_rounds": 2500,
+        "final_fraction": 0.2,
+        "description": "L01's endpoints and length, annealed on a cosine instead of a line",
     },
 }
 LEARNING_RATE_SCHEDULE_VERSIONS = frozenset(LEARNING_RATE_SCHEDULES)
@@ -890,6 +903,8 @@ def learning_rate_for_training_round(config: ExperimentConfig, round_number: int
     if round_number >= decay_rounds:
         return final
     progress = (round_number - 1) / decay_rounds
+    if schedule["kind"] == "cosine_absolute":
+        return final + (initial - final) * 0.5 * (1.0 + math.cos(math.pi * progress))
     return initial + progress * (final - initial)
 
 
