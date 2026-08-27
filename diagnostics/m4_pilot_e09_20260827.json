@@ -1,0 +1,114 @@
+{
+  "_what": "Recipe-faithful M4 pilot: operational validation of the E09 step-counted schedule.",
+  "_source": "runs/m4_pilot_e09b_20260827, config experiments/m4_r07_a06_e09_t02_pilot.json, commit caacbab.",
+  "_status": "Stopped by hand at ~3900/5000 rounds once checks 1-4 were answered. Evaluation leg not run, so check 5 (does the validation score rise) is OPEN.",
+  "_disclaimer": "Operational validation only. No scientific claim may be quoted from this run. Throwaway seeds 1901/1902, no holdout seeds.",
+  "seeds": {
+    "1901": {
+      "rounds_completed": 3910,
+      "cumulative_environment_steps": 83567,
+      "check1_round_replay_reached_min_size_10000": [
+        1073,
+        10001
+      ],
+      "check2_first_gradient_round_epsilon_replay": [
+        1073,
+        1.0,
+        10001
+      ],
+      "check3_epsilon_floor_round_and_steps": [
+        3791,
+        60044
+      ],
+      "check4_final_gradient_diagnostics": {
+        "gradient_applied": 1,
+        "gradient_steps": 18392,
+        "last_gradient_l2_norm": 0.7684,
+        "loss": 0.1243,
+        "mean_abs_td_error": 0.3382,
+        "mean_target": 0.843,
+        "q_max": 3.3871,
+        "q_mean": 0.7787,
+        "q_min": -0.5814,
+        "replay_size": 83564,
+        "target_synchronised": 0
+      },
+      "check4_gradient_norm_min_max": [
+        0.0168,
+        1.7062
+      ],
+      "check4_rounds_with_gradient_norm_pinned_at_clip_10": 0,
+      "cumulative_steps_at_round": {
+        "1000": 9246,
+        "2000": 19005,
+        "3000": 31893
+      },
+      "mean_steps_per_round_by_segment": {
+        "1-1000": 9.2,
+        "1001-2000": 9.8,
+        "2001-3000": 12.9,
+        "3001-4000": 56.8
+      },
+      "round_end_mispredictions_final_value": 0
+    },
+    "1902": {
+      "rounds_completed": 4004,
+      "cumulative_environment_steps": 82897,
+      "check1_round_replay_reached_min_size_10000": [
+        1107,
+        10010
+      ],
+      "check2_first_gradient_round_epsilon_replay": [
+        1107,
+        0.999867,
+        10010
+      ],
+      "check3_epsilon_floor_round_and_steps": [
+        3889,
+        60215
+      ],
+      "check4_final_gradient_diagnostics": {
+        "gradient_applied": 1,
+        "gradient_steps": 18225,
+        "last_gradient_l2_norm": 0.8944,
+        "loss": 0.14,
+        "mean_abs_td_error": 0.3572,
+        "mean_target": 1.0263,
+        "q_max": 3.6053,
+        "q_mean": 0.9737,
+        "q_min": -1.3627,
+        "replay_size": 82896,
+        "target_synchronised": 0
+      },
+      "check4_gradient_norm_min_max": [
+        0.0262,
+        1.6099
+      ],
+      "check4_rounds_with_gradient_norm_pinned_at_clip_10": 0,
+      "cumulative_steps_at_round": {
+        "1000": 8917,
+        "2000": 18728,
+        "3000": 31226,
+        "4000": 81758
+      },
+      "mean_steps_per_round_by_segment": {
+        "1-1000": 8.9,
+        "1001-2000": 9.8,
+        "2001-3000": 12.5,
+        "3001-4000": 50.5
+      },
+      "round_end_mispredictions_final_value": 0
+    }
+  },
+  "findings": [
+    "The schedule now does what it says: the first gradient step lands with the buffer exactly at min_size and epsilon still at 1.00, on both seeds.",
+    "The 50,000-step anneal completes at round 3791/3889, well inside a 10,000-round budget. Both seeds agree to within 100 rounds.",
+    "Steps per round jump about 4x (12 -> 50) exactly as epsilon reaches its floor, which is the agent starting to survive rather than a schedule artefact.",
+    "Loss, Q statistics and gradient norms are finite and bounded throughout; the gradient norm never reaches the clip of 10, so clip 10 is not binding for this recipe.",
+    "round_end_mispredictions is 0 on both seeds.",
+    "OPEN: whether the validation score rises. That needs the evaluation leg, which was not run."
+  ],
+  "footprint": {
+    "run_directory_bytes_uncompressed_two_training_jobs_only": 238544565
+  }
+}
