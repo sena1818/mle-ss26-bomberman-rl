@@ -1,0 +1,16 @@
+{
+  "agent": "research_agent",
+  "caught_in_overlapping_blasts": 16,
+  "died_to_own_bomb_only": 422,
+  "job_prefix": "eval_classic_versus_opponents",
+  "killed_by_others_only": 383,
+  "killers": {
+    "rule_based_agent_0": 125.5,
+    "rule_based_agent_1": 140.0,
+    "rule_based_agent_2": 117.5
+  },
+  "mismatched_jobs": [],
+  "rounds": 900,
+  "run_dir": "runs/m3_12_ddqn_vs3rb_20260827",
+  "survived": 79
+}
