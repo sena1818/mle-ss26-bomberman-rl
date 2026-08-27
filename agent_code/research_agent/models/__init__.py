@@ -39,6 +39,9 @@ def build_model(config: ExperimentConfig, input_dim: int, *, seed: int) -> QMode
             dueling=_CNN_NETWORKS[config.network],
             seed=seed,
             learning_rate=config.learning_rate,
+            optimizer=config.optimizer,
+            td_loss=config.td_loss,
+            gradient_clip_norm=config.gradient_clip_norm,
         )
     raise NotImplementedError(f"QModel adapter {config.network!r} has not been implemented yet.")
 
@@ -65,7 +68,9 @@ def load_model(config: ExperimentConfig, path: Path) -> QModel:
     if config.network in _CNN_NETWORKS:
         from .cnn_mlp_q import CnnMlpQModel
 
-        model = CnnMlpQModel.load(path, learning_rate=config.learning_rate)
+        model = CnnMlpQModel.load(
+            path, learning_rate=config.learning_rate, optimizer=config.optimizer,
+            td_loss=config.td_loss, gradient_clip_norm=config.gradient_clip_norm)
         if model.dueling != _CNN_NETWORKS[config.network]:
             raise ValueError(f"Checkpoint {path} is a {model.model_type}, but {config.name} declares {config.network}.")
         return model

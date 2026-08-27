@@ -176,3 +176,61 @@ class CnnMlpQModelTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CnnHonoursItsDeclarationsTest(unittest.TestCase):
+    """The route declares an optimizer, a loss, a clip and a step size.
+
+    All four used to be hardcoded inside the model while the route declared
+    them separately.  They agreed, which is the worst form of that bug: nothing
+    was wrong, and nothing would have said so when it became wrong.  The step
+    size was the one that mattered -- the runtime implements a schedule by
+    assigning to ``model.learning_rate`` once a round, and a torch optimizer
+    copies ``lr`` into its parameter groups at construction, so an L01 arm on
+    this line would have run to completion and measured exactly nothing.
+    """
+
+    def _model(self, **overrides):
+        from agent_code.research_agent.models.cnn_mlp_q import CnnMlpQModel
+        return CnnMlpQModel(2029, hidden_layers=(256,), seed=0, **overrides)
+
+    def test_setting_the_learning_rate_reaches_the_optimizer(self):
+        model = self._model(learning_rate=2.5e-4)
+        self.assertEqual(model.optimizer.param_groups[0]["lr"], 2.5e-4)
+        model.learning_rate = 1e-5
+        self.assertEqual(model.learning_rate, 1e-5)
+        for group in model.optimizer.param_groups:
+            self.assertEqual(group["lr"], 1e-5, "the schedule must reach the optimizer, not just the object")
+
+    def test_the_learning_rate_schedule_actually_moves_a_cnn(self):
+        """End to end against the real schedule the M3 line added."""
+        from agent_code.research_agent.config import (
+            EXPERIMENTS, learning_rate_for_training_round, validate_config)
+        from dataclasses import replace
+        config = validate_config(replace(EXPERIMENTS["R07"], learning_rate_schedule="L01"))
+        model = self._model(learning_rate=config.learning_rate)
+        early = learning_rate_for_training_round(config, 1, 5000)
+        late = learning_rate_for_training_round(config, 5000, 5000)
+        self.assertGreater(early, late, "L01 is a decay; this arm would be pointless otherwise")
+        model.learning_rate = late
+        self.assertEqual(model.optimizer.param_groups[0]["lr"], late)
+
+    def test_the_declared_optimizer_and_clip_are_used(self):
+        adam = self._model(optimizer="adam")
+        sgd = self._model(optimizer="sgd")
+        self.assertEqual(type(adam.optimizer).__name__, "Adam")
+        self.assertEqual(type(sgd.optimizer).__name__, "SGD")
+        self.assertEqual(self._model(gradient_clip_norm=2.0).gradient_clip_norm, 2.0)
+
+    def test_an_undeclared_choice_fails_closed(self):
+        for bad in ({"optimizer": "rmsprop"}, {"td_loss": "hinge"}, {"gradient_clip_norm": -1.0}):
+            with self.assertRaises(ValueError, msg=f"{bad} should be refused"):
+                self._model(**bad)
+
+    def test_a_clone_carries_the_declarations(self):
+        """The target network is a clone; it must not drift from the online net."""
+        model = self._model(learning_rate=3e-4, optimizer="sgd", td_loss="mse", gradient_clip_norm=5.0)
+        copy = model.clone()
+        self.assertEqual(type(copy.optimizer).__name__, "SGD")
+        self.assertEqual((copy.td_loss, copy.gradient_clip_norm), ("mse", 5.0))
+        self.assertEqual(copy.optimizer.param_groups[0]["lr"], 3e-4)

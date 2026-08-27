@@ -47,6 +47,7 @@ STAGES=(
   # step size held fixed while the network widened.  An increment measured
   # against a mis-tuned base can invert its own sign.
   "lr1e4:m4_r07_a06_e09_t02_lr1e4:training"
+  "lr5e4:m4_r07_a06_e09_t02_lr5e4:training"
   "opponents:m4_r07_a06_e09_t02opp_opponents:training"
   "no_shaping:m4_r07_a03_e09_t02_no_shaping:training"
   "bc:m4_r07_a06_e10_t02_bc:training"

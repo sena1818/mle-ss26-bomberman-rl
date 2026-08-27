@@ -1,14 +1,14 @@
 {
-  "_design_note": "Step size, and nothing else. It is placed immediately after the anchor rather than late in the ladder because of what the handcrafted line just learned the hard way: docs/05 section 0.20 found the step size to be the largest single effect measured anywhere on this project, and -- worse -- that its published conclusion 'more capacity is harmful' (M3.8, -5.72, judged distinguishable) was an ARTEFACT of holding the step size fixed while widening the network. At 5e-4 the same width gave +8.21 and became the best solo arm on the line. An increment measured against a mis-tuned base can invert its own sign, so the base is tuned before the four increments are measured against it. M4's 2.5e-4 is PyTorch's default carried into a 477,286-parameter network that has never been tuned, on a line whose sibling needed half its step size once it got wider; 1e-4 is the lower bracket; m4_r07_a06_e09_t02_lr5e4 is the upper one. Two points on the same side of an optimum only give a direction if you already knew which side you were on, so the anchor is bracketed rather than probed downward. The two arms are independent and can run concurrently where cores allow.",
+  "_design_note": "Step size, upward. This arm exists because the pair 2.5e-4 / 1e-4 alone cannot answer the question it is asked: two points that both lie on the same side of the optimum tell you a direction only if you already knew which side you were on, and nobody does -- 2.5e-4 is PyTorch's default carried into a 477,286-parameter network. Bracketing it settles the direction in one round of arms instead of two. 5e-4 is the level docs/05 section 0.20 found best on the handcrafted line at (128,64); that network is twenty times smaller, so this is not a prediction, it is the other bracket. Both arms are compared against the same anchor and are independent of each other, so they can run concurrently where cores allow.",
   "_predeclared_design_numbers": {
     "budget_curve": "docs/05 section 0.18 found that on the handcrafted line, training past 2000 rounds made the competition-setting score worse, reproduced across two arms. Whether that holds for a model with three orders of magnitude more parameters is open; report classic_versus_opponents at every evaluated checkpoint rather than only at the end.",
-    "changed_factor": "agent.learning_rate 2.5e-4 -> 1e-4. Nothing else moves.",
+    "changed_factor": "agent.learning_rate 2.5e-4 -> 5e-4. Nothing else moves.",
     "control": "The M4 anchor arm at the same budget and seeds.",
     "gate": "Learning from scratch, judged on VALIDATION seeds only so that holdout stays unselected. All three must hold: (a) the mean loot-crate validation score over the last two evaluated checkpoints exceeds the mean over the first two by more than the 4.7 resolution; (b) the final validation score is above an untrained-CNN control, which the smoke measured at score 0.0 with wait_fraction 0.998 and distinct_cells 1.9; (c) the policy is not degenerate -- distinct_cells > 20, bomb_rate > 0.01, wait_fraction < 0.6. Point-to-point monotonicity is NOT required and must not be used: an RL curve that dips once is not a failed arm.",
     "if_neither_wins": "If the two are indistinguishable, the step size is not the lever here and the remaining arms are measured against the anchor as planned. That is a useful negative: it is the assumption every later arm rests on.",
     "if_the_curve_oscillates": "docs/05 section 0.20 and the L01 rationale: a score that swings without trend over the back half of a budget is what a step too large for the remaining gradient looks like. If either arm's checkpoint curve does that, the follow-up is the L01 decay schedule (already generic infrastructure, one config field), not another level.",
     "known_limitation": "Training is solo, so the opponents plane and the living_opponents scalar are identically zero throughout and the weights reading them keep their initialisation. At tournament evaluation those inputs become non-zero for the first time. This arm therefore cannot answer whether the representation helps against opponents; the opponent-exposure arm exists for that.",
-    "prediction": "None on the direction. The M3 evidence says the step size matters a great deal at this scale, not which side of 2.5e-4 this network wants.",
+    "prediction": "None. The two step-size arms bracket the anchor deliberately; the point is to find which side, not to confirm a guess.",
     "reporting": "Quote evaluation_summary.json reportable_result, never selected_checkpoint: the latter maximises over train_seed x checkpoint_round and is biased upward. Report all five training-seed distributions, every G2 threshold, and coins_share alongside score for every arm that has opponents.",
     "resolution_loot_crate": "docs/01 section 7.21: the five-seed spread of the handcrafted control gives sd 3.77, so two arms measured once each need a gap of 4.7. That threshold covers training variance; the tournament one below does not.",
     "resolution_tournament": "docs/01 section 7.20: pooled 450-round classic-with-opponents score has sd 0.089, so two arms need a gap of 0.246 (coins_share: 0.022). This was measured by re-running ONE fixed set of checkpoints, so it is evaluation noise only and does NOT cover training variance. Use it for a paired same-seed difference, never to bless a maximum taken over seeds.",
@@ -16,7 +16,7 @@
   },
   "agent": {
     "algorithm": "double_dqn",
-    "learning_rate": 0.0001,
+    "learning_rate": 0.0005,
     "model": "cnn_mlp_q",
     "n_step": 3,
     "name": "research_agent",
@@ -153,7 +153,7 @@
       ]
     }
   },
-  "experiment_id": "M4_R07_A06_E09_C00_T02_n3_10000_lr1e4",
+  "experiment_id": "M4_R07_A06_E09_C00_T02_n3_10000_lr5e4",
   "exploration_version": "E09",
   "promotion": {
     "primary_metric": "score",

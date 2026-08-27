@@ -96,6 +96,9 @@ class CnnMlpQModel:
         dueling: bool = False,
         seed: int = 0,
         learning_rate: float = 2.5e-4,
+        optimizer: str = "adam",
+        td_loss: str = "huber",
+        gradient_clip_norm: float | None = 10.0,
     ):
         torch = _torch()
         layout = layout_for_dimension(int(input_dim))
@@ -106,7 +109,21 @@ class CnnMlpQModel:
         self.hidden_layers = tuple(int(width) for width in hidden_layers)
         self.dueling = bool(dueling)
         self.seed = int(seed)
-        self.learning_rate = float(learning_rate)
+        # Declared, not assumed.  These three used to be hardcoded while the
+        # route declared them separately, so a config could ask for SGD or a
+        # different clip and be silently given Adam at 10.0.  They happened to
+        # agree, which is the worst version of that bug: nothing was wrong and
+        # nothing would have told you when it became wrong.
+        if optimizer not in {"adam", "sgd"}:
+            raise ValueError(f"Unsupported CNN optimizer {optimizer!r}.")
+        if td_loss not in {"huber", "mse"}:
+            raise ValueError(f"Unsupported CNN TD loss {td_loss!r}.")
+        if gradient_clip_norm is not None and gradient_clip_norm <= 0:
+            raise ValueError("gradient_clip_norm must be positive when declared.")
+        self.optimizer_name = optimizer
+        self.td_loss = td_loss
+        self.gradient_clip_norm = gradient_clip_norm
+        self._learning_rate = float(learning_rate)
         torch.manual_seed(self.seed)
         self.device = device()
         self.network = _QNetwork(
@@ -115,9 +132,30 @@ class CnnMlpQModel:
             hidden_width=self.hidden_layers[0],
             dueling=self.dueling,
         ).to(self.device)
-        self.optimizer = torch.optim.Adam(self.network.parameters(), lr=self.learning_rate)
+        build = torch.optim.Adam if optimizer == "adam" else torch.optim.SGD
+        self.optimizer = build(self.network.parameters(), lr=self._learning_rate)
         self.metadata: dict = {}
         self._diagnostics: dict = {}
+
+    @property
+    def learning_rate(self) -> float:
+        return self._learning_rate
+
+    @learning_rate.setter
+    def learning_rate(self, value: float) -> None:
+        """Set the step size *on the optimizer*, not just on the object.
+
+        The runtime implements a learning-rate schedule by assigning to this
+        attribute once per round.  A torch optimizer copies its ``lr`` into its
+        parameter groups when it is constructed, so storing the number here and
+        stopping -- which is what this class did -- leaves the actual step size
+        frozen at its initial value.  An L01 arm would have run to completion
+        and measured exactly nothing, the same way the A07 arm at n=5 would
+        have.  The setter is the enforcement point.
+        """
+        self._learning_rate = float(value)
+        for group in self.optimizer.param_groups:
+            group["lr"] = self._learning_rate
 
     @property
     def model_type(self) -> str:
@@ -142,7 +180,8 @@ class CnnMlpQModel:
         self.network.train()
         predictions = self.network(self._tensor(board), self._tensor(globals_))
         selected = predictions.gather(1, actions.unsqueeze(1)).squeeze(1)
-        loss = torch.nn.functional.smooth_l1_loss(selected, wanted)
+        loss = (torch.nn.functional.smooth_l1_loss(selected, wanted) if self.td_loss == "huber"
+                else torch.nn.functional.mse_loss(selected, wanted))
         self.optimizer.zero_grad(set_to_none=True)
         loss.backward()
         # A single clipped step keeps one unlucky batch from destroying a run.
@@ -150,7 +189,9 @@ class CnnMlpQModel:
         # which is the number worth logging: a run whose gradients are pinned at
         # the clip for thousands of steps is diverging, and one whose norm falls
         # to zero has stopped learning.  Both look identical downstream.
-        gradient_norm = torch.nn.utils.clip_grad_norm_(self.network.parameters(), 10.0)
+        gradient_norm = torch.nn.utils.clip_grad_norm_(
+            self.network.parameters(),
+            self.gradient_clip_norm if self.gradient_clip_norm is not None else float("inf"))
         self.optimizer.step()
         with torch.no_grad():
             self._diagnostics = {
@@ -189,7 +230,9 @@ class CnnMlpQModel:
         loss = torch.nn.functional.cross_entropy(logits, labels)
         self.optimizer.zero_grad(set_to_none=True)
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.network.parameters(), 10.0)
+        torch.nn.utils.clip_grad_norm_(
+            self.network.parameters(),
+            self.gradient_clip_norm if self.gradient_clip_norm is not None else float("inf"))
         self.optimizer.step()
         return float(loss.detach())
 
@@ -220,6 +263,9 @@ class CnnMlpQModel:
             dueling=self.dueling,
             seed=self.seed,
             learning_rate=self.learning_rate,
+            optimizer=self.optimizer_name,
+            td_loss=self.td_loss,
+            gradient_clip_norm=self.gradient_clip_norm,
         )
         copy.copy_parameters_from(self)
         return copy
@@ -244,7 +290,8 @@ class CnnMlpQModel:
         np.savez(path, **payload)
 
     @classmethod
-    def load(cls, path: Path, *, learning_rate: float = 2.5e-4) -> "CnnMlpQModel":
+    def load(cls, path: Path, *, learning_rate: float = 2.5e-4, optimizer: str = "adam",
+             td_loss: str = "huber", gradient_clip_norm: float | None = 10.0) -> "CnnMlpQModel":
         torch = _torch()
         with np.load(path, allow_pickle=False) as data:
             required = {"model_type", "input_dim", "hidden_layers", "metadata"}
@@ -258,6 +305,9 @@ class CnnMlpQModel:
                 hidden_layers=tuple(int(width) for width in data["hidden_layers"]),
                 dueling=model_type == "dueling_cnn_mlp_q",
                 learning_rate=learning_rate,
+                optimizer=optimizer,
+                td_loss=td_loss,
+                gradient_clip_norm=gradient_clip_norm,
             )
             state_dict = {
                 name.removeprefix("parameter::"): torch.from_numpy(data[name])
