@@ -6,7 +6,7 @@ import json
 import os
 import tempfile
 import unittest
-from dataclasses import replace
+from dataclasses import asdict, replace
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -20,6 +20,7 @@ from agent_code.research_agent.config import (
     REWARD_VERSIONS,
     active_config,
     epsilon_for_training_round,
+    learning_rate_for_training_round,
     exploration_specification,
 )
 from agent_code.research_agent.learners import OnlineQLearner
@@ -460,6 +461,52 @@ class ExperimentRuntimeTest(unittest.TestCase):
         for version in ("E05", "E06"):
             self.assertEqual(specifications[version]["hold_rounds"], 400)
             self.assertNotEqual(specifications[version]["final_epsilon"], 0.05)
+
+    def test_every_route_key_matches_the_config_it_holds(self):
+        """A duplicated dict key silently drops a route and Python says nothing.
+
+        Both branches independently added an R02_8 during the M3/M4 split, and a
+        careless merge would have produced exactly that.  The name field inside
+        each ExperimentConfig is the redundancy that makes it detectable.
+        """
+        from agent_code.research_agent.config import EXPERIMENTS
+        for key, config in EXPERIMENTS.items():
+            self.assertEqual(key, config.name, f"route {key} holds a config named {config.name}")
+        source = Path(__file__).resolve().parents[1] / "config.py"
+        text = source.read_text(encoding="utf-8")
+        for key in EXPERIMENTS:
+            self.assertEqual(text.count(f'"{key}": ExperimentConfig'), 1,
+                             f"route {key} is defined more than once")
+
+    def test_the_default_schedule_leaves_the_step_size_exactly_alone(self):
+        """Every arm before this existed ran L00; it has to stay bit-comparable."""
+        config = replace(active_config(), learning_rate_schedule="L00")
+        for rounds in (500, 2000, 5000):
+            for round_number in (1, rounds // 2, rounds):
+                self.assertEqual(
+                    learning_rate_for_training_round(config, round_number, rounds),
+                    config.learning_rate,
+                )
+
+    def test_l01_decays_in_absolute_rounds_and_then_holds(self):
+        config = replace(active_config(), learning_rate_schedule="L01", learning_rate=5e-4)
+        self.assertAlmostEqual(learning_rate_for_training_round(config, 1, 5000), 5e-4)
+        self.assertAlmostEqual(learning_rate_for_training_round(config, 1251, 5000), 3e-4)
+        self.assertAlmostEqual(learning_rate_for_training_round(config, 2500, 5000), 1e-4)
+        # Past the decay the floor holds, and it does not move with the budget.
+        for rounds in (2500, 5000):
+            self.assertAlmostEqual(learning_rate_for_training_round(config, 2500, rounds), 1e-4)
+        self.assertAlmostEqual(learning_rate_for_training_round(config, 5000, 5000), 1e-4)
+        with self.assertRaises(ValueError):
+            learning_rate_for_training_round(config, 5001, 5000)
+
+    def test_r02_9_is_r02_8_with_only_the_schedule_changed(self):
+        from agent_code.research_agent.config import EXPERIMENTS
+        eight, nine = asdict(EXPERIMENTS["R02_8"]), asdict(EXPERIMENTS["R02_9"])
+        differing = {k for k in eight if eight[k] != nine[k]}
+        self.assertEqual(differing, {"name", "learning_rate_schedule"})
+        self.assertEqual(eight["learning_rate_schedule"], "L00")
+        self.assertEqual(nine["learning_rate_schedule"], "L01")
 
     def test_route_selection_is_runtime_configuration_not_callback_code(self):
         with patch.dict(os.environ, {"BOMBERMAN_EXPERIMENT": "R01"}, clear=False):

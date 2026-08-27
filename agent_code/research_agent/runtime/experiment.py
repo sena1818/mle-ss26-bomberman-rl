@@ -16,6 +16,8 @@ from ..config import (
     ExperimentConfig,
     epsilon_for_training_round,
     epsilon_for_training_step,
+    learning_rate_for_training_round,
+    learning_rate_specification,
     exploration_specification,
     shaping_specification,
 )
@@ -243,6 +245,8 @@ class ExperimentRuntime:
             "reward_specification": reward_specification(config.reward_version),
             "exploration_version": config.exploration_version,
             "exploration_specification": exploration_specification(config.exploration_version),
+            "learning_rate_schedule": config.learning_rate_schedule,
+            "learning_rate_specification": learning_rate_specification(config.learning_rate_schedule),
             "training_rounds": self._training_rounds() if train else None,
             "agent_seed": agent_seed,
             "training": train,
@@ -569,7 +573,25 @@ class ExperimentRuntime:
         # round must not inherit the previous round's delivery identity.
         self._delivered_key = None
         self._predicted_round_end = False
+        self._apply_learning_rate_schedule()
         self._reset_round_metrics()
+
+    def _apply_learning_rate_schedule(self) -> None:
+        """Set this round's step size on the model.
+
+        A constant schedule (L00) is left strictly alone rather than reassigned
+        to the same value, so every arm run before the schedule existed keeps
+        the identical code path and stays bit-comparable.
+        """
+        if not self.train or self.model is None:
+            return
+        if self.config.learning_rate_schedule == "L00":
+            return
+        self.model.learning_rate = learning_rate_for_training_round(
+            self.config,
+            round_number=self.round_number,
+            training_rounds=self._training_rounds(),
+        )
 
     def _reset_round_metrics(self) -> None:
         self.round_updates = 0

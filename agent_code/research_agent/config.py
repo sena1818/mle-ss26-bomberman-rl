@@ -204,6 +204,35 @@ EXPLORATION_SCHEDULES = {
     },
 }
 
+# Learning-rate schedules.  The step size turned out to be the largest single
+# effect measured on this line (docs/01 section 7.24: the same (128,64) network
+# scores 24.9 at 1e-3 and 33.1 at 5e-4), but that is about the *level*, and a
+# level being important does not make a *schedule* useful.  What motivates L01
+# is a different observation: F2's score oscillates between 13.1 and 13.9 from
+# round 2250 to 5000 rather than settling (section 7.26.2), which is the shape a
+# step size too large for the remaining gradient produces.  L01 is the
+# falsifiable test -- if that is the cause, the oscillation shrinks; if the arm
+# has genuinely converged, nothing changes.
+#
+# Decay is counted in absolute rounds, not as a fraction of the budget.  E01
+# made the fraction mistake and it confounded every budget comparison until
+# section 7.22 unpicked it; there is no reason to repeat it here.
+LEARNING_RATE_SCHEDULES = {
+    "L00": {
+        "kind": "constant",
+        "description": "the route's learning_rate throughout; what every arm before this used",
+    },
+    "L01": {
+        "kind": "linear_absolute",
+        "decay_rounds": 2500,
+        "final_fraction": 0.2,
+        "description": "linear decay to 20% of the route's learning_rate over 2500 rounds,"
+                       " then held there",
+    },
+}
+LEARNING_RATE_SCHEDULE_VERSIONS = frozenset(LEARNING_RATE_SCHEDULES)
+
+
 # Potential-based shaping, keyed by the reward version that switches it on.  The
 # weights live here rather than in the shaping module so that one reward version
 # label always names one exact set of numbers, recorded in the run snapshot.
@@ -308,6 +337,7 @@ class ExperimentConfig:
     # in the route declaration (rather than as hidden model defaults) makes a
     # stabilized M3 baseline reproducible and leaves R02/M3.0 untouched.
     optimizer: str = "sgd"
+    learning_rate_schedule: str = "L00"
     td_loss: str = "mse"
     gradient_clip_norm: float | None = None
 
@@ -557,6 +587,30 @@ EXPERIMENTS = {
         td_loss="huber",
         gradient_clip_norm=10.0,
     ),
+    # R02_9 is R02_8 with the step size decayed instead of held.  See
+    # LEARNING_RATE_SCHEDULES for why: F2 oscillates rather than settles
+    # after round 2250, and this is the falsifiable test of that reading.
+    "R02_9": ExperimentConfig(
+        name="R02_9",
+        lines=("M3",),
+        state_encoder="handcrafted_v3",
+        network="mlp_q",
+        algorithm="double_dqn",
+        learning_rate=5e-4,
+        discount=0.95,
+        epsilon=0.15,
+        safety_filter="legality_only",
+        feature_version="handcrafted_v3",
+        reward_version=REWARD_VERSION,
+        exploration_version=EXPLORATION_VERSION,
+        terminal_on_truncation=TERMINAL_ON_TRUNCATION,
+        hidden_layers=(128, 64),
+        replay=ReplayConfig(),
+        learning_rate_schedule="L01",
+        optimizer="adam",
+        td_loss="huber",
+        gradient_clip_norm=10.0,
+    ),
     "R07": ExperimentConfig(
         name="R07",
         lines=("M4",),
@@ -754,6 +808,48 @@ def epsilon_for_training_round(config: ExperimentConfig, round_number: int, trai
     raise ValueError(
         f"Unknown exploration version {config.exploration_version!r}; declared versions: {sorted(EXPLORATION_VERSIONS)}"
     )
+
+
+def learning_rate_for_training_round(config: ExperimentConfig, round_number: int,
+                                     training_rounds: int) -> float:
+    """Return the step size for one *training* round.
+
+    Evaluation never calls this: a greedy rollout performs no updates.  A budget
+    longer than ``decay_rounds`` simply holds the floor for the remainder, which
+    is the case the schedule exists to test.
+    """
+    if training_rounds < 1:
+        raise ValueError("BOMBERMAN_TRAINING_ROUNDS must be positive.")
+    if not 1 <= round_number <= training_rounds:
+        raise ValueError(
+            f"Training round {round_number} is outside the declared budget 1..{training_rounds}."
+        )
+    schedule = LEARNING_RATE_SCHEDULES.get(config.learning_rate_schedule)
+    if schedule is None:
+        raise ValueError(
+            f"Unknown learning-rate schedule {config.learning_rate_schedule!r}; "
+            f"declared: {sorted(LEARNING_RATE_SCHEDULE_VERSIONS)}"
+        )
+    if schedule["kind"] == "constant":
+        return float(config.learning_rate)
+    initial = float(config.learning_rate)
+    final = initial * float(schedule["final_fraction"])
+    decay_rounds = int(schedule["decay_rounds"])
+    if round_number >= decay_rounds:
+        return final
+    progress = (round_number - 1) / decay_rounds
+    return initial + progress * (final - initial)
+
+
+def learning_rate_specification(schedule_version: str) -> dict:
+    """Return the serializable, versioned definition of one schedule."""
+    try:
+        return {"learning_rate_schedule": schedule_version, **LEARNING_RATE_SCHEDULES[schedule_version]}
+    except KeyError as exc:
+        raise ValueError(
+            f"Unknown learning-rate schedule {schedule_version!r}; "
+            f"declared: {sorted(LEARNING_RATE_SCHEDULE_VERSIONS)}"
+        ) from exc
 
 
 def validate_config(config: ExperimentConfig) -> ExperimentConfig:
