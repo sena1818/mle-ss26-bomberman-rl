@@ -1,0 +1,138 @@
+{
+  "_design_note": "M3.9. The budget question, asked for the first time without the schedule moving with it. E01 holds epsilon at 0.30 for 20 percent of the budget, so M3.3L (500 -> 2000) and M3.3XL (2000 -> 5000) each changed the budget AND the schedule, and docs/01 sections 7.13.6 and 7.18.2 cannot attribute either result. E02 fixes hold at 400 rounds and the anneal at 1600, then holds the 0.05 floor for the remaining 3000 rounds. That makes this arm differ from runs/m3_3lx_oppeval_20260826 (E01 at a 2000-round budget, which section 7.21.1 shows is bit-identical to E02 there) in the training budget and nothing else.",
+  "_predeclared_design_numbers": {
+    "changed_factor": "training.budget.rounds 2000 -> 5000, with the exploration schedule held fixed at hold 400 / anneal 1600 (E01 -> E02, which are identical at 2000 rounds)",
+    "control": "runs/m3_3lx_oppeval_20260826/ (loot-crate holdout score 32.622 at round 2000)",
+    "falsification": "A gap under 4.7 against the 2000-round control means the budget was never the lever either, and section 7.13.6's 'budget is the largest single lever' has to be withdrawn rather than merely re-read.",
+    "prediction": "None stated. Section 7.21 found four of six single-factor changes unresolvable and two harmful, so the prior that any one lever is large is now weak. The point of this arm is attribution, not a predicted win.",
+    "reporting": "Report all five training-seed distributions, every G2 threshold, and coins_share.",
+    "resolution_loot_crate": "The control's five training-seed scores are 38.578 / 33.911 / 31.389 / 29.722 / 29.511, sd 3.77, so the standard error of a five-seed mean is 1.69 and two arms measured once each need a gap of 4.7. Do not read a direction into anything smaller.",
+    "resolution_tournament": "docs/01 section 7.20: pooled 450-round classic-with-opponents score has sd 0.089, so two arms need a gap of 0.246 (coins_share: 0.022).",
+    "second_comparison": "runs/m3_3xl_v3_5000_20260827/ (34.276) differs from this arm only in the schedule: E01 at 5000 rounds holds for 1000 and anneals over 4000. Reporting both isolates budget from schedule at the 5000-round budget."
+  },
+  "agent": {
+    "algorithm": "q_learning",
+    "model": "mlp_q",
+    "n_step": 5,
+    "name": "research_agent",
+    "replay": {
+      "batch_size": 32,
+      "capacity": 50000,
+      "min_size": 1000,
+      "target_update_every": 500,
+      "train_every": 1
+    },
+    "state_representation": "handcrafted_v3"
+  },
+  "checkpoint_evaluation": {
+    "holdout_seeds": [
+      3001,
+      3002,
+      3003
+    ],
+    "mode": "all",
+    "validation_seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation": {
+    "budget": {
+      "checkpoint_every": 250,
+      "rounds": 30
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation_suites": {
+    "classic_solo": {
+      "budget": {
+        "checkpoint_every": 250,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "classic_versus_opponents": {
+      "budget": {
+        "checkpoint_every": 250,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [
+        "rule_based_agent",
+        "rule_based_agent",
+        "rule_based_agent"
+      ],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    }
+  },
+  "experiment_id": "M3_9_R02_3_A06_E02_C00_T02_n5_5000",
+  "exploration_version": "E02",
+  "promotion": {
+    "primary_metric": "score"
+  },
+  "reward_version": "A06",
+  "route": "R02_3",
+  "schema_version": 1,
+  "shaping": {
+    "name": "potential_v1"
+  },
+  "terminal_on_truncation": false,
+  "training": {
+    "budget": {
+      "checkpoint_every": 250,
+      "rounds": 5000
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      1001,
+      1002,
+      1003,
+      1004,
+      1005
+    ]
+  }
+}
