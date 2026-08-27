@@ -1,0 +1,146 @@
+{
+  "_design_note": "The kill-shaping question, re-asked on the recipe that actually won. A07's first test ran at a CONSTANT step size (2500 rounds, L00) and was a clean null: take-up 16.5 -> 15.1 percent against its own control, with the activation precondition satisfied at 55 percent. But the step size turned out to carry +1.0976 on the tournament suite (t = +20.2), so that null was measured on a recipe we now know is substantially worse. Potential shaping cannot change the optimal policy, only the speed of reaching it -- and a recipe that converges further may land somewhere the shaping does reach. That is worth one paired test, not an assumption.\nA07 needs n_step below the bomb's five-transition life or its term cancels exactly (section 7.28.1), while R02_9 runs n=5. So the pair is run at n=3 together: the control is NOT R02_9.",
+  "_predeclared_design_numbers": {
+    "changed_factor": "n_step 5 -> 3 relative to R02_9. This is the CONTROL for the A07 arm, not an arm in its own right: A07 cannot run at n=5, so its control cannot either.",
+    "control": "runs/m3_lr_decay_5000_vs3rb_20260827/ (R02_9, n=5) for context only; this arm exists to be A07's control",
+    "prediction": "None stated. The first A07 test was null and potential shaping is policy-invariant, so if declining the bomb is already right this will be null too. The measured conversion rate of 6.3 percent -- about 0.32 points per kill-opportunity drop -- says it may well be.",
+    "reporting": "All five training-seed distributions, coins_share, kills per round, the death split, take-up, and the ten repeats individually.",
+    "resolution_tournament": "Ten repeats of classic_versus_opponents for BOTH arms; a single measurement settles nothing (section 7.26.3).",
+    "the_cost_to_watch": "Report the death split and survival. Pushing toward opponents is expected to raise deaths to opponents; a score gain bought with a survival collapse gets stated as such (section 7.25.3).",
+    "the_metric_that_decides_it": "Take-up of blast-covering positions from diagnose_kill_opportunities.py, measured on both arms of this pair, plus kills per round. Section 7.28.4: a mechanism baseline has to come from the arm's own control, never from an older arm."
+  },
+  "agent": {
+    "algorithm": "double_dqn",
+    "model": "mlp_q",
+    "n_step": 3,
+    "name": "research_agent",
+    "replay": {
+      "batch_size": 32,
+      "capacity": 50000,
+      "min_size": 1000,
+      "target_update_every": 500,
+      "train_every": 1
+    },
+    "state_representation": "handcrafted_v3"
+  },
+  "checkpoint_evaluation": {
+    "holdout_seeds": [
+      3001,
+      3002,
+      3003
+    ],
+    "mode": "all",
+    "validation_seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation": {
+    "budget": {
+      "checkpoint_every": 250,
+      "rounds": 30
+    },
+    "opponents": [
+      "rule_based_agent",
+      "rule_based_agent",
+      "rule_based_agent"
+    ],
+    "scenario": "loot-crate",
+    "seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation_suites": {
+    "classic_solo": {
+      "budget": {
+        "checkpoint_every": 250,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "classic_versus_opponents": {
+      "budget": {
+        "checkpoint_every": 250,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [
+        "rule_based_agent",
+        "rule_based_agent",
+        "rule_based_agent"
+      ],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    }
+  },
+  "experiment_id": "M3_LRN3_R02_8_A06_E02_C00_T02_n3_5000_vs3rb",
+  "exploration_version": "E02",
+  "learning_rate_schedule": "L01",
+  "promotion": {
+    "primary_metric": "score"
+  },
+  "reward_version": "A06",
+  "route": "R02_8",
+  "schema_version": 1,
+  "shaping": {
+    "name": "potential_v1"
+  },
+  "terminal_on_truncation": false,
+  "training": {
+    "budget": {
+      "checkpoint_every": 250,
+      "rounds": 5000
+    },
+    "opponents": [
+      "rule_based_agent",
+      "rule_based_agent",
+      "rule_based_agent"
+    ],
+    "scenario": "loot-crate",
+    "seeds": [
+      1001,
+      1002,
+      1003,
+      1004,
+      1005
+    ]
+  }
+}
