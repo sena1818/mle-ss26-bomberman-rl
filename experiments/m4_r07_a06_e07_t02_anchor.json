@@ -1,0 +1,164 @@
+{
+  "_design_note": "M4 anchor. First arm of the spatial line and the base every later increment is measured against: board_egocentric_v2 (seven agent-centred planes plus six scalars), a CNN whose only downsample is its last convolution, Double DQN with a target network, n=3, D4 augmentation, and E07. E07 rather than the E02 family because every E00-E06 schedule starts epsilon at 0.30, which was never a problem for a handcrafted-feature model but is one here: an untrained CNN's argmax is near-constant across states, so 0.30 would leave 70 percent of steps executing one fixed action. Double DQN, dueling's absence, D4 and n=3 are a bundle, not an attribution -- the anchor is a base, and the single-factor arms are the ones measured against it. Because E07 counts its hold and anneal in absolute rounds, the checkpoint at round N of this run is exactly what a run budgeted at N rounds would have produced, so this one arm answers the budget question at every checkpoint and no separate budget arm is needed.",
+  "_predeclared_design_numbers": {
+    "budget_curve": "docs/05 section 0.18 found that on the handcrafted line, training past 2000 rounds made the competition-setting score worse twice over. Whether that holds here is open; report the classic_versus_opponents score at every evaluated checkpoint rather than only at the end.",
+    "changed_factor": "Everything. This is the M4 base, not a single-factor comparison.",
+    "gate": "Must learn from scratch: the loot-crate holdout score must rise monotonically over the first checkpoints and end clearly above a random policy. If it does not, stop and diagnose the anchor -- do not add increments to a base that does not learn.",
+    "prediction": "None stated for the comparison against M3. The handcrafted line reached 32.6 at 2000 rounds on 62 hand-designed dimensions; this line sees 2029 raw ones and has to learn what those dimensions already encode, so a slower start is expected and says nothing about the ceiling.",
+    "reporting": "Report all five training-seed distributions, every G2 threshold, and coins_share alongside score for every arm that has opponents.",
+    "resolution_loot_crate": "docs/01 section 7.21: the five-seed spread of the handcrafted control gives sd 3.77, so two arms measured once each need a gap of 4.7 before a direction may be read into it.",
+    "resolution_tournament": "docs/01 section 7.20: pooled 450-round classic-with-opponents score has sd 0.089, so two arms need a gap of 0.246 (coins_share: 0.022)."
+  },
+  "agent": {
+    "algorithm": "double_dqn",
+    "model": "cnn_mlp_q",
+    "n_step": 3,
+    "name": "research_agent",
+    "replay": {
+      "augmentation": "d4",
+      "batch_size": 32,
+      "capacity": 100000,
+      "min_size": 10000,
+      "target_update_every": 500,
+      "train_every": 4
+    },
+    "state_representation": "board_egocentric_v2"
+  },
+  "checkpoint_evaluation": {
+    "holdout_seeds": [
+      3001,
+      3002,
+      3003
+    ],
+    "mode": "all",
+    "validation_seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation": {
+    "budget": {
+      "checkpoint_every": 500,
+      "rounds": 30
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation_suites": {
+    "classic_solo": {
+      "budget": {
+        "checkpoint_every": 500,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "classic_versus_opponents": {
+      "budget": {
+        "checkpoint_every": 2000,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "all",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [
+        "rule_based_agent",
+        "rule_based_agent",
+        "rule_based_agent"
+      ],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "coin_heaven_diagnostic": {
+      "budget": {
+        "checkpoint_every": 500,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "coin-heaven",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    }
+  },
+  "experiment_id": "M4_R07_A06_E07_C00_T02_n3_10000",
+  "exploration_version": "E07",
+  "promotion": {
+    "primary_metric": "score"
+  },
+  "reward_version": "A06",
+  "route": "R07",
+  "schema_version": 1,
+  "shaping": {
+    "name": "potential_v1"
+  },
+  "terminal_on_truncation": false,
+  "training": {
+    "budget": {
+      "checkpoint_every": 500,
+      "rounds": 10000
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      1001,
+      1002,
+      1003,
+      1004,
+      1005
+    ]
+  }
+}

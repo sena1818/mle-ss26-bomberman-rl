@@ -19,10 +19,11 @@ from pathlib import Path
 import numpy as np
 
 from ..config import ACTIONS
-from ..state import BOARD_EGOCENTRIC_LAYOUT, split_board_and_globals
+from ..state import layout_for_dimension, split_board_and_globals
 
 
 _TORCH_CONFIGURED = False
+_DEVICE = None
 
 
 def _torch():
@@ -45,6 +46,30 @@ def _torch():
         torch.set_num_threads(max(1, int(os.environ.get("BOMBERMAN_TORCH_THREADS", "1"))))
         _TORCH_CONFIGURED = True
     return torch
+
+
+def device():
+    """Return the torch device this process trains on.
+
+    ``cpu`` is the default because the submitted agent is scored on a single
+    CPU thread and must never depend on an accelerator being present.
+    ``BOMBERMAN_TORCH_DEVICE=cuda`` moves training to a GPU; a request for a
+    device torch cannot see is an error rather than a silent fallback, because
+    a cluster job that quietly ran 20x slower on CPU is worse than one that
+    failed in its first second.
+    """
+    global _DEVICE
+    torch = _torch()
+    if _DEVICE is None:
+        name = os.environ.get("BOMBERMAN_TORCH_DEVICE", "cpu").strip().lower() or "cpu"
+        if name.startswith("cuda") and not torch.cuda.is_available():
+            raise RuntimeError(
+                f"BOMBERMAN_TORCH_DEVICE={name!r} was requested but torch reports no CUDA device."
+            )
+        if name == "mps" and not torch.backends.mps.is_available():
+            raise RuntimeError("BOMBERMAN_TORCH_DEVICE='mps' was requested but torch reports no MPS device.")
+        _DEVICE = torch.device(name)
+    return _DEVICE
 
 
 class CnnMlpQModel:
@@ -73,9 +98,8 @@ class CnnMlpQModel:
         learning_rate: float = 2.5e-4,
     ):
         torch = _torch()
-        expected = int(np.prod(BOARD_EGOCENTRIC_LAYOUT["board_shape"])) + BOARD_EGOCENTRIC_LAYOUT["global_dimension"]
-        if input_dim != expected:
-            raise ValueError(f"cnn_mlp_q expects a board_egocentric_v1 state of length {expected}, got {input_dim}.")
+        layout = layout_for_dimension(int(input_dim))
+        self.layout = layout
         if len(hidden_layers) != 1 or hidden_layers[0] < 1:
             raise ValueError("cnn_mlp_q takes exactly one positive hidden width for its fused head.")
         self.input_dim = int(input_dim)
@@ -84,12 +108,13 @@ class CnnMlpQModel:
         self.seed = int(seed)
         self.learning_rate = float(learning_rate)
         torch.manual_seed(self.seed)
+        self.device = device()
         self.network = _QNetwork(
-            board_shape=BOARD_EGOCENTRIC_LAYOUT["board_shape"],
-            global_dim=BOARD_EGOCENTRIC_LAYOUT["global_dimension"],
+            board_shape=layout["board_shape"],
+            global_dim=layout["global_dimension"],
             hidden_width=self.hidden_layers[0],
             dueling=self.dueling,
-        )
+        ).to(self.device)
         self.optimizer = torch.optim.Adam(self.network.parameters(), lr=self.learning_rate)
         self.metadata: dict = {}
 
@@ -105,16 +130,16 @@ class CnnMlpQModel:
         board, globals_ = self._split(np.asarray(states, dtype=np.float32))
         self.network.eval()
         with torch.no_grad():
-            values = self.network(torch.from_numpy(board), torch.from_numpy(globals_))
-        return values.numpy()
+            values = self.network(self._tensor(board), self._tensor(globals_))
+        return values.cpu().numpy()
 
     def fit_batch(self, states: np.ndarray, action_indices: np.ndarray, targets: np.ndarray) -> np.ndarray:
         torch = _torch()
         board, globals_ = self._split(np.asarray(states, dtype=np.float32))
-        actions = torch.from_numpy(np.asarray(action_indices, dtype=np.int64))
-        wanted = torch.from_numpy(np.asarray(targets, dtype=np.float32))
+        actions = torch.from_numpy(np.asarray(action_indices, dtype=np.int64)).to(self.device)
+        wanted = torch.from_numpy(np.asarray(targets, dtype=np.float32)).to(self.device)
         self.network.train()
-        predictions = self.network(torch.from_numpy(board), torch.from_numpy(globals_))
+        predictions = self.network(self._tensor(board), self._tensor(globals_))
         selected = predictions.gather(1, actions.unsqueeze(1)).squeeze(1)
         loss = torch.nn.functional.smooth_l1_loss(selected, wanted)
         self.optimizer.zero_grad(set_to_none=True)
@@ -122,7 +147,7 @@ class CnnMlpQModel:
         # A single clipped step keeps one unlucky batch from destroying a run.
         torch.nn.utils.clip_grad_norm_(self.network.parameters(), 10.0)
         self.optimizer.step()
-        return (wanted - selected.detach()).numpy()
+        return (wanted - selected.detach()).cpu().numpy()
 
     def fit_policy_batch(self, states: np.ndarray, action_indices: np.ndarray) -> float:
         """One supervised step cloning a demonstrator's action choice.
@@ -136,9 +161,9 @@ class CnnMlpQModel:
         """
         torch = _torch()
         board, globals_ = self._split(np.asarray(states, dtype=np.float32))
-        labels = torch.from_numpy(np.asarray(action_indices, dtype=np.int64))
+        labels = torch.from_numpy(np.asarray(action_indices, dtype=np.int64)).to(self.device)
         self.network.train()
-        logits = self.network(torch.from_numpy(board), torch.from_numpy(globals_))
+        logits = self.network(self._tensor(board), self._tensor(globals_))
         loss = torch.nn.functional.cross_entropy(logits, labels)
         self.optimizer.zero_grad(set_to_none=True)
         loss.backward()
@@ -193,7 +218,7 @@ class CnnMlpQModel:
             "metadata": np.asarray(json.dumps(self.metadata, sort_keys=True)),
         }
         for name, tensor in self.network.state_dict().items():
-            payload[f"parameter::{name}"] = tensor.detach().numpy()
+            payload[f"parameter::{name}"] = tensor.detach().cpu().numpy()
         np.savez(path, **payload)
 
     @classmethod
@@ -221,12 +246,17 @@ class CnnMlpQModel:
             except (TypeError, json.JSONDecodeError) as exc:
                 raise ValueError(f"Checkpoint {path} has invalid metadata.") from exc
         model.network.load_state_dict(state_dict)
+        model.network.to(model.device)
         model.metadata = metadata
         return model
 
     def _split(self, states: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         board, globals_ = split_board_and_globals(np.atleast_2d(states))
         return np.ascontiguousarray(board), np.ascontiguousarray(globals_)
+
+    def _tensor(self, array: np.ndarray):
+        torch = _torch()
+        return torch.from_numpy(array).to(self.device)
 
 
 def _build_network_module():
@@ -239,6 +269,25 @@ def _build_network_module():
             super().__init__()
             channels, width, height = board_shape
             self.dueling = dueling
+            # Two stride-2 layers: 17 -> 9 -> 5, flattening 1600 features.
+            #
+            # Full resolution throughout was tried first, on the argument that a
+            # blast cross is decided one cell at a time and downsampling would
+            # blur the cell alignment that decides it.  Measured, that shape
+            # costs 104 ms per batch-64 gradient step against 32 ms for this one
+            # (scripts/benchmark_cnn.py and the candidate sweep behind docs/06),
+            # and a 3x throughput cut is 3x fewer environment steps for a
+            # from-scratch deep agent -- the scarcest resource on this line.
+            #
+            # The argument was also weaker than it sounded.  The window is
+            # egocentric and fixed, so the stride grid sits at a *fixed* offset
+            # from the agent: a cell one step to the right always lands in the
+            # same place in the downsampled map.  The subsampling is consistent
+            # across states rather than aliasing, which is the case where a CNN
+            # can still separate the two cells in its channels.  If the anchor
+            # plateaus in a way that looks like spatial confusion, the
+            # full-resolution trunk is the pre-registered single-factor arm to
+            # try; it is not worth paying for up front.
             self.board = nn.Sequential(
                 nn.Conv2d(channels, 32, kernel_size=3, padding=1),
                 nn.ReLU(),

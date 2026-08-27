@@ -255,3 +255,82 @@ class HandcraftedV3Test(unittest.TestCase):
         route = state_module.handcrafted_v3(state)[
             state_module.HANDCRAFTED_V3_LAYOUT["coin_route"]]
         self.assertEqual(list(route), [0.0, 0.0, 0.0, 0.0])
+
+
+class BoardEgocentricV2Test(unittest.TestCase):
+    """The M4 representation: what changed from v1, and the grid it lives on."""
+
+    def _state(self):
+        field = np.zeros((9, 9), dtype=int)
+        field[[0, -1], :] = -1
+        field[:, [0, -1]] = -1
+        field[2, 2] = 1
+        field[4, 4] = 1
+        return game_state(
+            field=field,
+            self_pos=(3, 3),
+            bombs=[((5, 3), 2), ((3, 6), 0)],
+            others=[("opponent", 1, True, (3, 5))],
+            coins=[(4, 4), (6, 6)],
+        )
+
+    def test_v1_self_plane_is_the_same_constant_for_every_state(self):
+        """The deletion that defines v2 is a proof, not a hypothesis."""
+        first = state_module.board_egocentric_v1(self._state())
+        second = state_module.board_egocentric_v1(
+            game_state(self_pos=(5, 5), coins=[(1, 1)], bombs=[((5, 6), 3)])
+        )
+        shape = state_module.BOARD_EGOCENTRIC_LAYOUT["board_shape"]
+        plane = state_module.BOARD_CHANNELS.index("self")
+        size = int(np.prod(shape))
+        first_plane = first[:size].reshape(shape)[plane]
+        second_plane = second[:size].reshape(shape)[plane]
+        np.testing.assert_array_equal(first_plane, second_plane)
+        self.assertEqual(first_plane.sum(), 1.0)
+        self.assertEqual(first_plane[8, 8], 1.0)
+        self.assertNotIn("self", state_module.BOARD_CHANNELS_V2)
+
+    def test_v2_layout_is_seven_planes_and_six_scalars(self):
+        vector = state_module.board_egocentric_v2(self._state())
+        self.assertEqual(vector.shape, (7 * 17 * 17 + 6,))
+        self.assertEqual(vector.dtype, np.float32)
+        self.assertEqual(state_module.state_dimension("board_egocentric_v2"), vector.shape[0])
+        self.assertIs(
+            state_module.layout_for_dimension(vector.shape[0]),
+            state_module.BOARD_EGOCENTRIC_V2_LAYOUT,
+        )
+        board, globals_ = state_module.split_board_and_globals(vector)
+        self.assertEqual(board.shape, (7, 17, 17))
+        self.assertEqual(globals_.shape, (6,))
+
+    def test_v2_shares_every_surviving_plane_with_v1(self):
+        state = self._state()
+        v1 = state_module.encode_board_channels_v1(state)
+        v2 = state_module.encode_board_channels_v2(state)
+        for name in state_module.BOARD_CHANNELS_V2:
+            np.testing.assert_array_equal(
+                v2[state_module.BOARD_CHANNELS_V2.index(name)],
+                v1[state_module.BOARD_CHANNELS.index(name)],
+                err_msg=f"channel {name} drifted between v1 and v2",
+            )
+
+    def test_v2_scalars_report_board_depletion(self):
+        state = self._state()
+        globals_ = state_module.global_features_v2(state)
+        self.assertEqual(globals_[4], 2 / state_module.MAX_VISIBLE_COINS)
+        free_cells = int(np.count_nonzero(state["field"] != -1))
+        self.assertAlmostEqual(float(globals_[5]), 2 / free_cells, places=6)
+        np.testing.assert_allclose(globals_[:4], state_module.global_features_v1(state), rtol=0, atol=0)
+
+    def test_every_board_value_lies_on_the_declared_quantisation_grid(self):
+        """What makes uint8 replay storage lossless rather than approximate."""
+        board_size = int(np.prod(state_module.BOARD_EGOCENTRIC_V2_LAYOUT["board_shape"]))
+        for timer in range(state_module.BOMB_TIMER + 1):
+            state = self._state()
+            state["bombs"] = [((5, 3), timer)]
+            state["explosion_map"][6, 6] = 1
+            board = state_module.board_egocentric_v2(state)[:board_size]
+            scaled = board * np.float32(state_module.BOARD_QUANTISATION)
+            np.testing.assert_allclose(scaled, np.rint(scaled), rtol=0, atol=1e-4)
+            self.assertGreaterEqual(board.min(), 0.0)
+            self.assertLessEqual(board.max(), 1.0)

@@ -1,0 +1,170 @@
+{
+  "_design_note": "M4 anchor plus a behaviour-cloned warm start. Two factors change together on purpose: the initial weights, and the exploration start (E07 1.00 -> E08 0.20). They are coupled -- holding epsilon at 1.00 over a cloned policy spends the clone before it can be used -- so this arm is declared as a two-factor increment rather than pretending to be one. docs/05 section 8.6 records the known bias: rule_based_agent never emits WAIT on loot-crate, so the clone never waits. The handcrafted line's standing failure is the opposite one (WAIT ranked above a visible escape, docs/05 section 0.13), so wait_fraction and the 'saw the exit and waited' diagnostic count are the numbers to read here, not score.",
+  "_predeclared_design_numbers": {
+    "changed_factor": "initial_model (none -> behaviour cloning) together with exploration_version (E07 -> E08).",
+    "control": "The M4 anchor arm at the same budget.",
+    "demonstrations": "pretraining/demonstrations/rule_based_agent_loot-crate_v2_150000.npz, sha256 dbf1d002cb5865c36600423ec4f624d9a9412045bf6d2fbea7ce3ed6209eb685: 150000 states from rule_based_agent over 477 loot-crate rounds. Action counts UP 34282 / RIGHT 34607 / DOWN 34261 / LEFT 34372 / WAIT 0 / BOMB 12478. Cloned for 3 epochs to 0.897 validation accuracy against a 0.231 majority class.",
+    "falsification": "If the final score is indistinguishable from the anchor's and the early checkpoints are not clearly higher, the warm start bought nothing and should not be carried into the final agent.",
+    "prediction": "The early checkpoints rise faster than the anchor's. No prediction is made about the final score.",
+    "reporting": "Report all five training-seed distributions, every G2 threshold, and coins_share alongside score for every arm that has opponents.",
+    "resolution_loot_crate": "docs/01 section 7.21: the five-seed spread of the handcrafted control gives sd 3.77, so two arms measured once each need a gap of 4.7 before a direction may be read into it.",
+    "resolution_tournament": "docs/01 section 7.20: pooled 450-round classic-with-opponents score has sd 0.089, so two arms need a gap of 0.246 (coins_share: 0.022)."
+  },
+  "agent": {
+    "algorithm": "double_dqn",
+    "model": "cnn_mlp_q",
+    "n_step": 3,
+    "name": "research_agent",
+    "replay": {
+      "augmentation": "d4",
+      "batch_size": 32,
+      "capacity": 100000,
+      "min_size": 10000,
+      "target_update_every": 500,
+      "train_every": 4
+    },
+    "state_representation": "board_egocentric_v2"
+  },
+  "checkpoint_evaluation": {
+    "holdout_seeds": [
+      3001,
+      3002,
+      3003
+    ],
+    "mode": "all",
+    "validation_seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation": {
+    "budget": {
+      "checkpoint_every": 500,
+      "rounds": 30
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation_suites": {
+    "classic_solo": {
+      "budget": {
+        "checkpoint_every": 500,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "classic_versus_opponents": {
+      "budget": {
+        "checkpoint_every": 2000,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "all",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [
+        "rule_based_agent",
+        "rule_based_agent",
+        "rule_based_agent"
+      ],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "coin_heaven_diagnostic": {
+      "budget": {
+        "checkpoint_every": 500,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "coin-heaven",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    }
+  },
+  "experiment_id": "M4_R07_A06_E08_C00_T02_n3_10000_bc",
+  "exploration_version": "E08",
+  "initial_model": {
+    "kind": "behaviour_cloning",
+    "path": "pretraining/models/r07_bc_rule_based_agent_loot-crate_v2.npz",
+    "sha256": "f146e250b58d72326ef6981fd3bd88cdd9e68cf4b7262b3d316b78aa38aaa879"
+  },
+  "promotion": {
+    "primary_metric": "score"
+  },
+  "reward_version": "A06",
+  "route": "R07",
+  "schema_version": 1,
+  "shaping": {
+    "name": "potential_v1"
+  },
+  "terminal_on_truncation": false,
+  "training": {
+    "budget": {
+      "checkpoint_every": 500,
+      "rounds": 10000
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      1001,
+      1002,
+      1003,
+      1004,
+      1005
+    ]
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "git_commit": "9e8e1f8ac5f6e20af79a7bd4a048ac1de3557f32",
+  "measured_at_utc": "2026-08-27T09:53:53+00:00",
+  "prepared_at_utc": "2026-08-27T09:53:53+00:00",
+  "repeats": 200,
+  "routes": [
+    {
+      "act_seconds": {
+        "p99": 0.003051991695538156
+      },
+      "batch_size": 32,
+      "encode_seconds": {
+        "p50": 3.174995072185993e-05,
+        "p99": 0.00011465977644547771
+      },
+      "environment_steps_per_second": 272.52795507321827,
+      "gradient_step_seconds": {
+        "p50": 0.01073689537588507,
+        "p99": 0.013149557912256566
+      },
+      "gradient_steps_per_second": 93.13679280567335,
+      "inference_seconds": {
+        "p50": 0.0009533745469525456,
+        "p99": 0.0029373319190926783
+      },
+      "model": "cnn_mlp_q",
+      "official_budget_margin": 163.82744446224166,
+      "projected_training_job": {
+        "environment_steps": 3000000,
+        "hours": 3.0577902847047276,
+        "minutes": 183.46741708228365,
+        "rounds": 10000,
+        "seconds": 11008.045024937019,
+        "steps_per_round": 300
+      },
+      "replay_ratio": 8.0,
+      "route": "R07",
+      "setup_seconds": {
+        "construction": 0.8080885000526905,
+        "first_forward": 0.08819262497127056,
+        "first_in_process": true,
+        "total": 0.8962811250239611
+      },
+      "state_dimension": 2029,
+      "train_every": 4
+    }
+  ],
+  "scenario": "classic",
+  "torch_import_seconds": 0.577766708098352,
+  "torch_threads": 1,
+  "worktree_dirty": true
+}

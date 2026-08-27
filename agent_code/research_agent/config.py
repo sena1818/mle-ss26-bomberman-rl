@@ -40,7 +40,7 @@ REWARD_VERSIONS = frozenset({"A00", "A01", "A02", "A03", "A05", "A06"})
 # are independent.  Each point of the ablation is its own label rather than a
 # parameter, so a finished run's snapshot names the exact schedule it saw --
 # the same discipline as A00--A06 and R02_1--R02_3.
-EXPLORATION_VERSIONS = frozenset({"E00", "E01", "E02", "E03", "E04", "E05", "E06"})
+EXPLORATION_VERSIONS = frozenset({"E00", "E01", "E02", "E03", "E04", "E05", "E06", "E07", "E08"})
 # How a curriculum indexes its exploration schedule.  A curriculum segment is a
 # separate game process whose round counter restarts at 1, so the schedule needs
 # an explicit choice instead of an accidental one.
@@ -123,6 +123,40 @@ EXPLORATION_SCHEDULES = {
         "anneal_rounds": 1600,
         "final_epsilon": 0.10,
         "description": "E02 with the floor raised to 0.10; the hold and anneal lengths are unchanged",
+    },
+    # E07 / E08 exist for the M4 line and differ from each other in exactly one
+    # number, the starting epsilon.
+    #
+    # Every E00--E06 schedule starts at 0.30, which was never questioned because
+    # it did not need to be: with handcrafted features and a linear or small MLP
+    # head, an untrained greedy action is close to arbitrary, so 0.30 explores
+    # fine.  A randomly initialised CNN is different in kind -- its argmax is
+    # near-constant across states, so 0.30 leaves 70% of steps executing one
+    # fixed action and the buffer fills with a single trajectory.  E07 starts at
+    # 1.0 and holds there while the buffer fills, which is the ordinary DQN
+    # spelling of the same idea.
+    #
+    # E08 is for an arm that starts from a behaviour-cloned policy.  There, a
+    # high epsilon would spend the clone before it can be used, so the start is
+    # low.  Warm start and exploration are coupled -- a BC arm changes both on
+    # purpose -- and the report has to say so rather than call it one factor.
+    "E07": {
+        "kind": "hold_then_linear_absolute",
+        "initial_epsilon": 1.00,
+        "hold_rounds": 100,
+        "anneal_rounds": 900,
+        "final_epsilon": 0.05,
+        "description": "epsilon is 1.00 for 100 rounds, then linearly decays to 0.05 over 900 rounds"
+                       " (cold start for a randomly initialised deep network)",
+    },
+    "E08": {
+        "kind": "hold_then_linear_absolute",
+        "initial_epsilon": 0.20,
+        "hold_rounds": 100,
+        "anneal_rounds": 900,
+        "final_epsilon": 0.05,
+        "description": "E07 with the start lowered to 0.20; hold and anneal lengths are unchanged"
+                       " (warm start from a behaviour-cloned policy)",
     },
 }
 
@@ -437,23 +471,44 @@ EXPERIMENTS = {
     ),
     # M4 anchor -- egocentric board tensor, CNN plus global-scalar MLP, Double
     # DQN.  docs/05 section 5.4 requires this to learn from scratch before any
-    # further increment (D4 augmentation, behaviour cloning, dueling) is added.
+    # further increment (behaviour cloning, dueling) is added.
+    #
+    # The replay settings are the route's, not a learner default, because they
+    # are the recipe: capacity 100k (about 330 rounds of history, affordable
+    # only because the spatial states are stored as uint8 codes), batch 32 every
+    # fourth environment step.  That last pair is the throughput lever for the
+    # whole line -- a gradient step costs ~50x an inference, so the replay ratio
+    # of 8 samples per environment step, not the game, decides how many
+    # environment steps a day of compute buys.  8 is the ratio DQN and Rainbow
+    # both use; 16 was measured at twice the cost for no argued benefit, and is
+    # left as a single-factor arm rather than paid for up front.  D4 augmentation is on from the
+    # anchor rather than added later: it is a property of the representation
+    # (the arena's symmetry group acts on an agent-centred window), it costs
+    # nothing at sample time, and holding it back would only make the anchor a
+    # weaker base for every increment measured against it.
     "R07": ExperimentConfig(
         name="R07",
         lines=("M4",),
-        state_encoder="board_egocentric_v1",
+        state_encoder="board_egocentric_v2",
         network="cnn_mlp_q",
         algorithm="double_dqn",
         learning_rate=2.5e-4,
         discount=0.95,
         epsilon=0.15,
         safety_filter="legality_only",
-        feature_version="board_egocentric_v1",
+        feature_version="board_egocentric_v2",
         reward_version=REWARD_VERSION,
         exploration_version=EXPLORATION_VERSION,
         terminal_on_truncation=TERMINAL_ON_TRUNCATION,
         hidden_layers=(256,),
-        replay=ReplayConfig(),
+        replay=ReplayConfig(
+            capacity=100_000,
+            batch_size=32,
+            min_size=10_000,
+            train_every=4,
+            target_update_every=500,
+            augmentation="d4",
+        ),
         optimizer="adam",
         td_loss="huber",
         gradient_clip_norm=10.0,
@@ -464,19 +519,26 @@ EXPERIMENTS = {
     "R08": ExperimentConfig(
         name="R08",
         lines=("M4",),
-        state_encoder="board_egocentric_v1",
+        state_encoder="board_egocentric_v2",
         network="dueling_cnn_mlp_q",
         algorithm="double_dqn",
         learning_rate=2.5e-4,
         discount=0.95,
         epsilon=0.15,
         safety_filter="legality_only",
-        feature_version="board_egocentric_v1",
+        feature_version="board_egocentric_v2",
         reward_version=REWARD_VERSION,
         exploration_version=EXPLORATION_VERSION,
         terminal_on_truncation=TERMINAL_ON_TRUNCATION,
         hidden_layers=(256,),
-        replay=ReplayConfig(),
+        replay=ReplayConfig(
+            capacity=100_000,
+            batch_size=32,
+            min_size=10_000,
+            train_every=4,
+            target_update_every=500,
+            augmentation="d4",
+        ),
         optimizer="adam",
         td_loss="huber",
         gradient_clip_norm=10.0,
@@ -607,9 +669,9 @@ def validate_config(config: ExperimentConfig) -> ExperimentConfig:
         raise ValueError("gradient_clip_norm must be positive when declared.")
     if config.algorithm == "double_dqn" and config.replay is None:
         raise ValueError("double_dqn requires a replay buffer and a target network; replay must not be null.")
-    if config.replay is not None and config.replay.augmentation == "d4" and config.state_encoder != "board_egocentric_v1":
+    if config.replay is not None and config.replay.augmentation == "d4" and not config.state_encoder.startswith("board_egocentric_"):
         raise ValueError(
-            "replay.augmentation 'd4' requires the agent-centred board_egocentric_v1 representation: "
+            "replay.augmentation 'd4' requires an agent-centred board_egocentric representation: "
             f"the board symmetries are not label-preserving for {config.state_encoder!r}."
         )
     return config

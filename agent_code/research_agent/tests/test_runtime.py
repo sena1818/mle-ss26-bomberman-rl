@@ -13,6 +13,7 @@ from unittest.mock import Mock, patch
 import numpy as np
 
 from agent_code.research_agent.config import (
+    EXPLORATION_SCHEDULES,
     EXPLORATION_VERSIONS,
     REWARD_VERSIONS,
     active_config,
@@ -469,7 +470,7 @@ class ExperimentRuntimeTest(unittest.TestCase):
         config = replace(active_config(), exploration_version="E01")
         self.assertEqual(
             EXPLORATION_VERSIONS,
-            frozenset({"E00", "E01", "E02", "E03", "E04", "E05", "E06"}),
+            frozenset({"E00", "E01", "E02", "E03", "E04", "E05", "E06", "E07", "E08"}),
         )
         self.assertEqual(exploration_specification("E01")["hold_fraction"], 0.20)
         # 500 rounds: 1--100 at 0.30, then decay to exactly 0.05 at round 500.
@@ -595,3 +596,46 @@ class ExperimentRuntimeTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ColdAndWarmStartScheduleTest(unittest.TestCase):
+    """E07 / E08: the two schedules the deep line needs, and why they differ."""
+
+    def test_every_earlier_schedule_starts_at_the_same_epsilon(self):
+        """The fact that makes E07 necessary rather than a preference."""
+        starts = {
+            name: schedule.get("initial_epsilon")
+            for name, schedule in EXPLORATION_SCHEDULES.items()
+            if name not in {"E00", "E07", "E08"}
+        }
+        self.assertEqual(set(starts.values()), {0.30})
+
+    def test_e07_holds_at_one_then_reaches_the_floor_on_schedule(self):
+        config = replace(active_config(), exploration_version="E07")
+        self.assertEqual(epsilon_for_training_round(config, 1, 10000), 1.00)
+        self.assertEqual(epsilon_for_training_round(config, 100, 10000), 1.00)
+        self.assertAlmostEqual(epsilon_for_training_round(config, 550, 10000), 0.525)
+        self.assertEqual(epsilon_for_training_round(config, 1000, 10000), 0.05)
+        self.assertEqual(epsilon_for_training_round(config, 10000, 10000), 0.05)
+
+    def test_e08_differs_from_e07_in_the_start_and_nothing_else(self):
+        cold = EXPLORATION_SCHEDULES["E07"]
+        warm = EXPLORATION_SCHEDULES["E08"]
+        differing = {key for key in cold if key != "description" and cold[key] != warm.get(key)}
+        self.assertEqual(differing, {"initial_epsilon"})
+        self.assertEqual(warm["initial_epsilon"], 0.20)
+
+    def test_an_absolute_schedule_makes_a_checkpoint_budget_independent(self):
+        """Why the M4 line needs one long run instead of one arm per budget.
+
+        E07 reads only its own hold and anneal lengths, so round N of a
+        10000-round run sees exactly the epsilon round N of a 2000-round run
+        would have seen.  Every checkpoint is therefore a shorter budget's
+        final model, which E01 could never be.
+        """
+        config = replace(active_config(), exploration_version="E07")
+        for round_number in (1, 100, 101, 500, 999, 1000, 1500, 2000):
+            self.assertEqual(
+                epsilon_for_training_round(config, round_number, 2000),
+                epsilon_for_training_round(config, round_number, 10000),
+            )

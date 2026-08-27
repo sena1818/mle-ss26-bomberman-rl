@@ -829,8 +829,8 @@ class FourMainLineDeclarationTest(unittest.TestCase):
         "R01": ("linear_q", "q_learning", "handcrafted_v1"),
         "R02": ("mlp_q", "q_learning", "handcrafted_v1"),
         "R02_1": ("mlp_q", "q_learning", "handcrafted_v1"),
-        "R07": ("cnn_mlp_q", "double_dqn", "board_egocentric_v1"),
-        "R08": ("dueling_cnn_mlp_q", "double_dqn", "board_egocentric_v1"),
+        "R07": ("cnn_mlp_q", "double_dqn", "board_egocentric_v2"),
+        "R08": ("dueling_cnn_mlp_q", "double_dqn", "board_egocentric_v2"),
     }
     REPLAY = {"capacity": 128, "batch_size": 8, "min_size": 16, "train_every": 2, "target_update_every": 32}
 
@@ -861,7 +861,7 @@ class FourMainLineDeclarationTest(unittest.TestCase):
     def test_the_state_dimension_recorded_is_the_encoder_s_own(self):
         self.assertEqual(resolved_runtime_config(self._load("R01"))["feature_dimension"], 44)
         # 8 board channels over a 17x17 egocentric window, plus 4 global scalars.
-        self.assertEqual(resolved_runtime_config(self._load("R07"))["feature_dimension"], 8 * 17 * 17 + 4)
+        self.assertEqual(resolved_runtime_config(self._load("R07"))["feature_dimension"], 7 * 17 * 17 + 6)
 
     def test_n_step_and_replay_reach_the_resolved_runtime_config(self):
         experiment = self._load("R01", agent={"n_step": 3, "replay": dict(self.REPLAY)})

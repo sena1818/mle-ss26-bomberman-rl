@@ -88,6 +88,61 @@ BOARD_EGOCENTRIC_LAYOUT = {
 }
 
 
+# ``board_egocentric_v2``: the M4 line's actual representation.  Two changes
+# from v1, both of them provable rather than hypothesised.
+#
+# 1. The v1 ``self`` plane is gone.  ``_egocentric_crop`` centres the window on
+#    the agent, so that plane is the *same* constant array -- one 1 at the
+#    centre -- for every state a v1 agent will ever see.  289 inputs carrying
+#    zero information is not a question that needs an ablation.
+#
+# 2. Two global scalars are added.  "How much of the board is still crates" and
+#    "how many coins are lying about" are what tells an agent that farming is
+#    finished and hunting is all that is left; neither is recoverable from a
+#    17x17 window plus the v1 four.
+#
+# An ``own_bomb`` channel is the obvious use for the freed plane and is
+# deliberately NOT here: the official state reports a bomb as ``((x, y), timer)``
+# with no owner (``environment.py:406``), so ownership is not a function of the
+# observed state.  Reconstructing it from the agent's own action history would
+# make the encoder stateful, and the diagnostics import these functions exactly
+# so that what the agent sees and what judges it cannot drift apart.  It would
+# also buy nothing in solo training, where every bomb is already the agent's.
+BOARD_CHANNELS_V2 = (
+    "stone_walls",
+    "crates",
+    "opponents",
+    "coins",
+    "bomb_countdown",
+    "explosions",
+    "future_danger",
+)
+# Every board channel value is a multiple of 1/20: the binary planes are 0 or 1,
+# ``bomb_countdown`` steps by 1/BOMB_TIMER = 1/4 and ``future_danger`` by
+# 1/(BOMB_TIMER+1) = 1/5.  That makes the whole board exactly representable as
+# uint8 codes, which is what lets a 100k-transition replay of these states fit
+# in memory (see ``replay.ReplayBuffer``).  The property is asserted by a test
+# over real encoded states rather than trusted.
+BOARD_QUANTISATION = 20
+# A normaliser, not a claim about the arena: the coin-rich scenarios place 50.
+MAX_VISIBLE_COINS = 50
+BOARD_EGOCENTRIC_V2_LAYOUT = {
+    "board_shape": (len(BOARD_CHANNELS_V2), EGOCENTRIC_WINDOW, EGOCENTRIC_WINDOW),
+    "channels": BOARD_CHANNELS_V2,
+    "global_dimension": 6,
+    "globals": (
+        "can_bomb",
+        "round_progress",
+        "own_score",
+        "living_opponents",
+        "visible_coins",
+        "crate_fraction",
+    ),
+    "quantisation": BOARD_QUANTISATION,
+    "flat_order": "board channels flattened in C order, then the global scalars",
+}
+
+
 def legal_action_mask(game_state: dict) -> np.ndarray:
     """Return which of the six actions are legal in the current observed state.
 
@@ -128,6 +183,8 @@ def encode_state(game_state: dict, encoder_name: str) -> np.ndarray | None:
         return handcrafted_v3(game_state)
     if encoder_name == "board_egocentric_v1":
         return board_egocentric_v1(game_state)
+    if encoder_name == "board_egocentric_v2":
+        return board_egocentric_v2(game_state)
     raise NotImplementedError(f"State encoder {encoder_name!r} has not been implemented yet.")
 
 
@@ -139,9 +196,10 @@ def state_dimension(encoder_name: str) -> int:
         return FEATURE_DIMENSION_V2
     if encoder_name == "handcrafted_v3":
         return FEATURE_DIMENSION_V3
-    if encoder_name == "board_egocentric_v1":
-        channels, width, height = BOARD_EGOCENTRIC_LAYOUT["board_shape"]
-        return channels * width * height + BOARD_EGOCENTRIC_LAYOUT["global_dimension"]
+    if encoder_name in BOARD_LAYOUTS:
+        layout = BOARD_LAYOUTS[encoder_name]
+        channels, width, height = layout["board_shape"]
+        return channels * width * height + layout["global_dimension"]
     raise NotImplementedError(f"State encoder {encoder_name!r} has not been implemented yet.")
 
 
@@ -376,17 +434,114 @@ def board_egocentric_v1(game_state: dict) -> np.ndarray:
     return np.concatenate([window.reshape(-1), global_features_v1(game_state)]).astype(np.float32)
 
 
+BOARD_LAYOUTS = {
+    "board_egocentric_v1": BOARD_EGOCENTRIC_LAYOUT,
+    "board_egocentric_v2": BOARD_EGOCENTRIC_V2_LAYOUT,
+}
+
+
+def layout_for_dimension(dimension: int) -> dict:
+    """Return the board layout that produces flat states of this length.
+
+    The two spatial representations have different lengths (2316 and 2029), so
+    one number identifies one layout.  Inferring it here rather than passing it
+    down means the CNN adapter, the replay buffer and the D4 transforms all
+    stay layout-agnostic instead of each growing a version switch.
+    """
+    for layout in BOARD_LAYOUTS.values():
+        if int(np.prod(layout["board_shape"])) + layout["global_dimension"] == dimension:
+            return layout
+    known = ", ".join(str(int(np.prod(one["board_shape"])) + one["global_dimension"])
+                      for one in BOARD_LAYOUTS.values())
+    raise ValueError(f"No board layout produces a state of length {dimension}; known lengths are {known}.")
+
+
+def encode_board_channels_v2(game_state: dict) -> np.ndarray:
+    """Return the seven v2 board channels: the v1 set without the dead plane.
+
+    Every channel except ``opponents`` is bit-identical to its v1 counterpart;
+    only the ``self`` plane is dropped.  See ``BOARD_CHANNELS_V2`` for why that
+    is a deletion rather than a replacement.
+    """
+    field = game_state["field"]
+    channels = np.zeros((len(BOARD_CHANNELS_V2), *field.shape), dtype=np.float32)
+    channels[0] = field == -1  # stone walls
+    channels[1] = field == 1   # crates
+    for other in game_state["others"]:
+        channels[2][other[3]] = 1.0
+    for coin in game_state["coins"]:
+        channels[3][coin] = 1.0
+    for position, timer in game_state["bombs"]:
+        channels[4][position] = 1.0 - min(max(timer, 0), BOMB_TIMER) / BOMB_TIMER
+    channels[5] = np.clip(game_state["explosion_map"], 0.0, 1.0)
+    danger = future_danger_times(game_state)
+    channels[6] = np.where(
+        danger <= _DANGER_HORIZON,
+        (_DANGER_HORIZON + 1 - danger) / (_DANGER_HORIZON + 1),
+        0.0,
+    )
+    return channels
+
+
+def global_features_v2(game_state: dict) -> np.ndarray:
+    """Return the six v2 scalars: the v1 four plus two board-depletion terms.
+
+    ``visible_coins`` counts what is on the floor now, which is all the state
+    reports -- an agent cannot know how many coins a scenario started with.
+    ``crate_fraction`` is measured against the arena's free cells, so it is a
+    ratio the agent can actually compute rather than one that needs the
+    scenario's parameters.
+    """
+    field = game_state["field"]
+    free_cells = int(np.count_nonzero(field != -1))
+    _, score, can_bomb, _ = game_state["self"]
+    return np.array(
+        [
+            float(can_bomb),
+            min(game_state["step"], MAX_STEPS) / MAX_STEPS,
+            np.clip(score / 10.0, 0.0, 1.0),
+            len(game_state["others"]) / 3.0,
+            min(len(game_state["coins"]), MAX_VISIBLE_COINS) / MAX_VISIBLE_COINS,
+            int(np.count_nonzero(field == 1)) / max(free_cells, 1),
+        ],
+        dtype=np.float32,
+    )
+
+
+def board_egocentric_v2(game_state: dict) -> np.ndarray:
+    """Return the M4 state: seven agent-centred planes plus six global scalars.
+
+    The framing is exactly ``board_egocentric_v1``'s -- stone-padded crop
+    centred on the agent -- so the D4 group acts on it the same way.
+    """
+    channels = encode_board_channels_v2(game_state)
+    window = _egocentric_crop(channels, game_state["self"][3])
+    return np.concatenate([window.reshape(-1), global_features_v2(game_state)]).astype(np.float32)
+
+
+def quantised_board_spec(encoder_name: str) -> tuple[int, int]:
+    """Return ``(board prefix length, steps per unit)`` for uint8 replay storage.
+
+    ``(0, 0)`` means the representation has no such grid, which is the case for
+    every handcrafted vector: its entries are BFS distances and ratios, not
+    channel levels.  Only a layout that declares ``quantisation`` opts in.
+    """
+    layout = BOARD_LAYOUTS.get(encoder_name)
+    if layout is None or "quantisation" not in layout:
+        return 0, 0
+    return int(np.prod(layout["board_shape"])), int(layout["quantisation"])
+
+
 def split_board_and_globals(state: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Restore the (channels, width, height) board and the global scalars.
 
     Accepts a single flat state or a batch of them; the board keeps a leading
-    batch axis exactly when the input had one.
+    batch axis exactly when the input had one.  Which spatial layout the state
+    belongs to follows from its length -- see ``layout_for_dimension``.
     """
-    shape = BOARD_EGOCENTRIC_LAYOUT["board_shape"]
-    global_dimension = BOARD_EGOCENTRIC_LAYOUT["global_dimension"]
+    layout = layout_for_dimension(int(state.shape[-1]))
+    shape = layout["board_shape"]
     board_size = int(np.prod(shape))
-    if state.shape[-1] != board_size + global_dimension:
-        raise ValueError(f"Expected a board_egocentric_v1 state of length {board_size + global_dimension}, got {state.shape[-1]}.")
     board = state[..., :board_size].reshape(*state.shape[:-1], *shape)
     globals_ = state[..., board_size:]
     return board, globals_

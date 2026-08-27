@@ -18,7 +18,7 @@ import numpy as np
 from ..config import ACTIONS, ExperimentConfig
 from ..models.base import QModel
 from ..replay import ReplayBuffer
-from ..state import state_dimension
+from ..state import quantised_board_spec, state_dimension
 from ..symmetry import D4_ORDER, transform_action_indices, transform_board_states, transform_legal_masks
 from .base import Transition
 
@@ -36,11 +36,14 @@ class ReplayQLearner:
         self.settings = config.replay
         self.model = model
         self.target_model = model.clone()
+        board_size, quantisation = quantised_board_spec(config.state_encoder)
         self.buffer = ReplayBuffer(
             self.settings.capacity,
             state_dimension(config.state_encoder),
             len(ACTIONS),
             seed=seed,
+            quantised_board=board_size,
+            quantisation=quantisation,
         )
         self.rng = np.random.default_rng(seed)
         self.observed_transitions = 0

@@ -111,18 +111,28 @@ def benchmark_route(route: str, *, game_state: dict, repeats: int, steps_per_rou
     inference = _time(lambda: model.q_values(state), repeats)
 
     batch_size = config.replay.batch_size if config.replay is not None else 32
+    train_every = config.replay.train_every if config.replay is not None else 1
     states = np.repeat(state[None, :], batch_size, axis=0)
     actions = np.arange(batch_size) % len(ACTIONS)
     targets = np.zeros(batch_size, dtype=np.float32)
     gradient = _time(lambda: model.fit_batch(states, actions, targets), repeats)
 
-    per_step = float(np.median(encode) + np.median(inference) + np.median(gradient))
+    # A gradient step happens once every ``train_every`` environment steps, so
+    # its cost is amortised.  Charging one per step -- which this projection did
+    # while every route ran ``train_every: 1`` -- overstates a job by a factor of
+    # ``train_every``, and the replay ratio is the main throughput lever on this
+    # line, so getting it wrong would misprice the whole schedule.
+    per_step = float(
+        np.median(encode) + np.median(inference) + np.median(gradient) / train_every
+    )
     worst_act = float(np.percentile(encode, 99) + np.percentile(inference, 99))
     return {
         "route": route,
         "model": config.network,
         "state_dimension": dimension,
         "batch_size": batch_size,
+        "train_every": train_every,
+        "replay_ratio": batch_size / train_every,
         # Excludes the PyTorch import, which is process-wide and reported once.
         # Torch also initialises its kernels lazily, so only the first model
         # built in a process pays for that; a real job always builds exactly one.
@@ -134,11 +144,14 @@ def benchmark_route(route: str, *, game_state: dict, repeats: int, steps_per_rou
         "official_budget_margin": OFFICIAL_STEP_BUDGET_SECONDS / worst_act,
         "gradient_step_seconds": {"p50": float(np.median(gradient)), "p99": float(np.percentile(gradient, 99))},
         "gradient_steps_per_second": 1.0 / float(np.median(gradient)),
+        "environment_steps_per_second": 1.0 / per_step,
         "projected_training_job": {
             "rounds": rounds,
             "steps_per_round": steps_per_round,
+            "environment_steps": steps_per_round * rounds,
             "seconds": per_step * steps_per_round * rounds,
             "minutes": per_step * steps_per_round * rounds / 60.0,
+            "hours": per_step * steps_per_round * rounds / 3600.0,
         },
     }
 
@@ -174,15 +187,16 @@ def main(argv: list[str] | None = None) -> int:
         write_json(args.output, report)
 
     print(f"torch import (cold process): {torch_import_seconds * 1e3:.0f} ms, paid once per job in setup()")
-    print(f"{'route':>6} {'setup':>9} {'act p99':>10} {'margin':>9} {'grad step':>11} {'steps/s':>9} {'500 rounds':>12}")
+    print(f"{'route':>6} {'setup':>9} {'act p99':>10} {'margin':>9} {'grad step':>11} {'ratio':>7} {'env/s':>8} {'10k rounds':>12}")
     for entry in results:
         print(f"{entry['route']:>6} "
               f"{entry['setup_seconds']['total'] * 1e3:>7.0f}ms{'*' if entry['setup_seconds']['first_in_process'] else ' '}"
               f"{entry['act_seconds']['p99'] * 1e3:>8.2f}ms "
               f"{entry['official_budget_margin']:>8.0f}x "
               f"{entry['gradient_step_seconds']['p50'] * 1e3:>9.2f}ms "
-              f"{entry['gradient_steps_per_second']:>9.0f} "
-              f"{entry['projected_training_job']['minutes']:>10.1f}min")
+              f"{entry['replay_ratio']:>7.0f} "
+              f"{entry['environment_steps_per_second']:>8.0f} "
+              f"{entry['projected_training_job']['hours']:>10.1f}h")
     print("* first model built in this process; it also pays torch's lazy kernel init. "
           "A real job builds one model, so its setup cost is the import plus this line.")
     if not args.output:

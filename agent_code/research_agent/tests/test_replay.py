@@ -203,3 +203,86 @@ class ReplayConfigTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class QuantisedBoardStorageTest(unittest.TestCase):
+    """uint8 board storage: a memory layout, and only valid while it is exact."""
+
+    def _board_state(self):
+        from agent_code.research_agent import state as state_module
+
+        field = np.zeros((9, 9), dtype=int)
+        field[[0, -1], :] = -1
+        field[:, [0, -1]] = -1
+        field[2, 2] = 1
+        return state_module.board_egocentric_v2({
+            "round": 1,
+            "step": 7,
+            "field": field,
+            "self": ("research_agent", 3, False, (3, 3)),
+            "others": [("opponent", 1, True, (3, 5))],
+            "bombs": [((3, 3), 2), ((5, 3), 0)],
+            "coins": [(4, 4)],
+            "explosion_map": np.zeros_like(field),
+            "user_input": None,
+        })
+
+    def test_a_real_state_survives_the_round_trip_bit_for_bit(self):
+        from agent_code.research_agent.state import quantised_board_spec
+
+        vector = self._board_state()
+        board_size, quantisation = quantised_board_spec("board_egocentric_v2")
+        buffer = ReplayBuffer(
+            4, vector.shape[0], ACTION_COUNT, seed=0,
+            quantised_board=board_size, quantisation=quantisation,
+        )
+        buffer.append(vector, 0, 1.0, vector, np.ones(ACTION_COUNT, dtype=bool), False, 1.0)
+        batch = buffer.sample(1)
+        np.testing.assert_array_equal(batch["states"][0], vector)
+        np.testing.assert_array_equal(batch["next_states"][0], vector)
+        self.assertEqual(batch["states"].dtype, np.float32)
+
+    def test_the_codes_are_a_quarter_of_the_float_footprint(self):
+        from agent_code.research_agent.state import quantised_board_spec
+
+        board_size, quantisation = quantised_board_spec("board_egocentric_v2")
+        width = board_size + 6
+        quantised = ReplayBuffer(
+            100, width, ACTION_COUNT, quantised_board=board_size, quantisation=quantisation,
+        )
+        plain = ReplayBuffer(100, width, ACTION_COUNT)
+        self.assertEqual(quantised.state_codes.dtype, np.uint8)
+        self.assertIsNone(quantised.states)
+        self.assertLess(quantised.state_codes.nbytes * 4, plain.states.nbytes + 1)
+
+    def test_an_off_grid_value_is_refused_rather_than_rounded(self):
+        buffer = ReplayBuffer(4, 5, ACTION_COUNT, quantised_board=4, quantisation=20)
+        with self.assertRaises(ValueError) as raised:
+            buffer.append(
+                np.array([0.0, 0.5, 0.333, 1.0, 2.0], dtype=np.float32),
+                0, 1.0, None, None, True, 1.0,
+            )
+        self.assertIn("0.333", str(raised.exception))
+
+    def test_a_handcrafted_route_still_stores_plain_floats(self):
+        from agent_code.research_agent.state import quantised_board_spec
+
+        self.assertEqual(quantised_board_spec("handcrafted_v3"), (0, 0))
+        buffer = ReplayBuffer(4, STATE_WIDTH, ACTION_COUNT)
+        arbitrary = np.linspace(-0.7, 0.31, STATE_WIDTH).astype(np.float32)
+        buffer.append(arbitrary, 0, 1.0, None, None, True, 1.0)
+        np.testing.assert_array_equal(buffer.sample(1)["states"][0], arbitrary)
+
+    def test_a_terminal_row_reads_back_as_zeros(self):
+        from agent_code.research_agent.state import quantised_board_spec
+
+        vector = self._board_state()
+        board_size, quantisation = quantised_board_spec("board_egocentric_v2")
+        buffer = ReplayBuffer(
+            4, vector.shape[0], ACTION_COUNT,
+            quantised_board=board_size, quantisation=quantisation,
+        )
+        buffer.append(vector, 0, 1.0, None, None, True, 1.0)
+        batch = buffer.sample(1)
+        np.testing.assert_array_equal(batch["next_states"][0], np.zeros_like(vector))
+        self.assertTrue(bool(batch["terminals"][0]))

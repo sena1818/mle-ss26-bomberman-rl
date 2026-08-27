@@ -1,19 +1,22 @@
 {
-  "_design_note": "Line M4, the dueling and D4 increments on top of the anchor. Two factors change against m4_r07_a06_e01_t02_anchor, so this file is the endpoint of the ladder, not a single-factor comparison: attribute a difference by running the two increments as separate configs.",
+  "_design_note": "Pipeline smoke only: 20 rounds, two seeds. It verifies encoding, the uint8 replay, D4 augmentation, checkpointing and aggregation end to end. The replay sizes are shrunk so that gradient steps actually happen inside 20 rounds, and the exploration version is E00 because E07's 1000-round schedule cannot fit a smoke budget -- E07 and E08 are covered by unit tests instead. This config says nothing about strength.",
+  "_predeclared_design_numbers": {
+    "gate": "Every job exits 0 and round_end_mispredictions ends at 0."
+  },
   "agent": {
     "algorithm": "double_dqn",
-    "model": "dueling_cnn_mlp_q",
-    "n_step": 1,
+    "model": "cnn_mlp_q",
+    "n_step": 3,
     "name": "research_agent",
     "replay": {
       "augmentation": "d4",
       "batch_size": 32,
-      "capacity": 10000,
-      "min_size": 1000,
-      "target_update_every": 500,
-      "train_every": 1
+      "capacity": 2000,
+      "min_size": 200,
+      "target_update_every": 20,
+      "train_every": 4
     },
-    "state_representation": "board_egocentric_v1"
+    "state_representation": "board_egocentric_v2"
   },
   "checkpoint_evaluation": {
     "holdout_seeds": [
@@ -30,7 +33,7 @@
   },
   "evaluation": {
     "budget": {
-      "checkpoint_every": 50,
+      "checkpoint_every": 10,
       "rounds": 30
     },
     "opponents": [],
@@ -42,9 +45,9 @@
     ]
   },
   "evaluation_suites": {
-    "classic_transfer": {
+    "classic_solo": {
       "budget": {
-        "checkpoint_every": 50,
+        "checkpoint_every": 10,
         "rounds": 30
       },
       "checkpoint_evaluation": {
@@ -68,9 +71,39 @@
         2003
       ]
     },
+    "classic_versus_opponents": {
+      "budget": {
+        "checkpoint_every": 40,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "all",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [
+        "rule_based_agent",
+        "rule_based_agent",
+        "rule_based_agent"
+      ],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
     "coin_heaven_diagnostic": {
       "budget": {
-        "checkpoint_every": 50,
+        "checkpoint_every": 10,
         "rounds": 30
       },
       "checkpoint_evaluation": {
@@ -95,13 +128,13 @@
       ]
     }
   },
-  "experiment_id": "M4_R08_A06_E01_C00_T02_dueling",
-  "exploration_version": "E01",
+  "experiment_id": "M4_R07_A06_E00_C00_T02_smoke",
+  "exploration_version": "E00",
   "promotion": {
     "primary_metric": "score"
   },
   "reward_version": "A06",
-  "route": "R08",
+  "route": "R07",
   "schema_version": 1,
   "shaping": {
     "name": "potential_v1"
@@ -109,17 +142,14 @@
   "terminal_on_truncation": false,
   "training": {
     "budget": {
-      "checkpoint_every": 50,
-      "rounds": 500
+      "checkpoint_every": 10,
+      "rounds": 20
     },
     "opponents": [],
     "scenario": "loot-crate",
     "seeds": [
       1001,
-      1002,
-      1003,
-      1004,
-      1005
+      1002
     ]
   }
 }

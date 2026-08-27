@@ -1,0 +1,46 @@
+{
+  "batch_size": 64,
+  "demonstration_sha256": "dbf1d002cb5865c36600423ec4f624d9a9412045bf6d2fbea7ce3ed6209eb685",
+  "demonstrations": "pretraining/demonstrations/rule_based_agent_loot-crate_v2_150000.npz",
+  "demonstrator": "rule_based_agent",
+  "epochs": 3,
+  "final_validation_accuracy": 0.8972,
+  "git_commit": "9e8e1f8ac5f6e20af79a7bd4a048ac1de3557f32",
+  "head_rescaling": {
+    "factor": 0.14591924689138688,
+    "mean_abs_q_after": 1.0,
+    "mean_abs_q_before": 6.853105545043945,
+    "target_q_scale": 1.0
+  },
+  "history": [
+    {
+      "epoch": 1,
+      "mean_cross_entropy": 0.7194174260975005,
+      "train_accuracy": 0.8326518518518519,
+      "validation_accuracy": 0.834
+    },
+    {
+      "epoch": 2,
+      "mean_cross_entropy": 0.3036576807640242,
+      "train_accuracy": 0.886762962962963,
+      "validation_accuracy": 0.8847333333333334
+    },
+    {
+      "epoch": 3,
+      "mean_cross_entropy": 0.2551956668411346,
+      "train_accuracy": 0.9023629629629629,
+      "validation_accuracy": 0.8972
+    }
+  ],
+  "majority_class_accuracy": 0.23071333333333333,
+  "model": "cnn_mlp_q",
+  "prepared_at_utc": "2026-08-27T09:52:35+00:00",
+  "pretrained_at_utc": "2026-08-27T09:52:35+00:00",
+  "route": "R07",
+  "seed": 0,
+  "sha256": "f146e250b58d72326ef6981fd3bd88cdd9e68cf4b7262b3d316b78aa38aaa879",
+  "states": 150000,
+  "train_states": 135000,
+  "validation_states": 15000,
+  "worktree_dirty": true
+}

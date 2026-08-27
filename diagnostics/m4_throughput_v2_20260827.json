@@ -1,0 +1,92 @@
+{
+  "git_commit": "9e8e1f8ac5f6e20af79a7bd4a048ac1de3557f32",
+  "measured_at_utc": "2026-08-27T09:53:06+00:00",
+  "prepared_at_utc": "2026-08-27T09:53:06+00:00",
+  "repeats": 200,
+  "routes": [
+    {
+      "act_seconds": {
+        "p99": 0.0002987838606350118
+      },
+      "batch_size": 32,
+      "encode_seconds": {
+        "p50": 3.0708033591508865e-05,
+        "p99": 0.00011084621539339388
+      },
+      "environment_steps_per_second": 391.95834039742095,
+      "gradient_step_seconds": {
+        "p50": 0.009588666493073106,
+        "p99": 0.010302591430954635
+      },
+      "gradient_steps_per_second": 104.2897884416362,
+      "inference_seconds": {
+        "p50": 0.00012341688852757215,
+        "p99": 0.00018793764524161795
+      },
+      "model": "cnn_mlp_q",
+      "official_budget_margin": 1673.4504967481816,
+      "projected_training_job": {
+        "environment_steps": 3000000,
+        "hours": 2.126076287822798,
+        "minutes": 127.56457726936787,
+        "rounds": 10000,
+        "seconds": 7653.874636162072,
+        "steps_per_round": 300
+      },
+      "replay_ratio": 8.0,
+      "route": "R07",
+      "setup_seconds": {
+        "construction": 0.7944391670171171,
+        "first_forward": 0.00052033388055861,
+        "first_in_process": true,
+        "total": 0.7949595008976758
+      },
+      "state_dimension": 2029,
+      "train_every": 4
+    },
+    {
+      "act_seconds": {
+        "p99": 0.0002142035914584992
+      },
+      "batch_size": 32,
+      "encode_seconds": {
+        "p50": 3.0542025342583656e-05,
+        "p99": 7.081548683345315e-05
+      },
+      "environment_steps_per_second": 384.6014435110985,
+      "gradient_step_seconds": {
+        "p50": 0.009759458480402827,
+        "p99": 0.010570286375004798
+      },
+      "gradient_steps_per_second": 102.46470150039764,
+      "inference_seconds": {
+        "p50": 0.00012968759983778,
+        "p99": 0.00014338810462504606
+      },
+      "model": "dueling_cnn_mlp_q",
+      "official_budget_margin": 2334.2279025086855,
+      "projected_training_job": {
+        "environment_steps": 3000000,
+        "hours": 2.166745204400892,
+        "minutes": 130.00471226405352,
+        "rounds": 10000,
+        "seconds": 7800.282735843211,
+        "steps_per_round": 300
+      },
+      "replay_ratio": 8.0,
+      "route": "R08",
+      "setup_seconds": {
+        "construction": 0.0016312501393258572,
+        "first_forward": 0.00020945793949067593,
+        "first_in_process": false,
+        "total": 0.001840708078816533
+      },
+      "state_dimension": 2029,
+      "train_every": 4
+    }
+  ],
+  "scenario": "classic",
+  "torch_import_seconds": 0.6305392081849277,
+  "torch_threads": 1,
+  "worktree_dirty": true
+}

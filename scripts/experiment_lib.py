@@ -94,15 +94,15 @@ IMPLEMENTED_ROUTES = {
     },
     "R07": {
         "lines": ("M4",),
-        "declaration": ("cnn_mlp_q", "double_dqn", "board_egocentric_v1"),
+        "declaration": ("cnn_mlp_q", "double_dqn", "board_egocentric_v2"),
         "reward_versions": _VECTOR_REWARD_VERSIONS,
-        "exploration_versions": {"E00", "E01"},
+        "exploration_versions": {"E00", "E01", "E02", "E07", "E08"},
     },
     "R08": {
         "lines": ("M4",),
-        "declaration": ("dueling_cnn_mlp_q", "double_dqn", "board_egocentric_v1"),
+        "declaration": ("dueling_cnn_mlp_q", "double_dqn", "board_egocentric_v2"),
         "reward_versions": _VECTOR_REWARD_VERSIONS,
-        "exploration_versions": {"E00", "E01"},
+        "exploration_versions": {"E00", "E01", "E02", "E07", "E08"},
     },
 }
 MAIN_LINES = ("M1", "M2", "M3", "M4")
@@ -127,7 +127,8 @@ DECLARATIVE_ROUTE_VALUES = {
     "algorithm": {"q_learning", "sarsa", "double_dqn"},
     "state_representation": {
         "handcrafted_v1", "handcrafted_v2", "handcrafted_v3",
-        "board_channels_v1", "board_channels_global_v1", "board_egocentric_v1",
+        "board_channels_v1", "board_channels_global_v1",
+        "board_egocentric_v1", "board_egocentric_v2",
     },
 }
 

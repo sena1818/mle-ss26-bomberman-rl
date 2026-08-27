@@ -1,0 +1,55 @@
+{
+  "action_counts": {
+    "BOMB": 12478,
+    "DOWN": 34261,
+    "LEFT": 34372,
+    "RIGHT": 34607,
+    "UP": 34282,
+    "WAIT": 0
+  },
+  "collected_at_utc": "2026-08-27T09:30:39+00:00",
+  "demonstrator": "rule_based_agent",
+  "git_commit": "9e8e1f8ac5f6e20af79a7bd4a048ac1de3557f32",
+  "per_seed": [
+    {
+      "rounds_played": 100,
+      "seed": 9001,
+      "skipped_unusable_actions": 170,
+      "states": 39830
+    },
+    {
+      "rounds_played": 100,
+      "seed": 9002,
+      "skipped_unusable_actions": 186,
+      "states": 39814
+    },
+    {
+      "rounds_played": 100,
+      "seed": 9003,
+      "skipped_unusable_actions": 196,
+      "states": 39804
+    },
+    {
+      "rounds_played": 77,
+      "seed": 9004,
+      "skipped_unusable_actions": 134,
+      "states": 30552
+    }
+  ],
+  "prepared_at_utc": "2026-08-27T09:30:39+00:00",
+  "rounds_per_seed": 100,
+  "scenario": "loot-crate",
+  "seeds": [
+    9001,
+    9002,
+    9003,
+    9004,
+    9005
+  ],
+  "sha256": "dbf1d002cb5865c36600423ec4f624d9a9412045bf6d2fbea7ce3ed6209eb685",
+  "state_dimension": 2029,
+  "state_dtype": "float16",
+  "state_encoder": "board_egocentric_v2",
+  "states": 150000,
+  "worktree_dirty": true
+}
