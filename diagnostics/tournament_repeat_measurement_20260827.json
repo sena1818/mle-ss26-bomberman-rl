@@ -1,0 +1,249 @@
+{
+  "arms": {
+    "m3_12_ddqn_vs3rb_20260827": {
+      "per_repeat": {
+        "1": {
+          "coins": 2.013333333333333,
+          "coins_share": 0.22704190799911597,
+          "kills": 0.05777777777777778,
+          "score": 2.302222222222222
+        },
+        "2": {
+          "coins": 1.9844444444444445,
+          "coins_share": 0.22325199405210866,
+          "kills": 0.05777777777777778,
+          "score": 2.2733333333333334
+        },
+        "3": {
+          "coins": 1.96,
+          "coins_share": 0.22005401646895723,
+          "kills": 0.04888888888888889,
+          "score": 2.204444444444445
+        },
+        "4": {
+          "coins": 2.0,
+          "coins_share": 0.22517881648317054,
+          "kills": 0.04666666666666666,
+          "score": 2.2333333333333334
+        },
+        "5": {
+          "coins": 1.9266666666666665,
+          "coins_share": 0.21633362639760897,
+          "kills": 0.06888888888888887,
+          "score": 2.271111111111111
+        }
+      },
+      "summary": {
+        "coins": {
+          "max": 2.013333333333333,
+          "mean": 1.976888888888889,
+          "min": 1.9266666666666665,
+          "sd": 0.034376276631737326
+        },
+        "coins_share": {
+          "max": 0.22704190799911597,
+          "mean": 0.2223720722801923,
+          "min": 0.21633362639760897,
+          "sd": 0.004251342505852356
+        },
+        "kills": {
+          "max": 0.06888888888888887,
+          "mean": 0.055999999999999994,
+          "min": 0.04666666666666666,
+          "sd": 0.008805161224959529
+        },
+        "score": {
+          "max": 2.302222222222222,
+          "mean": 2.2568888888888887,
+          "min": 2.204444444444445,
+          "sd": 0.03818732256833742
+        }
+      }
+    },
+    "m3_13_budget5000_vs3rb_20260827": {
+      "per_repeat": {
+        "1": {
+          "coins": 2.1599999999999997,
+          "coins_share": 0.2411474012626975,
+          "kills": 0.051111111111111114,
+          "score": 2.4155555555555557
+        },
+        "2": {
+          "coins": 2.088888888888889,
+          "coins_share": 0.2336656046941921,
+          "kills": 0.06444444444444444,
+          "score": 2.411111111111111
+        },
+        "3": {
+          "coins": 2.14,
+          "coins_share": 0.24007059232134795,
+          "kills": 0.06444444444444444,
+          "score": 2.462222222222222
+        },
+        "4": {
+          "coins": 2.1533333333333333,
+          "coins_share": 0.24093707846443302,
+          "kills": 0.04,
+          "score": 2.353333333333333
+        },
+        "5": {
+          "coins": 2.1822222222222223,
+          "coins_share": 0.24504296544132037,
+          "kills": 0.06444444444444444,
+          "score": 2.5044444444444447
+        }
+      },
+      "summary": {
+        "coins": {
+          "max": 2.1822222222222223,
+          "mean": 2.1448888888888886,
+          "min": 2.088888888888889,
+          "sd": 0.03483293460696828
+        },
+        "coins_share": {
+          "max": 0.24504296544132037,
+          "mean": 0.24017272843679818,
+          "min": 0.2336656046941921,
+          "sd": 0.004111159135516904
+        },
+        "kills": {
+          "max": 0.06444444444444444,
+          "mean": 0.05688888888888889,
+          "min": 0.04,
+          "sd": 0.011066577420434428
+        },
+        "score": {
+          "max": 2.5044444444444447,
+          "mean": 2.429333333333333,
+          "min": 2.353333333333333,
+          "sd": 0.057055312127577806
+        }
+      }
+    },
+    "m3_4_t02_vs3rb_20260826": {
+      "per_repeat": {
+        "1": {
+          "coins": 1.8622222222222222,
+          "coins_share": 0.20846839068747408,
+          "kills": 0.04,
+          "score": 2.062222222222222
+        },
+        "2": {
+          "coins": 1.9177777777777778,
+          "coins_share": 0.2160623230514175,
+          "kills": 0.05333333333333334,
+          "score": 2.1844444444444444
+        },
+        "3": {
+          "coins": 1.8666666666666667,
+          "coins_share": 0.21016875593025547,
+          "kills": 0.06666666666666667,
+          "score": 2.2
+        },
+        "4": {
+          "coins": 1.94,
+          "coins_share": 0.2176127770423495,
+          "kills": 0.04444444444444444,
+          "score": 2.162222222222222
+        },
+        "5": {
+          "coins": 1.9200000000000002,
+          "coins_share": 0.21558998784300107,
+          "kills": 0.03777777777777778,
+          "score": 2.108888888888889
+        }
+      },
+      "summary": {
+        "coins": {
+          "max": 1.94,
+          "mean": 1.9013333333333335,
+          "min": 1.8622222222222222,
+          "sd": 0.03480456902033637
+        },
+        "coins_share": {
+          "max": 0.2176127770423495,
+          "mean": 0.21358044691089956,
+          "min": 0.20846839068747408,
+          "sd": 0.004007193668970035
+        },
+        "kills": {
+          "max": 0.06666666666666667,
+          "mean": 0.04844444444444444,
+          "min": 0.03777777777777778,
+          "sd": 0.011800816042090448
+        },
+        "score": {
+          "max": 2.2,
+          "mean": 2.1435555555555554,
+          "min": 2.062222222222222,
+          "sd": 0.05705963958119436
+        }
+      }
+    }
+  },
+  "jobs_per_repeat": 15,
+  "measured_at_commit": "307b05c",
+  "pairwise": [
+    {
+      "arm": "m3_12_ddqn_vs3rb_20260827",
+      "baseline": "m3_4_t02_vs3rb_20260826",
+      "difference": 0.11333333333333329,
+      "metric": "score",
+      "resolved": true,
+      "standard_error": 0.03070528968785038,
+      "t": 3.691003552986428
+    },
+    {
+      "arm": "m3_12_ddqn_vs3rb_20260827",
+      "baseline": "m3_4_t02_vs3rb_20260826",
+      "difference": 0.008791625369292733,
+      "metric": "coins_share",
+      "resolved": true,
+      "standard_error": 0.002612719433950018,
+      "t": 3.364932818676664
+    },
+    {
+      "arm": "m3_13_budget5000_vs3rb_20260827",
+      "baseline": "m3_4_t02_vs3rb_20260826",
+      "difference": 0.2857777777777777,
+      "metric": "score",
+      "resolved": true,
+      "standard_error": 0.03608631627393167,
+      "t": 7.91928374202662
+    },
+    {
+      "arm": "m3_13_budget5000_vs3rb_20260827",
+      "baseline": "m3_4_t02_vs3rb_20260826",
+      "difference": 0.026592281525898626,
+      "metric": "coins_share",
+      "resolved": true,
+      "standard_error": 0.002567459076136468,
+      "t": 10.357431506139095
+    },
+    {
+      "arm": "m3_13_budget5000_vs3rb_20260827",
+      "baseline": "m3_12_ddqn_vs3rb_20260827",
+      "difference": 0.1724444444444444,
+      "metric": "score",
+      "resolved": true,
+      "standard_error": 0.03070368136531377,
+      "t": 5.616409393801764
+    },
+    {
+      "arm": "m3_13_budget5000_vs3rb_20260827",
+      "baseline": "m3_12_ddqn_vs3rb_20260827",
+      "difference": 0.017800656156605893,
+      "metric": "coins_share",
+      "resolved": true,
+      "standard_error": 0.0026448267444054282,
+      "t": 6.73036757294572
+    }
+  ],
+  "repeats": 5,
+  "rounds_per_job": 30,
+  "rounds_per_repeat": 450,
+  "run_host": "local (Apple M4)",
+  "what": "Five independent repeats of the same 15 holdout classic_versus_opponents jobs per arm.",
+  "what_varies_between_repeats": "only rule_based_agent's unseeded RNG (agent_code/rule_based_agent/callbacks.py:69)",
+  "why": "A single measurement of this suite cannot separate arms that differ by ~0.1: docs/01 section 7.20 measured sd 0.089 on M3.3XL. Repeating drops the standard error enough to resolve differences the single measurement calls noise -- M3.12 over M3.4 was +0.189 single (below the 0.246 threshold) and is +0.113 repeated, with t = +3.69."
+}

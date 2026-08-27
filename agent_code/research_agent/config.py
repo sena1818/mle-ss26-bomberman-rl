@@ -525,11 +525,13 @@ EXPERIMENTS = {
     # of 8 samples per environment step, not the game, decides how many
     # environment steps a day of compute buys.  8 is the ratio DQN and Rainbow
     # both use; 16 was measured at twice the cost for no argued benefit, and is
-    # left as a single-factor arm rather than paid for up front.  D4 augmentation is on from the
-    # anchor rather than added later: it is a property of the representation
-    # (the arena's symmetry group acts on an agent-centred window), it costs
-    # nothing at sample time, and holding it back would only make the anchor a
-    # weaker base for every increment measured against it.
+    # left as a single-factor arm rather than paid for up front.
+    #
+    # D4 augmentation is on from the anchor rather than added later: it is a
+    # property of the representation -- the arena's symmetry group acts on an
+    # agent-centred window -- it is measured at 1.2% of a gradient step (0.23 of
+    # 19.44 ms, so cheap rather than free), and holding it back would only make
+    # the anchor a weaker base for every increment measured against it.
     # R02_8 is R02_7 at the step size R02_6 found.  M3.11 ran width and
     # double_dqn together at 1e-3 and landed on mean_hidden_zero_fraction 0.790,
     # the same signature as M3.8's 0.791, which M3.10 showed is what the step

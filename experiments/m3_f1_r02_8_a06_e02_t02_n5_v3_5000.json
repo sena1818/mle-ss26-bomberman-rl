@@ -1,0 +1,138 @@
+{
+  "_design_note": "F1, the solo candidate for submission. Two results combine here and have never been run together: M3.10 showed that at (128, 64) the learning rate has to come down with the width -- at 5e-4 it matches the control on score with resolvably fewer suicides (0.171 against 0.453, non-overlapping across seeds) and the lowest death rate the project has measured (6.4 per thousand bombs against 15.9) -- and M3.9 showed that with the schedule pinned in absolute rounds a 5000-round budget is worth +2.43 on loot-crate, which is not resolvable but is not a loss either. The open question this arm answers: a wider net at half the step size takes the same ~111k updates in 2000 rounds as the narrow one, so it may simply be undertrained there. Every budget arm so far has been run at (64, 32) and 1e-3. Updated to R02_8: double_dqn is carried into the solo candidate too. Section 7.24.3 found it adds nothing measurable in solo once the step size is right (M3.14 6.6 deaths per thousand bombs against M3.10's 6.4), so this arm is expected to track M3.14 rather than beat it; keeping one route across both candidates is what makes F1 and F2 differ in the opponents alone.",
+  "_predeclared_design_numbers": {
+    "changed_factor": "route R02_3 -> R02_8 relative to M3.9: hidden (64,32) -> (128,64), learning_rate 1e-3 -> 5e-4, algorithm q_learning -> double_dqn. Budget, schedule, task and seeds are M3.9's.",
+    "control_a": "runs/m3_9_budget_clean_20260827/ (35.051 loot-crate) -- same budget, narrow net",
+    "control_b": "runs/m3_10_wide_lr5e4_20260827/ (31.576) -- same recipe at 2000 rounds",
+    "falsification": "Loot-crate within 4.7 of M3.10's 31.576 means the extra budget does nothing for this recipe either, and the wider net was never undertrained at 2000 rounds.",
+    "prediction": "None stated. Seven of the nine single-factor arms this round were unresolvable or harmful; the prior that any lever is large is weak.",
+    "reporting": "Report all five training-seed distributions, every G2 threshold, deaths per thousand bombs, and mean_hidden_zero_fraction.",
+    "resolution_loot_crate": "The 2000-round control's five training-seed scores are 38.578 / 33.911 / 31.389 / 29.722 / 29.511, sd 3.77, so two arms measured once each need a gap of 4.7 on loot-crate.",
+    "the_metric_that_decides_it": "Not score. M3.10's case rests on deaths per thousand bombs (6.4) and suicides (0.171). Re-run scripts/diagnose_bomb_escape.py and compare against M3.10's 155 deaths / 24,245 bombs / 46 with a plan throughout. Report deaths per thousand bombs, not the WAIT rate: across four arms the WAIT rate moves opposite to the death rate."
+  },
+  "agent": {
+    "algorithm": "double_dqn",
+    "model": "mlp_q",
+    "n_step": 5,
+    "name": "research_agent",
+    "replay": {
+      "batch_size": 32,
+      "capacity": 50000,
+      "min_size": 1000,
+      "target_update_every": 500,
+      "train_every": 1
+    },
+    "state_representation": "handcrafted_v3"
+  },
+  "checkpoint_evaluation": {
+    "holdout_seeds": [
+      3001,
+      3002,
+      3003
+    ],
+    "mode": "all",
+    "validation_seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation": {
+    "budget": {
+      "checkpoint_every": 250,
+      "rounds": 30
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation_suites": {
+    "classic_solo": {
+      "budget": {
+        "checkpoint_every": 250,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "classic_versus_opponents": {
+      "budget": {
+        "checkpoint_every": 250,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [
+        "rule_based_agent",
+        "rule_based_agent",
+        "rule_based_agent"
+      ],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    }
+  },
+  "experiment_id": "M3_F1_R02_6_A06_E02_C00_T02_n5_5000",
+  "exploration_version": "E02",
+  "promotion": {
+    "primary_metric": "score"
+  },
+  "reward_version": "A06",
+  "route": "R02_8",
+  "schema_version": 1,
+  "shaping": {
+    "name": "potential_v1"
+  },
+  "terminal_on_truncation": false,
+  "training": {
+    "budget": {
+      "checkpoint_every": 250,
+      "rounds": 5000
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      1001,
+      1002,
+      1003,
+      1004,
+      1005
+    ]
+  }
+}

@@ -1,0 +1,147 @@
+{
+  "_design_note": "F2, the tournament candidate for submission, and the arm the closing batch was built to reach. It puts the safest recipe measured (M3.10: (128, 64) at 5e-4) on the best tournament setting measured (M3.13: opponent training at 5000 rounds, repeat-measured 2.4293 against M3.4's 2.1436, t = +7.9). Neither has been combined with the other. Note that M3.13 wins on collection, not survival -- its coins_share is the project's highest at 0.2402 while its survival rate is its lowest at 2.8 percent -- so the open question is whether M3.10's safety adds to that or trades against it. Updated to R02_8: double_dqn has a resolvable tournament benefit (M3.12 over M3.4, t = +3.69, section 7.25.1) and the retuned step size is what makes width work at all (section 7.24.1), so this arm carries both.",
+  "_predeclared_design_numbers": {
+    "changed_factor": "route R02_3 -> R02_8 relative to M3.13: hidden (64,32) -> (128,64), learning_rate 1e-3 -> 5e-4, algorithm q_learning -> double_dqn. Budget, schedule, task, opponents and seeds are M3.13's.",
+    "control": "runs/m3_13_budget5000_vs3rb_20260827/ -- repeat-measured score 2.4293 (sd 0.057), coins_share 0.2402, survival 2.8 percent",
+    "falsification": "Not resolvably above 2.4293 means the retuned width adds nothing on top of opponent training at this budget, and M3.13 is the submission.",
+    "prediction": "None stated.",
+    "reporting": "Report all five training-seed distributions, coins_share, the death split, and the five repeat measurements individually.",
+    "resolution_tournament": "Single measurements do not settle the tournament suite: docs/01 section 7.20 puts sd at 0.089 and the repeat measurement of M3.4/M3.12/M3.13 puts each arm's own sd at 0.038-0.057. Judge this arm by repeating its classic_versus_opponents suite five times, as those three were.",
+    "second_control": "runs/m3_10_wide_lr5e4_20260827/ -- same recipe, solo, 2000 rounds",
+    "selection_rule_agreed_in_advance": "Submit the arm with the highest repeat-measured tournament score. If no arm is resolvably above M3.13's 2.4293, submit M3.13.",
+    "the_metric_that_decides_it": "Repeat the classic_versus_opponents suite five times and compare the pooled means against M3.13's five, the way M3.4/M3.12/M3.13 were compared. A single measurement of this suite decides nothing. Report coins_share and the death split alongside score."
+  },
+  "agent": {
+    "algorithm": "double_dqn",
+    "model": "mlp_q",
+    "n_step": 5,
+    "name": "research_agent",
+    "replay": {
+      "batch_size": 32,
+      "capacity": 50000,
+      "min_size": 1000,
+      "target_update_every": 500,
+      "train_every": 1
+    },
+    "state_representation": "handcrafted_v3"
+  },
+  "checkpoint_evaluation": {
+    "holdout_seeds": [
+      3001,
+      3002,
+      3003
+    ],
+    "mode": "all",
+    "validation_seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation": {
+    "budget": {
+      "checkpoint_every": 250,
+      "rounds": 30
+    },
+    "opponents": [
+      "rule_based_agent",
+      "rule_based_agent",
+      "rule_based_agent"
+    ],
+    "scenario": "loot-crate",
+    "seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation_suites": {
+    "classic_solo": {
+      "budget": {
+        "checkpoint_every": 250,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "classic_versus_opponents": {
+      "budget": {
+        "checkpoint_every": 250,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [
+        "rule_based_agent",
+        "rule_based_agent",
+        "rule_based_agent"
+      ],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    }
+  },
+  "experiment_id": "M3_F2_R02_6_A06_E02_C00_T02_n5_5000_vs3rb",
+  "exploration_version": "E02",
+  "promotion": {
+    "primary_metric": "score"
+  },
+  "reward_version": "A06",
+  "route": "R02_8",
+  "schema_version": 1,
+  "shaping": {
+    "name": "potential_v1"
+  },
+  "terminal_on_truncation": false,
+  "training": {
+    "budget": {
+      "checkpoint_every": 250,
+      "rounds": 5000
+    },
+    "opponents": [
+      "rule_based_agent",
+      "rule_based_agent",
+      "rule_based_agent"
+    ],
+    "scenario": "loot-crate",
+    "seeds": [
+      1001,
+      1002,
+      1003,
+      1004,
+      1005
+    ]
+  }
+}
