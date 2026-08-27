@@ -13,7 +13,9 @@ from unittest.mock import Mock, patch
 import numpy as np
 
 from agent_code.research_agent.config import (
+    EXPERIMENTS,
     EXPLORATION_SCHEDULES,
+    epsilon_for_training_step,
     EXPLORATION_VERSIONS,
     REWARD_VERSIONS,
     active_config,
@@ -470,7 +472,8 @@ class ExperimentRuntimeTest(unittest.TestCase):
         config = replace(active_config(), exploration_version="E01")
         self.assertEqual(
             EXPLORATION_VERSIONS,
-            frozenset({"E00", "E01", "E02", "E03", "E04", "E05", "E06", "E07", "E08"}),
+            frozenset({"E00", "E01", "E02", "E03", "E04", "E05", "E06", "E07", "E08",
+                       "E09", "E10"}),
         )
         self.assertEqual(exploration_specification("E01")["hold_fraction"], 0.20)
         # 500 rounds: 1--100 at 0.30, then decay to exactly 0.05 at round 500.
@@ -606,7 +609,7 @@ class ColdAndWarmStartScheduleTest(unittest.TestCase):
         starts = {
             name: schedule.get("initial_epsilon")
             for name, schedule in EXPLORATION_SCHEDULES.items()
-            if name not in {"E00", "E07", "E08"}
+            if name not in {"E00", "E07", "E08", "E09", "E10"}
         }
         self.assertEqual(set(starts.values()), {0.30})
 
@@ -639,3 +642,38 @@ class ColdAndWarmStartScheduleTest(unittest.TestCase):
                 epsilon_for_training_round(config, round_number, 2000),
                 epsilon_for_training_round(config, round_number, 10000),
             )
+
+
+class StepCountedScheduleTest(unittest.TestCase):
+    """E09 / E10: the schedule and the replay buffer in the same unit.
+
+    The pilot measured a loot-crate round at 9.8 steps under epsilon 1.00 and
+    210 steps once the agent had learned to survive.  A round is therefore not
+    a unit of experience, and a round-counted hold cannot express "explore at
+    full strength until the buffer is ready": under E07 the buffer held 982 of
+    the 10,000 transitions it needed when the hold ended.
+    """
+
+    def test_the_hold_is_the_replay_min_size(self):
+        schedule = EXPLORATION_SCHEDULES["E09"]
+        self.assertEqual(schedule["hold_steps"], EXPERIMENTS["R07"].replay.min_size)
+
+    def test_epsilon_follows_environment_steps(self):
+        config = replace(active_config(), exploration_version="E09")
+        self.assertEqual(epsilon_for_training_step(config, 0), 1.00)
+        self.assertEqual(epsilon_for_training_step(config, 10_000), 1.00)
+        self.assertAlmostEqual(epsilon_for_training_step(config, 110_000), 0.525)
+        self.assertEqual(epsilon_for_training_step(config, 210_000), 0.05)
+        self.assertEqual(epsilon_for_training_step(config, 3_000_000), 0.05)
+
+    def test_e10_differs_from_e09_in_the_start_and_nothing_else(self):
+        cold, warm = EXPLORATION_SCHEDULES["E09"], EXPLORATION_SCHEDULES["E10"]
+        differing = {key for key in cold if key != "description" and cold[key] != warm.get(key)}
+        self.assertEqual(differing, {"initial_epsilon"})
+
+    def test_a_round_counted_query_on_a_step_schedule_is_refused(self):
+        """Fail closed: a silent fallback would hand back the wrong epsilon."""
+        config = replace(active_config(), exploration_version="E09")
+        self.assertIsNone(epsilon_for_training_step(replace(config, exploration_version="E02"), 5))
+        with self.assertRaises(ValueError):
+            epsilon_for_training_round(config, 1, 10_000)

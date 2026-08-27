@@ -1,5 +1,5 @@
 {
-  "_design_note": "M4 anchor plus a behaviour-cloned warm start. Two factors change together on purpose: the initial weights, and the exploration start (E07 1.00 -> E08 0.20). They are coupled -- holding epsilon at 1.00 over a cloned policy spends the clone before it can be used -- so this is declared as a two-factor increment rather than pretending to be one. The known bias: rule_based_agent emitted WAIT exactly 0 times in 150,000 recorded loot-crate states, so the clone never waits. The handcrafted line's standing failure is the opposite one (WAIT ranked above a visible escape, docs/05 section 0.13), so wait_fraction and the 'saw the exit and waited' diagnostic count are what to read here, not score.",
+  "_design_note": "M4 anchor plus a behaviour-cloned warm start. Two factors change together on purpose: the initial weights, and the exploration start (E07 1.00 -> E08 0.20). They are coupled -- holding epsilon at 1.00 over a cloned policy spends the clone before it can be used -- so this is declared as a two-factor increment rather than pretending to be one. The known bias: rule_based_agent emitted WAIT exactly 0 times in 150,000 recorded loot-crate states, so the clone never waits. The handcrafted line's standing failure is the opposite one (WAIT ranked above a visible escape, docs/05 section 0.13), so wait_fraction and the 'saw the exit and waited' diagnostic count are what to read here, not score. EXPLORATION SCHEDULE: E09, counted in environment steps rather than rounds. The pilot (runs/m4_pilot_20260827) measured why: at epsilon 1.00 a loot-crate round lasts 9.8 steps because random play kills itself at once, and 210 steps once the agent survives. Under E07's 100-round hold the buffer therefore held 982 of the 10,000 transitions min_size requires, and the first gradient step did not land until round 826 -- with epsilon already annealed to 0.11, which is precisely the cold start E07 existed to provide. E09 holds epsilon at 1.00 for 10,000 steps, exactly min_size, so the first gradient step sees a full buffer at full exploration, then anneals over 200,000 steps.",
   "_predeclared_design_numbers": {
     "changed_factor": "initial_model (none -> behaviour cloning) together with exploration_version (E07 -> E08).",
     "control": "The M4 anchor arm at the same budget and seeds.",
@@ -149,8 +149,8 @@
       ]
     }
   },
-  "experiment_id": "M4_R07_A06_E08_C00_T02_n3_10000_bc",
-  "exploration_version": "E08",
+  "experiment_id": "M4_R07_A06_E10_C00_T02_n3_10000_bc",
+  "exploration_version": "E10",
   "initial_model": {
     "kind": "behaviour_cloning",
     "path": "pretraining/models/r07_bc_rule_based_agent_loot-crate_v2.npz",

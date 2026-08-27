@@ -15,6 +15,7 @@ from ..config import (
     MAX_STEPS,
     ExperimentConfig,
     epsilon_for_training_round,
+    epsilon_for_training_step,
     exploration_specification,
     shaping_specification,
 )
@@ -429,6 +430,11 @@ class ExperimentRuntime:
                 if self.round_gradient_steps else None
             ),
             "updates_this_round": self.round_updates,
+            # The exploration value actually in force at the end of this round.
+            # A step-counted schedule cannot be validated against a round budget
+            # at config time, so it is recorded per round and checked from the
+            # trace instead of trusted.
+            "epsilon": self.round_end_epsilon,
             "gradient_steps_this_round": self.round_gradient_steps,
             "gradient_steps": self.gradient_steps,
             "learner_step": self.round_last_step or None,
@@ -565,6 +571,7 @@ class ExperimentRuntime:
         self.round_gradient_steps = 0
         self.round_gradient_abs_td_error = 0.0
         self.round_last_step: dict[str, Any] = {}
+        self.round_end_epsilon: float | None = None
         self.round_reward = 0.0
         self.round_shaping_reward = 0.0
         self.round_abs_td_error = 0.0
@@ -616,6 +623,18 @@ class ExperimentRuntime:
     def _epsilon_for_game_state(self, game_state: dict) -> float:
         if not self.train:
             return 0.0
+        # ``training_updates`` is the cumulative transition count, which the P0
+        # invariant ``updates_this_round == act_steps`` makes equal to the
+        # environment steps this job has taken.
+        by_step = epsilon_for_training_step(self.config, self.training_updates)
+        if by_step is not None:
+            self.round_end_epsilon = by_step
+            return by_step
+        self.round_end_epsilon = epsilon_for_training_round(
+            self.config,
+            round_number=self._round_offset() + int(game_state["round"]),
+            training_rounds=self._training_rounds(),
+        )
         return epsilon_for_training_round(
             self.config,
             round_number=self._round_offset() + int(game_state["round"]),

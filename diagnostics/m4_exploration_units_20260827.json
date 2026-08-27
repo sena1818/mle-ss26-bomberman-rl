@@ -1,0 +1,36 @@
+{
+  "_what": "Why the M4 exploration schedule had to move from rounds (E07) to environment steps (E09).",
+  "_source": "runs/m4_pilot_20260827, E07, two throwaway seeds, stopped early once the finding was established.",
+  "_method": "round_end records from the training jobs; updates_this_round equals act_steps by the P0 invariant.",
+  "seeds": {
+    "1901": {
+      "rounds_recorded": 1513,
+      "cumulative_environment_steps": 93724,
+      "transitions_during_E07_hold_rounds_1_to_100": 982,
+      "replay_min_size": 10000,
+      "round_replay_reached_min_size": 826,
+      "round_of_first_gradient_step": 826,
+      "mean_steps_per_round_by_segment": {
+        "1-100": 9.8,
+        "101-500": 10.5,
+        "501-1000": 30.8,
+        "1001-1500": 142.8
+      }
+    },
+    "1902": {
+      "rounds_recorded": 1496,
+      "cumulative_environment_steps": 93937,
+      "transitions_during_E07_hold_rounds_1_to_100": 904,
+      "replay_min_size": 10000,
+      "round_replay_reached_min_size": 854,
+      "round_of_first_gradient_step": 854,
+      "mean_steps_per_round_by_segment": {
+        "1-100": 9.0,
+        "101-500": 10.3,
+        "501-1000": 28.9,
+        "1001-1500": 150.1
+      }
+    }
+  },
+  "finding": "E07 holds epsilon at 1.00 for rounds 1-100 and anneals over rounds 101-1000. Random play ends a loot-crate round in about 10 steps, so the hold collected roughly 950 of the 10,000 transitions min_size requires and the first gradient step landed near round 826, with epsilon already at about 0.11. A round is not a unit of experience: its length varies about 20x within one run. E09 counts hold and anneal in environment steps, the same unit as replay.min_size and replay.capacity."
+}

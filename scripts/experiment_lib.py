@@ -102,13 +102,13 @@ IMPLEMENTED_ROUTES = {
         "lines": ("M4",),
         "declaration": ("cnn_mlp_q", "double_dqn", "board_egocentric_v2"),
         "reward_versions": _VECTOR_REWARD_VERSIONS,
-        "exploration_versions": {"E00", "E01", "E02", "E07", "E08"},
+        "exploration_versions": {"E00", "E01", "E02", "E07", "E08", "E09", "E10"},
     },
     "R08": {
         "lines": ("M4",),
         "declaration": ("dueling_cnn_mlp_q", "double_dqn", "board_egocentric_v2"),
         "reward_versions": _VECTOR_REWARD_VERSIONS,
-        "exploration_versions": {"E00", "E01", "E02", "E07", "E08"},
+        "exploration_versions": {"E00", "E01", "E02", "E07", "E08", "E09", "E10"},
     },
 }
 MAIN_LINES = ("M1", "M2", "M3", "M4")
@@ -647,6 +647,11 @@ class Experiment:
         from agent_code.research_agent.config import EXPLORATION_SCHEDULES
 
         schedule = EXPLORATION_SCHEDULES.get(self.exploration_version)
+        # A step-counted schedule cannot be checked here: how many environment
+        # steps a round budget buys depends on how long the policy survives,
+        # which the pilot measured varying from 9.8 to 210 steps per round
+        # within one run.  Those schedules are checked after the fact instead --
+        # every round_end record carries the epsilon that was in force.
         if schedule is None or schedule.get("kind") != "hold_then_linear_absolute":
             return
         needed = int(schedule["hold_rounds"]) + int(schedule["anneal_rounds"])

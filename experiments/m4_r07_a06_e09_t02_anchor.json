@@ -1,10 +1,11 @@
 {
-  "_design_note": "A06 -> A03: the potential shaping is the only change. This is a research question, not only a hyperparameter. potential_v1's phi is built from BFS distances, so carrying it into the spatial line puts handcrafted domain knowledge back in through the side door. If the anchor learns without it, that is a reportable result about what the CNN discovers on its own; if it does not, the line's dependence on hand-built shaping has to be stated plainly.",
+  "_design_note": "M4 anchor. First arm of the spatial line and the base every later increment is measured against: board_egocentric_v2 (seven agent-centred planes plus six scalars), a CNN whose board trunk downsamples twice, Double DQN with a target network, n=3, D4 augmentation, and E07. E07 rather than the E02 family because every E00-E06 schedule starts epsilon at 0.30, which was never a problem for a handcrafted-feature model and is one here: the pipeline smoke measured an untrained CNN at wait_fraction 0.998 and 1.9 distinct cells per round, an agent standing still. Double DQN, D4, n=3 and the absence of dueling are a bundle, not an attribution -- the anchor is a base, and the arms measured against it are the single factors. Because E07 counts its hold and anneal in absolute rounds, the checkpoint at round N is exactly what a run budgeted at N rounds would have produced, so this one arm answers the budget question at every evaluated checkpoint and no separate budget arm is needed. EXPLORATION SCHEDULE: E09, counted in environment steps rather than rounds. The pilot (runs/m4_pilot_20260827) measured why: at epsilon 1.00 a loot-crate round lasts 9.8 steps because random play kills itself at once, and 210 steps once the agent survives. Under E07's 100-round hold the buffer therefore held 982 of the 10,000 transitions min_size requires, and the first gradient step did not land until round 826 -- with epsilon already annealed to 0.11, which is precisely the cold start E07 existed to provide. E09 holds epsilon at 1.00 for 10,000 steps, exactly min_size, so the first gradient step sees a full buffer at full exploration, then anneals over 200,000 steps.",
   "_predeclared_design_numbers": {
-    "changed_factor": "reward_version A06 -> A03 (identical event table; the shaping term is removed).",
-    "control": "The M4 anchor arm at the same budget and seeds.",
-    "falsification": "If A03 matches A06 within 4.7 on loot-crate, the shaping is not carrying this line and should be dropped from the final agent for simplicity.",
-    "prediction": "None. docs/05 section 0.6 found A06's effect on the handcrafted line was seed-dependent and failed its own safety prediction, so the prior that it matters is weak.",
+    "budget_curve": "docs/05 section 0.18 found that on the handcrafted line, training past 2000 rounds made the competition-setting score worse, reproduced across two arms. Whether that holds for a model with three orders of magnitude more parameters is open; report classic_versus_opponents at every evaluated checkpoint rather than only at the end.",
+    "changed_factor": "Everything. This is the M4 base, not a single-factor comparison.",
+    "gate": "Learning from scratch, judged on VALIDATION seeds only so that holdout stays unselected. All three must hold: (a) the mean loot-crate validation score over the last two evaluated checkpoints exceeds the mean over the first two by more than the 4.7 resolution; (b) the final validation score is above an untrained-CNN control, which the smoke measured at score 0.0 with wait_fraction 0.998 and distinct_cells 1.9; (c) the policy is not degenerate -- distinct_cells > 20, bomb_rate > 0.01, wait_fraction < 0.6. Point-to-point monotonicity is NOT required and must not be used: an RL curve that dips once is not a failed arm.",
+    "known_limitation": "Training is solo, so the opponents plane and the living_opponents scalar are identically zero throughout and the weights reading them keep their initialisation. At tournament evaluation those inputs become non-zero for the first time. This arm therefore cannot answer whether the representation helps against opponents; the opponent-exposure arm exists for that.",
+    "prediction": "None stated for the comparison against M3. The handcrafted line reached 32.6 at 2000 rounds on 62 hand-designed dimensions; this line sees 2029 raw ones and has to learn what those dimensions already encode, so a slower start is expected and says nothing about the ceiling.",
     "reporting": "Quote evaluation_summary.json reportable_result, never selected_checkpoint: the latter maximises over train_seed x checkpoint_round and is biased upward. Report all five training-seed distributions, every G2 threshold, and coins_share alongside score for every arm that has opponents.",
     "resolution_loot_crate": "docs/01 section 7.21: the five-seed spread of the handcrafted control gives sd 3.77, so two arms measured once each need a gap of 4.7. That threshold covers training variance; the tournament one below does not.",
     "resolution_tournament": "docs/01 section 7.20: pooled 450-round classic-with-opponents score has sd 0.089, so two arms need a gap of 0.246 (coins_share: 0.022). This was measured by re-running ONE fixed set of checkpoints, so it is evaluation noise only and does NOT cover training variance. Use it for a paired same-seed difference, never to bless a maximum taken over seeds.",
@@ -148,15 +149,18 @@
       ]
     }
   },
-  "experiment_id": "M4_R07_A03_E07_C00_T02_n3_10000",
-  "exploration_version": "E07",
+  "experiment_id": "M4_R07_A06_E09_C00_T02_n3_10000",
+  "exploration_version": "E09",
   "promotion": {
     "primary_metric": "score",
     "selection_suite": "classic_versus_opponents"
   },
-  "reward_version": "A03",
+  "reward_version": "A06",
   "route": "R07",
   "schema_version": 1,
+  "shaping": {
+    "name": "potential_v1"
+  },
   "terminal_on_truncation": false,
   "training": {
     "budget": {

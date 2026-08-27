@@ -40,7 +40,8 @@ REWARD_VERSIONS = frozenset({"A00", "A01", "A02", "A03", "A05", "A06"})
 # are independent.  Each point of the ablation is its own label rather than a
 # parameter, so a finished run's snapshot names the exact schedule it saw --
 # the same discipline as A00--A06 and R02_1--R02_3.
-EXPLORATION_VERSIONS = frozenset({"E00", "E01", "E02", "E03", "E04", "E05", "E06", "E07", "E08"})
+EXPLORATION_VERSIONS = frozenset({"E00", "E01", "E02", "E03", "E04", "E05", "E06", "E07", "E08",
+                                  "E09", "E10"})
 # How a curriculum indexes its exploration schedule.  A curriculum segment is a
 # separate game process whose round counter restarts at 1, so the schedule needs
 # an explicit choice instead of an accidental one.
@@ -157,6 +158,39 @@ EXPLORATION_SCHEDULES = {
         "final_epsilon": 0.05,
         "description": "E07 with the start lowered to 0.20; hold and anneal lengths are unchanged"
                        " (warm start from a behaviour-cloned policy)",
+    },
+    # E09 / E10 count in environment *steps*, not rounds.  This is the same
+    # class of correction as E01 -> E02 (docs/05 section 0.14), one level
+    # deeper, and the pilot measured why it is needed:
+    #
+    #   at epsilon 1.00 a loot-crate round lasts  9.8 steps  (random play dies at once)
+    #   after learning starts it lasts           210   steps
+    #
+    # A round is not a unit of experience; its length varies by a factor of 20
+    # across a run.  Under E07's 100-round hold the buffer collected 982
+    # transitions against a min_size of 10,000, so the first gradient step did
+    # not land until round 826 -- by which point epsilon had already annealed to
+    # 0.11 and the cold start it was built for was gone.  Counting the schedule
+    # in steps puts it in the same unit as min_size and the replay capacity, so
+    # "explore until the buffer is ready, then anneal" means what it says.
+    "E09": {
+        "kind": "hold_then_linear_steps",
+        "initial_epsilon": 1.00,
+        "hold_steps": 10_000,
+        "anneal_steps": 200_000,
+        "final_epsilon": 0.05,
+        "description": "epsilon is 1.00 for 10,000 environment steps -- exactly the replay"
+                       " min_size, so the first gradient step sees a full buffer at full"
+                       " exploration -- then decays to 0.05 over 200,000 steps",
+    },
+    "E10": {
+        "kind": "hold_then_linear_steps",
+        "initial_epsilon": 0.20,
+        "hold_steps": 10_000,
+        "anneal_steps": 200_000,
+        "final_epsilon": 0.05,
+        "description": "E09 with the start lowered to 0.20; hold and anneal lengths are"
+                       " unchanged (warm start from a behaviour-cloned policy)",
     },
 }
 
@@ -632,6 +666,29 @@ def shaping_specification(reward_version: str) -> dict | None:
     return dict(specification) if specification is not None else None
 
 
+def epsilon_for_training_step(config: ExperimentConfig, environment_steps: int) -> float:
+    """Return epsilon for a step-counted schedule, or ``None`` for a round one.
+
+    ``environment_steps`` is the number of transitions the agent has produced so
+    far in this training job, which is the same quantity ``replay.min_size`` and
+    ``replay.capacity`` are measured in.  That is the whole point: under a
+    round-counted schedule those two units drift apart by a factor of twenty as
+    the policy stops dying immediately.
+    """
+    schedule = EXPLORATION_SCHEDULES.get(config.exploration_version)
+    if schedule is None or schedule["kind"] != "hold_then_linear_steps":
+        return None
+    hold = int(schedule["hold_steps"])
+    anneal = int(schedule["anneal_steps"])
+    initial = float(schedule["initial_epsilon"])
+    final = float(schedule["final_epsilon"])
+    if environment_steps <= hold or anneal < 1:
+        return initial
+    if environment_steps >= hold + anneal:
+        return final
+    return initial + (environment_steps - hold) / anneal * (final - initial)
+
+
 def epsilon_for_training_round(config: ExperimentConfig, round_number: int, training_rounds: int) -> float:
     """Return the declared epsilon for one *training* round.
 
@@ -655,6 +712,11 @@ def epsilon_for_training_round(config: ExperimentConfig, round_number: int, trai
         )
     if config.exploration_version == "E00":
         return config.epsilon
+    if EXPLORATION_SCHEDULES.get(config.exploration_version, {}).get("kind") == "hold_then_linear_steps":
+        raise ValueError(
+            f"{config.exploration_version} is a step-counted schedule; "
+            "the runtime must call epsilon_for_training_step instead."
+        )
     if config.exploration_version == "E01":
         hold_rounds = max(1, int(training_rounds * EXPLORATION_SCHEDULES["E01"]["hold_fraction"]))
         if round_number <= hold_rounds or hold_rounds == training_rounds:
