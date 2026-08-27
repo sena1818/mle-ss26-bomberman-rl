@@ -42,8 +42,13 @@ done
 STAGES=(
   "pilot:m4_r07_a06_e09_t02_pilot:pilot"
   "anchor:m4_r07_a06_e09_t02_anchor:pilot"
-  "no_shaping:m4_r07_a03_e09_t02_no_shaping:training"
+  # Step size comes before the increments, not after them: docs/05 section 0.20
+  # published "more capacity is harmful" and then found it was an artefact of a
+  # step size held fixed while the network widened.  An increment measured
+  # against a mis-tuned base can invert its own sign.
+  "lr1e4:m4_r07_a06_e09_t02_lr1e4:training"
   "opponents:m4_r07_a06_e09_t02opp_opponents:training"
+  "no_shaping:m4_r07_a03_e09_t02_no_shaping:training"
   "bc:m4_r07_a06_e10_t02_bc:training"
   "dueling:m4_r08_a06_e09_t02_dueling:training"
 )
