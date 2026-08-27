@@ -45,6 +45,29 @@ BOMBERMAN_TORCH_DEVICE=cuda python scripts/benchmark_cnn.py --rounds 10000 --ste
 **并行**：`--jobs N` 是进程级的，阶段内并发、阶段间保序。N 取核数。
 **不需要任何并行化改造**；`prepare` + per-job JSON 已经是 scheduler-agnostic 的。
 
+## 1b. 一条命令跑完整条线
+
+```bash
+./scripts/run_m4_line.sh --jobs 8 --date $(date +%Y%m%d)
+```
+
+它按顺序做：装机检查 → **本机吞吐实测** → pilot → **gate** → anchor → **gate** →
+A03 / 对手 / BC / dueling，每个臂跑完自动 `aggregate` + `check_pilot` + `prune`。
+
+- **gate 不过就停**，不会继续烧后面的臂。
+- 已完成的臂（存在 `evaluation_summary.json`）自动跳过，**中断后重跑安全**。
+- `--from anchor` 从指定阶段开始；`--dry-run` 只打印计划。
+- 日志写 `~/m4_logs/`（**仓库外**，否则工作区变脏、下一次 `prepare` 被拒）。
+
+后台提交：
+
+```bash
+nohup setsid ./scripts/run_m4_line.sh --jobs 8 --date $(date +%Y%m%d) \
+    > ~/m4_line.log 2>&1 < /dev/null & disown
+```
+
+下面 §2–§5 是这条命令内部做的事，手工分步执行时看它们。
+
 ## 2. 顺序（每一步的产物决定下一步跑不跑）
 
 ```text
