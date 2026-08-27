@@ -27,7 +27,7 @@ SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 # A04 (SAFE_BOMB) is specified in docs/01 but not implemented, so no route
 # lists it.  A06 is A03 plus potential shaping and is only offered on routes
 # whose state representation the potential is defined for.
-_VECTOR_REWARD_VERSIONS = {"A00", "A01", "A02", "A03", "A05", "A06"}
+_VECTOR_REWARD_VERSIONS = {"A00", "A01", "A02", "A03", "A05", "A06", "A07"}
 IMPLEMENTED_ROUTES = {
     "R01": {
         "lines": ("M1", "M2"),

@@ -71,6 +71,15 @@ REWARD_TABLES = {
         "CRATE_DESTROYED": 0.1,
         "COIN_FOUND": 0.2,
     },
+    # A07 is A06 plus one shaping term.  Its event table is identical to A06 on
+    # purpose, for the same reason A06's is identical to A03's: the shaping term
+    # has to be the only variable in the comparison.
+    "A07": {
+        "COIN_COLLECTED": 1.0,
+        "KILLED_OPPONENT": 5.0,
+        "CRATE_DESTROYED": 0.1,
+        "COIN_FOUND": 0.2,
+    },
 }
 DEATH_PENALTIES = {
     "A00": 0.0,
@@ -85,6 +94,7 @@ DEATH_PENALTIES = {
     "A03": -1.0,
     "A05": 0.0,
     "A06": -1.0,
+    "A07": -1.0,
 }
 # Frozen, human-readable provenance for every registered reward version.  The
 # runner copies this into the run snapshot so a result can always be traced back
@@ -96,6 +106,7 @@ REWARD_DESIGN_NOTES = {
     "A03": "A02 with the death penalty lowered from 5.0 to 1.0; nothing else changes",
     "A05": "A02 with the death penalty removed; control arm of the D dose-response study",
     "A06": "A03 plus potential-based shaping; the event weights are identical to A03",
+    "A07": "A06 plus one shaping term for opponents standing in a bomb's blast; the event weights are identical to A06",
 }
 
 

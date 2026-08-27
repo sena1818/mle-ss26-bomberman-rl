@@ -31,7 +31,7 @@ EXPLORATION_VERSION = "E00"
 # specified but not implemented.  See docs/01 section 4.2.  A06 is A03 plus
 # potential-based shaping (docs/05 section 4); its event table is identical to
 # A03 on purpose, so the shaping term is the only variable.
-REWARD_VERSIONS = frozenset({"A00", "A01", "A02", "A03", "A05", "A06"})
+REWARD_VERSIONS = frozenset({"A00", "A01", "A02", "A03", "A05", "A06", "A07"})
 # Exploration is versioned independently from the route and reward.  E01 defines
 # its hold as a *fraction* of the training budget, which means changing the
 # budget silently changes the schedule too: every budget comparison in
@@ -248,6 +248,40 @@ SHAPING_SPECIFICATIONS = {
             "distance_cap) - danger_weight * [s lies in a future blast]; phi(terminal) = 0. "
             "Shaping is gamma * phi(s') - phi(s) with the learner's own gamma, so the optimal "
             "policy is unchanged (Ng, Harada & Russell 1999)."
+        ),
+    },
+    # A07 is A06 plus one term, aimed at the only arithmetic gap left in the
+    # tournament line.  scripts/diagnose_kill_opportunities.py measured F2 over
+    # 900 rounds: it stood 9,930 times where a bomb would have caught an
+    # opponent, could have escaped after dropping in 97.9% of them, and dropped
+    # in 8.0%.  On rule_based_agent's own trigger -- an opponent within one step
+    # -- it dropped 218 times out of 3,299.  So the agent reaches the position
+    # and declines the bomb; that is a decision problem, not an approach one.
+    #
+    # The term counts opponents standing inside the blast of a bomb ALREADY ON
+    # THE BOARD, not of a bomb the agent might drop, and not of "its own" bomb.
+    # Ownership is not in game_state (environment.py line 406) and tracking it
+    # would make phi a function of history, which is exactly what constraint 1
+    # in shaping.py forbids.  Any bomb endangering an opponent is good for us,
+    # so the observation-only form is also the honest one.
+    #
+    # Weight 0.30 matches the danger term and is bounded by 0.90 across three
+    # opponents, against the collection term's range of 1.0: a nudge on the same
+    # scale as the existing terms, not a new objective.  Being potential-based,
+    # it cannot change the optimal policy -- if declining the bomb is genuinely
+    # right, A07 will not teach the agent otherwise; it can only speed up
+    # learning the 5.0 that KILLED_OPPONENT already carries.
+    "A07": {
+        "name": "potential_v2",
+        "coin_weight": 0.05,
+        "distance_cap": 20,
+        "danger_weight": 0.30,
+        "opponent_blast_weight": 0.30,
+        "terminal_potential": 0.0,
+        "notes": (
+            "phi(s) = potential_v1(s) + opponent_blast_weight * (opponents standing in the blast "
+            "footprint of any bomb currently on the board); phi(terminal) = 0. Reads the state "
+            "alone, is bounded by 0.90 above the v1 term, and leaves the optimal policy unchanged."
         ),
     },
 }

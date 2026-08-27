@@ -20,14 +20,31 @@ is covered by a test:
 from __future__ import annotations
 
 from .config import ExperimentConfig, shaping_specification
-from .state import _bfs_distances, _crate_adjacent_cells, _DANGER_HORIZON, future_danger_times
+import numpy as np
+
+from .state import (
+    _bfs_distances,
+    _blast_coordinates,
+    _crate_adjacent_cells,
+    _DANGER_HORIZON,
+    future_danger_times,
+)
 
 
 class PotentialShaping:
-    """The ``potential_v1`` potential and its transition term."""
+    """The ``potential_v1`` / ``potential_v2`` potentials and their transition term.
+
+    ``potential_v2`` adds one term: opponents standing inside the blast footprint
+    of a bomb already on the board.  It reads ``bombs``, ``others`` and ``field``
+    and nothing else, so constraint 1 above still holds -- in particular it does
+    *not* ask which bomb is the agent's, which is not in the observation
+    (environment.py line 406) and could only be recovered from history.
+    """
+
+    KNOWN = {"potential_v1", "potential_v2"}
 
     def __init__(self, specification: dict, discount: float):
-        if specification.get("name") != "potential_v1":
+        if specification.get("name") not in self.KNOWN:
             raise ValueError(f"Unknown shaping function {specification.get('name')!r}.")
         self.specification = dict(specification)
         self.discount = float(discount)
@@ -35,6 +52,9 @@ class PotentialShaping:
         self.distance_cap = int(specification["distance_cap"])
         self.danger_weight = float(specification["danger_weight"])
         self.terminal_potential = float(specification["terminal_potential"])
+        self.name = specification["name"]
+        # Absent for potential_v1, which is what makes the two share one class.
+        self.opponent_blast_weight = float(specification.get("opponent_blast_weight", 0.0))
         if self.distance_cap < 1:
             raise ValueError("shaping.distance_cap must be positive so that phi stays bounded.")
 
@@ -51,6 +71,8 @@ class PotentialShaping:
         potential = -self.coin_weight * min(distance, self.distance_cap)
         if self._in_future_blast(game_state):
             potential -= self.danger_weight
+        if self.opponent_blast_weight:
+            potential += self.opponent_blast_weight * self._opponents_in_a_blast(game_state)
         return potential
 
     def shaping_reward(self, potential: float, next_potential: float) -> float:
@@ -65,6 +87,22 @@ class PotentialShaping:
         """
         coins = {tuple(coin) for coin in game_state["coins"]}
         return coins if coins else _crate_adjacent_cells(game_state)
+
+    def _opponents_in_a_blast(self, game_state: dict) -> int:
+        """How many opponents stand where a bomb on the board will explode.
+
+        Counted at most once per opponent however many bombs cover them, so the
+        term stays bounded by ``opponent_blast_weight`` times the roster size.
+        """
+        bombs = game_state.get("bombs") or ()
+        others = game_state.get("others") or ()
+        if not bombs or not others:
+            return 0
+        field = np.asarray(game_state["field"])
+        covered: set[tuple[int, int]] = set()
+        for position, _timer in bombs:
+            covered.update(_blast_coordinates(tuple(position), field))
+        return sum(1 for other in others if tuple(other[3]) in covered)
 
     def _in_future_blast(self, game_state: dict) -> bool:
         danger = future_danger_times(game_state)

@@ -24,7 +24,7 @@ def board(size: int = 9) -> np.ndarray:
     return field
 
 
-def game_state(position=(3, 3), *, coins=(), crates=(), bombs=(), step=1, field=None) -> dict:
+def game_state(position=(3, 3), *, coins=(), crates=(), bombs=(), step=1, field=None, others=()) -> dict:
     field = board() if field is None else field.copy()
     for crate in crates:
         field[crate] = 1
@@ -33,12 +33,57 @@ def game_state(position=(3, 3), *, coins=(), crates=(), bombs=(), step=1, field=
         "step": step,
         "field": field,
         "self": ("research_agent", 0, True, position),
-        "others": [],
+        "others": [("rule_based_agent", 0, True, other) for other in others],
         "bombs": list(bombs),
         "coins": list(coins),
         "explosion_map": np.zeros_like(field),
         "user_input": None,
     }
+
+
+class OpponentBlastPotentialTest(unittest.TestCase):
+    """potential_v2's only difference from v1 (docs/01 section 7.27)."""
+
+    def setUp(self):
+        self.v1 = PotentialShaping(SHAPING_SPECIFICATIONS["A06"], discount=0.95)
+        self.v2 = PotentialShaping(SHAPING_SPECIFICATIONS["A07"], discount=0.95)
+
+    def test_with_no_opponents_the_two_potentials_agree_exactly(self):
+        """A07 must reduce to A06 in every solo state, or no solo arm is comparable."""
+        for state in (game_state(coins=[(6, 3)]),
+                      game_state(coins=[(6, 3)], bombs=[((3, 3), 3)]),
+                      game_state(crates=[(4, 3)])):
+            self.assertEqual(self.v1.potential(state), self.v2.potential(state))
+
+    def test_an_opponent_standing_in_a_blast_raises_the_potential(self):
+        weight = SHAPING_SPECIFICATIONS["A07"]["opponent_blast_weight"]
+        without = game_state(coins=[(6, 3)], others=[(5, 3)])
+        # Same board, plus a bomb whose blast covers that opponent.
+        within = game_state(coins=[(6, 3)], others=[(5, 3)], bombs=[((3, 3), 3)])
+        self.assertAlmostEqual(self.v2.potential(within) - self.v2.potential(without),
+                               weight + (self.v1.potential(within) - self.v1.potential(without)))
+
+    def test_an_opponent_out_of_the_blast_changes_nothing(self):
+        state = game_state(coins=[(6, 3)], others=[(1, 1)], bombs=[((5, 5), 3)])
+        self.assertEqual(self.v1.potential(state), self.v2.potential(state))
+
+    def test_the_term_counts_each_opponent_once_however_many_bombs_cover_it(self):
+        weight = SHAPING_SPECIFICATIONS["A07"]["opponent_blast_weight"]
+        one_bomb = game_state(coins=[(6, 3)], others=[(3, 4)], bombs=[((3, 3), 3)])
+        two_bombs = game_state(coins=[(6, 3)], others=[(3, 4)], bombs=[((3, 3), 3), ((3, 5), 3)])
+        self.assertAlmostEqual(self.v2.potential(two_bombs) - self.v1.potential(two_bombs), weight)
+        self.assertAlmostEqual(self.v2.potential(one_bomb) - self.v1.potential(one_bomb), weight)
+
+    def test_the_term_reads_the_state_alone_and_stays_bounded(self):
+        weight = SHAPING_SPECIFICATIONS["A07"]["opponent_blast_weight"]
+        crowded = game_state(coins=[(6, 3)], others=[(3, 4), (3, 2), (4, 3)], bombs=[((3, 3), 3)])
+        self.assertLessEqual(self.v2.potential(crowded) - self.v1.potential(crowded), 3 * weight + 1e-9)
+        self.assertEqual(self.v2.potential(None), 0.0)
+
+    def test_a07_and_a06_declare_identical_event_weights(self):
+        from agent_code.research_agent.runtime.experiment import REWARD_TABLES, DEATH_PENALTIES
+        self.assertEqual(REWARD_TABLES["A06"], REWARD_TABLES["A07"])
+        self.assertEqual(DEATH_PENALTIES["A06"], DEATH_PENALTIES["A07"])
 
 
 class PotentialShapingTest(unittest.TestCase):
