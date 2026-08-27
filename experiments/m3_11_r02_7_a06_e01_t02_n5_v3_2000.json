@@ -1,0 +1,140 @@
+{
+  "_design_note": "M3.11. Width (128, 64) and double_dqn together (route R02_7). This is deliberately two factors at once: M3.7 and M3.8 each moved one of them and the question is whether the pair behaves differently from either. It is therefore read against three controls and no single factor may be credited from it alone.",
+  "_predeclared_design_numbers": {
+    "changed_factor": "hidden_layers (64,32) -> (128,64) AND algorithm q_learning -> double_dqn",
+    "control_a": "runs/m3_7_double_dqn_20260827/ (31.771) -- double_dqn at (64, 32)",
+    "control_b": "runs/m3_8_wide_20260827/ (26.904) -- q_learning at (128, 64)",
+    "control_c": "runs/m3_3lx_oppeval_20260826/ (32.622) -- neither",
+    "prediction": "None stated.",
+    "prediction_diagnosis": "Re-run scripts/diagnose_bomb_escape.py. The counts that matter are section 7.21.5's: control 431 deaths / 202 with a plan throughout / 50 plan losses to WAIT; M3.7 285 / 59 / 121.",
+    "reporting": "Report all five training-seed distributions and every G2 threshold.",
+    "resolution_loot_crate": "The control's five training-seed scores are 38.578 / 33.911 / 31.389 / 29.722 / 29.511, sd 3.77, so a five-seed mean has standard error 1.69 and two arms measured once each need a gap of 4.7. Do not read a direction into anything smaller.",
+    "resolution_tournament": "docs/01 section 7.20: the pooled 450-round classic-with-opponents score has sd 0.089, so two arms need a gap of 0.246; coins_share needs 0.022. Report coins_share alongside score.",
+    "two_factors_at_once": "If this arm beats all three controls, the finding is 'the combination helps' and a further single-factor arm is needed before either component is credited. If it does not, nothing is attributable from it at all."
+  },
+  "agent": {
+    "algorithm": "double_dqn",
+    "model": "mlp_q",
+    "n_step": 5,
+    "name": "research_agent",
+    "replay": {
+      "batch_size": 32,
+      "capacity": 50000,
+      "min_size": 1000,
+      "target_update_every": 500,
+      "train_every": 1
+    },
+    "state_representation": "handcrafted_v3"
+  },
+  "checkpoint_evaluation": {
+    "holdout_seeds": [
+      3001,
+      3002,
+      3003
+    ],
+    "mode": "all",
+    "validation_seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation": {
+    "budget": {
+      "checkpoint_every": 50,
+      "rounds": 30
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation_suites": {
+    "classic_solo": {
+      "budget": {
+        "checkpoint_every": 100,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "classic_versus_opponents": {
+      "budget": {
+        "checkpoint_every": 100,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [
+        "rule_based_agent",
+        "rule_based_agent",
+        "rule_based_agent"
+      ],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    }
+  },
+  "experiment_id": "M3_11_R02_7_A06_E01_C00_T02_n5_2000",
+  "exploration_version": "E01",
+  "promotion": {
+    "primary_metric": "score"
+  },
+  "reward_version": "A06",
+  "route": "R02_7",
+  "schema_version": 1,
+  "shaping": {
+    "name": "potential_v1"
+  },
+  "terminal_on_truncation": false,
+  "training": {
+    "budget": {
+      "checkpoint_every": 100,
+      "rounds": 2000
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      1001,
+      1002,
+      1003,
+      1004,
+      1005
+    ]
+  }
+}

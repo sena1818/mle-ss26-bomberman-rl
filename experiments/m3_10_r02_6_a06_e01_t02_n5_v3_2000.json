@@ -1,0 +1,138 @@
+{
+  "_design_note": "M3.10. The sole change from M3.8 is the learning rate, 1e-3 -> 5e-4 (route R02_5 -> R02_6). M3.8 widened the hidden layers while holding a recipe that had been tuned around (64, 32): about 2.6x the parameters for the same ~111k updates and the same step size. That makes its result a statement about widening at this recipe, not about the width. This arm separates the two.",
+  "_predeclared_design_numbers": {
+    "changed_factor": "learning_rate 1e-3 -> 5e-4, hidden layers stay (128, 64)",
+    "control_a": "runs/m3_8_wide_20260827/ (26.904) -- same width, lr 1e-3",
+    "control_b": "runs/m3_3lx_oppeval_20260826/ (32.622) -- the (64, 32) recipe",
+    "falsification": "Landing within 4.7 of M3.8 rules out the learning rate as the explanation.",
+    "prediction": "None stated. What this decides is how M3.8 must be written up: recovering to within 4.7 of 32.622 means section 7.21.6 should say 'widening needs the step size retuned', while staying near 26.904 means the width itself is the problem.",
+    "reporting": "Report all five training-seed distributions, every G2 threshold, and mean_hidden_zero_fraction, which rose to 0.791 in M3.8.",
+    "resolution_loot_crate": "The control's five training-seed scores are 38.578 / 33.911 / 31.389 / 29.722 / 29.511, sd 3.77, so a five-seed mean has standard error 1.69 and two arms measured once each need a gap of 4.7. Do not read a direction into anything smaller.",
+    "resolution_tournament": "docs/01 section 7.20: the pooled 450-round classic-with-opponents score has sd 0.089, so two arms need a gap of 0.246; coins_share needs 0.022. Report coins_share alongside score."
+  },
+  "agent": {
+    "algorithm": "q_learning",
+    "model": "mlp_q",
+    "n_step": 5,
+    "name": "research_agent",
+    "replay": {
+      "batch_size": 32,
+      "capacity": 50000,
+      "min_size": 1000,
+      "target_update_every": 500,
+      "train_every": 1
+    },
+    "state_representation": "handcrafted_v3"
+  },
+  "checkpoint_evaluation": {
+    "holdout_seeds": [
+      3001,
+      3002,
+      3003
+    ],
+    "mode": "all",
+    "validation_seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation": {
+    "budget": {
+      "checkpoint_every": 50,
+      "rounds": 30
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation_suites": {
+    "classic_solo": {
+      "budget": {
+        "checkpoint_every": 100,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "classic_versus_opponents": {
+      "budget": {
+        "checkpoint_every": 100,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [
+        "rule_based_agent",
+        "rule_based_agent",
+        "rule_based_agent"
+      ],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    }
+  },
+  "experiment_id": "M3_10_R02_6_A06_E01_C00_T02_n5_2000",
+  "exploration_version": "E01",
+  "promotion": {
+    "primary_metric": "score"
+  },
+  "reward_version": "A06",
+  "route": "R02_6",
+  "schema_version": 1,
+  "shaping": {
+    "name": "potential_v1"
+  },
+  "terminal_on_truncation": false,
+  "training": {
+    "budget": {
+      "checkpoint_every": 100,
+      "rounds": 2000
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      1001,
+      1002,
+      1003,
+      1004,
+      1005
+    ]
+  }
+}

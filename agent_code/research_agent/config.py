@@ -387,6 +387,54 @@ EXPERIMENTS = {
         td_loss="huber",
         gradient_clip_norm=10.0,
     ),
+    # R02_6 and R02_7 exist because R02_5 answered a narrower question than it
+    # looked like.  It widened the net while holding a recipe that was tuned
+    # around (64, 32), so its result is "widening does not help at this recipe",
+    # not "this width is worse".  R02_6 keeps the width and halves the learning
+    # rate -- the wider net carries about 2.6x the parameters for the same
+    # ~111k updates -- and R02_7 keeps the width and takes the algorithm that
+    # cut deaths by a third at (64, 32).
+    "R02_6": ExperimentConfig(
+        name="R02_6",
+        lines=("M3",),
+        state_encoder="handcrafted_v3",
+        network="mlp_q",
+        algorithm="q_learning",
+        # The only change from R02_5.
+        learning_rate=5e-4,
+        discount=0.95,
+        epsilon=0.15,
+        safety_filter="legality_only",
+        feature_version="handcrafted_v3",
+        reward_version=REWARD_VERSION,
+        exploration_version=EXPLORATION_VERSION,
+        terminal_on_truncation=TERMINAL_ON_TRUNCATION,
+        hidden_layers=(128, 64),
+        optimizer="adam",
+        td_loss="huber",
+        gradient_clip_norm=10.0,
+    ),
+    "R02_7": ExperimentConfig(
+        name="R02_7",
+        lines=("M3",),
+        state_encoder="handcrafted_v3",
+        network="mlp_q",
+        # The only change from R02_5.
+        algorithm="double_dqn",
+        learning_rate=1e-3,
+        discount=0.95,
+        epsilon=0.15,
+        safety_filter="legality_only",
+        feature_version="handcrafted_v3",
+        reward_version=REWARD_VERSION,
+        exploration_version=EXPLORATION_VERSION,
+        terminal_on_truncation=TERMINAL_ON_TRUNCATION,
+        hidden_layers=(128, 64),
+        replay=ReplayConfig(),
+        optimizer="adam",
+        td_loss="huber",
+        gradient_clip_norm=10.0,
+    ),
     # M4 anchor -- egocentric board tensor, CNN plus global-scalar MLP, Double
     # DQN.  docs/05 section 5.4 requires this to learn from scratch before any
     # further increment (D4 augmentation, behaviour cloning, dueling) is added.

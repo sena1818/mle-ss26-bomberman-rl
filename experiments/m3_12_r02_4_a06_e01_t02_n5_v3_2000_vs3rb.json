@@ -1,0 +1,146 @@
+{
+  "_design_note": "M3.12. The sole change from M3.4 is agent.algorithm, q_learning -> double_dqn (route R02_3 -> R02_4). Training is loot-crate with three rule_based_agent opponents, exactly as M3.4. The reason to spend an opponent arm on this: section 7.15.3 showed the tournament bottleneck is survival (M3.4 survives 17.4 percent of rounds) and section 7.21.5 showed double_dqn is the only change measured so far that cuts deaths substantially (-34 percent, and -71 percent on the 'had a plan throughout and still died' class) -- but that was solo. This asks whether the reduction converts into tournament score.",
+  "_predeclared_design_numbers": {
+    "changed_factor": "agent.algorithm q_learning -> double_dqn (route R02_3 -> R02_4)",
+    "control": "runs/m3_4_t02_vs3rb_20260826/ (classic with opponents 2.227, the project's best)",
+    "falsification": "Score within 0.246 AND survival within a couple of points of 17.4 percent means the solo death reduction does not transfer, and double_dqn should be reported as a solo-only effect.",
+    "prediction_score": "above 2.227, but the 0.246 threshold applies and this arm is not reproducible (section 7.15.1).",
+    "prediction_share": "coins_share above M3.4's 0.220; the threshold is 0.022.",
+    "reporting": "Report all five training-seed distributions, coins_share, and the death split.",
+    "resolution_tournament": "docs/01 section 7.20: the pooled 450-round classic-with-opponents score has sd 0.089, so two arms need a gap of 0.246; coins_share needs 0.022. Report coins_share alongside score.",
+    "the_metric_that_decides_it": "scripts/attribute_deaths.py on the classic-with-opponents jobs. M3.4 is 46.9 percent own bomb / 34.0 percent opponent / 17.4 percent survived. If double_dqn's solo death reduction carries over, survival rises."
+  },
+  "agent": {
+    "algorithm": "double_dqn",
+    "model": "mlp_q",
+    "n_step": 5,
+    "name": "research_agent",
+    "replay": {
+      "batch_size": 32,
+      "capacity": 50000,
+      "min_size": 1000,
+      "target_update_every": 500,
+      "train_every": 1
+    },
+    "state_representation": "handcrafted_v3"
+  },
+  "checkpoint_evaluation": {
+    "holdout_seeds": [
+      3001,
+      3002,
+      3003
+    ],
+    "mode": "all",
+    "validation_seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation": {
+    "budget": {
+      "checkpoint_every": 100,
+      "rounds": 30
+    },
+    "opponents": [
+      "rule_based_agent",
+      "rule_based_agent",
+      "rule_based_agent"
+    ],
+    "scenario": "loot-crate",
+    "seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation_suites": {
+    "classic_solo": {
+      "budget": {
+        "checkpoint_every": 100,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "classic_versus_opponents": {
+      "budget": {
+        "checkpoint_every": 100,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [
+        "rule_based_agent",
+        "rule_based_agent",
+        "rule_based_agent"
+      ],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    }
+  },
+  "experiment_id": "M3_12_R02_4_A06_E01_C00_T02_n5_2000_vs3rb",
+  "exploration_version": "E01",
+  "promotion": {
+    "primary_metric": "score"
+  },
+  "reward_version": "A06",
+  "route": "R02_4",
+  "schema_version": 1,
+  "shaping": {
+    "name": "potential_v1"
+  },
+  "terminal_on_truncation": false,
+  "training": {
+    "budget": {
+      "checkpoint_every": 100,
+      "rounds": 2000
+    },
+    "opponents": [
+      "rule_based_agent",
+      "rule_based_agent",
+      "rule_based_agent"
+    ],
+    "scenario": "loot-crate",
+    "seeds": [
+      1001,
+      1002,
+      1003,
+      1004,
+      1005
+    ]
+  }
+}
