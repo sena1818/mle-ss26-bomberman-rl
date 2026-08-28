@@ -268,15 +268,21 @@ LEARNING_RATE_SCHEDULES = {
     # used.  Both stay in absolute rounds: a schedule whose length is written as
     # a fraction of the budget is the E01 mistake, and it cost section 7.22 a
     # conclusion.  Two of them so length and shape stay separable.
+    #
+    # 7000 rather than 10000, and that also supplies the control for free: L01
+    # is absolute, so the 10000-round L01 arm's round-7000 checkpoint IS L01 at
+    # a 7000-round budget, with identical epsilon and step size on every round
+    # up to it.  No separate control arm is needed, the same way E02's absolute
+    # schedule made F2's round-2500 checkpoint the n-step control (section 7.27.1).
     "L05": {
         "kind": "linear_absolute",
-        "decay_rounds": 10000,
+        "decay_rounds": 7000,
         "final_fraction": 0.2,
-        "description": "L01's floor and line, reached over 10000 rounds instead of 2500",
+        "description": "L01's floor and line, reached over 7000 rounds instead of 2500",
     },
     "L06": {
         "kind": "cosine_absolute",
-        "decay_rounds": 10000,
+        "decay_rounds": 7000,
         "final_fraction": 0.2,
         "description": "L05's length and floor, annealed on a cosine",
     },
