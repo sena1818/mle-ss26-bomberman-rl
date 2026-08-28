@@ -7,6 +7,7 @@ every job.  Nothing in this module writes to a shared active model.
 
 from __future__ import annotations
 
+import atexit
 import json
 import os
 from datetime import datetime, timezone
@@ -79,6 +80,35 @@ def checkpoint_interval() -> int:
     return value
 
 
+# One open handle per artifact log, per process.  Reopening the file for every
+# record costs nothing on a laptop -- the page cache absorbs it -- but this
+# agent writes one record per action, which is roughly 1.1 million open/close
+# cycles per training job and 5.7 million per five-seed arm.  On a parallel
+# filesystem every open is a metadata operation against a server shared by the
+# whole cluster, so that pattern is both slow for the job and antisocial.
+_LOG_HANDLES: dict[Path, "object"] = {}
+
+def _log_handle(log_path: Path):
+    handle = _LOG_HANDLES.get(log_path)
+    if handle is None or handle.closed:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        handle = log_path.open("a", encoding="utf-8")
+        _LOG_HANDLES[log_path] = handle
+    return handle
+
+
+def close_artifact_logs() -> None:
+    """Flush and close every open artifact log; registered to run at exit."""
+    for handle in list(_LOG_HANDLES.values()):
+        if not handle.closed:
+            handle.flush()
+            handle.close()
+    _LOG_HANDLES.clear()
+
+
+atexit.register(close_artifact_logs)
+
+
 def append_jsonl(kind: str, payload: dict) -> None:
     """Append one self-describing event record without a non-stdlib dependency."""
     log_path = artifact_root() / "agent.jsonl"
@@ -88,5 +118,12 @@ def append_jsonl(kind: str, payload: dict) -> None:
         "run_id": run_id(),
         **payload,
     }
-    with log_path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(record, sort_keys=True) + "\n")
+    handle = _log_handle(log_path)
+    handle.write(json.dumps(record, sort_keys=True) + "\n")
+    # Still flushed on every record, so a reader sees the same thing it always
+    # did and a crash loses nothing.  The cost removed here is the open and the
+    # close, not the write: on a parallel filesystem an open is a metadata
+    # operation against a server the whole cluster shares, while appending to
+    # an already-open file is the streaming write such a filesystem is built
+    # for.  Behaviour is unchanged; only the syscall pattern is.
+    handle.flush()

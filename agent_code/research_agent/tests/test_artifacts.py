@@ -39,3 +39,57 @@ class ArtifactIsolationTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ArtifactLogSyscallPatternTest(unittest.TestCase):
+    """One open per log, not one per record.
+
+    This agent writes a record per action: about 1.1 million per training job
+    and 5.7 million across a five-seed arm.  Reopening the file each time costs
+    nothing on a laptop, where the page cache absorbs it, and is a metadata
+    operation against a cluster-wide shared server on a parallel filesystem.
+    The records still flush immediately, so nothing about what a reader sees
+    changes -- only the syscall pattern.
+    """
+
+    def setUp(self):
+        from agent_code.research_agent import artifacts
+        artifacts.close_artifact_logs()
+
+    def test_a_thousand_records_open_the_file_once(self):
+        from agent_code.research_agent import artifacts
+        with tempfile.TemporaryDirectory() as temporary:
+            os.environ["BOMBERMAN_ARTIFACT_DIR"] = temporary
+            os.environ["BOMBERMAN_RUN_ID"] = "syscall_probe"
+            real_open = Path.open
+            opens = []
+
+            def counting_open(self, *args, **kwargs):
+                if self.name == "agent.jsonl":
+                    opens.append(self)
+                return real_open(self, *args, **kwargs)
+
+            Path.open = counting_open
+            try:
+                for index in range(1000):
+                    artifacts.append_jsonl("action", {"step": index})
+            finally:
+                Path.open = real_open
+            self.assertEqual(len(opens), 1, f"agent.jsonl was opened {len(opens)} times for 1000 records")
+
+    def test_every_record_is_readable_immediately(self):
+        """The buffering must not delay what a reader sees."""
+        from agent_code.research_agent import artifacts
+        with tempfile.TemporaryDirectory() as temporary:
+            os.environ["BOMBERMAN_ARTIFACT_DIR"] = temporary
+            os.environ["BOMBERMAN_RUN_ID"] = "flush_probe"
+            for index in range(5):
+                artifacts.append_jsonl("action", {"step": index})
+                lines = (Path(temporary) / "agent.jsonl").read_text(encoding="utf-8").splitlines()
+                self.assertEqual(len(lines), index + 1, "a record must be visible as soon as it is written")
+
+    def tearDown(self):
+        from agent_code.research_agent import artifacts
+        artifacts.close_artifact_logs()
+        os.environ.pop("BOMBERMAN_ARTIFACT_DIR", None)
+        os.environ.pop("BOMBERMAN_RUN_ID", None)
