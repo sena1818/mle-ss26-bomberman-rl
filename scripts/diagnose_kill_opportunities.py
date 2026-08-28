@@ -95,6 +95,14 @@ def replay_job(job_dir: Path, discount: float) -> dict:
     for _ in range(int(snapshot["budget"]["rounds"])):
         world.new_round()
         world.user_input = None
+        # Cleared per round, not once per run.  A bomb dropped in the last few
+        # steps of a round has no tick 3 or 4 -- the round ended -- and letting
+        # it age into the next round credits its follow-up ticks to a board it
+        # never existed on.  That inflates exactly the activation rate this
+        # diagnostic is here to measure.  The immediate counts (a drop could
+        # hit, could still escape, was or was not taken) are single-step and
+        # were never affected.
+        open_drops.clear()
         while world.running:
             round_number, step_number = world.round, world.step + 1
             state = world.get_state_for_agent(agent)

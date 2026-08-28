@@ -19,6 +19,7 @@ from pathlib import Path
 import numpy as np
 
 from ..config import ACTIONS
+from .base import validate_training_declarations
 from ..state import layout_for_dimension, split_board_and_globals
 
 
@@ -114,12 +115,7 @@ class CnnMlpQModel:
         # different clip and be silently given Adam at 10.0.  They happened to
         # agree, which is the worst version of that bug: nothing was wrong and
         # nothing would have told you when it became wrong.
-        if optimizer not in {"adam", "sgd"}:
-            raise ValueError(f"Unsupported CNN optimizer {optimizer!r}.")
-        if td_loss not in {"huber", "mse"}:
-            raise ValueError(f"Unsupported CNN TD loss {td_loss!r}.")
-        if gradient_clip_norm is not None and gradient_clip_norm <= 0:
-            raise ValueError("gradient_clip_norm must be positive when declared.")
+        validate_training_declarations(optimizer, td_loss, gradient_clip_norm)
         self.optimizer_name = optimizer
         self.td_loss = td_loss
         self.gradient_clip_norm = gradient_clip_norm

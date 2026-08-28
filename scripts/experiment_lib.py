@@ -486,6 +486,10 @@ class Experiment:
     # scored on.  Declared, recorded in the snapshot, and defaulting to the
     # historical behaviour so no finished run changes meaning.
     promotion_selection_suite: str = "primary"
+    # ``None`` means "whatever the route declares".  A number overrides it and
+    # is recorded in the snapshot, so a step-size arm is a declared factor
+    # rather than a second route that differs in one constant.
+    learning_rate: float | None = None
     curriculum: Curriculum | None = None
     evaluation_suites: tuple[EvaluationSuite, ...] = ()
     checkpoint_evaluation: CheckpointEvaluation = CheckpointEvaluation()
@@ -535,6 +539,19 @@ class Experiment:
         if missing:
             raise ConfigError(f"Missing config keys: {', '.join(missing)}")
         agent = raw["agent"]
+        # Fail closed on the agent block, the way replay and initial_model
+        # already do.  This block used to be read key by key, so a key it did
+        # not know was dropped in silence: ``agent.learning_rate`` was declared
+        # by two step-size arms, discarded here, and both would have trained at
+        # the route default and measured a difference of exactly zero.
+        known_agent_keys = {"name", "model", "algorithm", "state_representation",
+                            "n_step", "replay", "learning_rate"}
+        unknown_agent_keys = sorted(set(agent) - known_agent_keys)
+        if unknown_agent_keys:
+            raise ConfigError(
+                f"Unknown agent settings: {', '.join(unknown_agent_keys)}; "
+                f"declared keys are {', '.join(sorted(known_agent_keys))}"
+            )
         try:
             training = Phase.parse(raw["training"], "training")
             evaluation = Phase.parse(raw["evaluation"], "evaluation")
@@ -589,6 +606,8 @@ class Experiment:
                 terminal_on_truncation=bool(raw.get("terminal_on_truncation", False)),
                 initial_model=InitialModel.parse(raw.get("initial_model")),
                 n_step=int(agent.get("n_step", 1)),
+                learning_rate=(float(agent["learning_rate"])
+                               if agent.get("learning_rate") is not None else None),
                 replay=_parse_replay(agent.get("replay")),
                 shaping=_parse_shaping(raw.get("shaping")),
             )
@@ -694,6 +713,7 @@ class Experiment:
             "reward_version": self.reward_version,
             "exploration_version": self.exploration_version,
             "learning_rate_schedule": self.learning_rate_schedule,
+            "learning_rate": self.learning_rate,
             "training": asdict(self.training),
             "evaluation": asdict(self.evaluation),
             "checkpoint_evaluation": asdict(self.checkpoint_evaluation),
@@ -798,6 +818,9 @@ def resolved_runtime_config(experiment: Experiment) -> dict[str, Any]:
             learning_rate_schedule=(experiment.learning_rate_schedule
                                     if experiment.learning_rate_schedule is not None
                                     else config.learning_rate_schedule),
+            learning_rate=(experiment.learning_rate
+                           if experiment.learning_rate is not None
+                           else config.learning_rate),
             terminal_on_truncation=experiment.terminal_on_truncation,
             n_step=experiment.n_step,
             # An absent ``agent.replay`` means no replay, never "whatever the

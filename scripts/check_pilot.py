@@ -61,6 +61,30 @@ def training_job_dirs(run_dir: Path) -> list[Path]:
 
 
 
+
+def declared_epsilon_floor(job_dir: Path) -> float | None:
+    """The floor the schedule DECLARES, read from the job's agent_setup record.
+
+    Deliberately not ``min(observed epsilon)``: a run whose anneal never
+    completes has its stalled value as the minimum, so an observed floor makes
+    the check pass exactly when it should fail.
+    """
+    files = sorted((job_dir / "agent").glob("*.jsonl"))
+    if not files:
+        return None
+    for line in files[0].read_text(encoding="utf-8").splitlines():
+        if '"agent_setup"' not in line:
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if record.get("kind") != "agent_setup":
+            continue
+        specification = record.get("exploration_specification") or {}
+        return specification.get("final_epsilon")
+    return None
+
 def replay_min_size(job_dir: Path) -> int | None:
     """Read the buffer threshold this job actually ran with.
 
@@ -128,21 +152,25 @@ def check_training_job(job_dir: Path, rows: list[dict], min_size: int | None) ->
 
     # 3. Exploration finished inside the budget.
     epsilons = [row.get("epsilon") for row in rows if row.get("epsilon") is not None]
-    if not epsilons or len(set(epsilons)) == 1:
+    declared_floor = declared_epsilon_floor(job_dir)
+    if not epsilons or declared_floor is None:
         checks.append(Check(f"{name}: exploration reached its floor", None,
-                            "constant-epsilon schedule; nothing to anneal"))
+                            "constant-epsilon schedule, or the job recorded no schedule"))
     else:
-        floor = min(epsilons)
-        reached = next((row for row in rows if row.get("epsilon", 1.0) <= floor + 1e-9), None)
-        fraction = reached["round"] / len(rows) if reached else None
+        # The floor comes from the DECLARED schedule, never from the smallest
+        # epsilon this run happened to reach.  Taking the observed minimum is
+        # what makes this check vacuous: a run that stalls at 0.96 has 0.96 as
+        # its minimum and "reaches its floor" on the first round.  That is the
+        # precise failure this script was written to catch.
+        reached = next((row for row in rows if row.get("epsilon", 1.0) <= declared_floor + 1e-9), None)
         checks.append(Check(
-            f"{name}: exploration reached its floor inside the budget",
+            f"{name}: exploration reached its declared floor ({declared_floor}) inside the budget",
             reached is not None,
-            f"epsilon {floor} first reached at round {reached['round']}"
-            f" ({fraction:.0%} of the budget)" if reached else
-            f"never; epsilon was still {epsilons[-1]:.3f} at round {len(rows)}."
-            " A step-counted anneal only advances as the agent survives, so one that is too"
-            " long never completes.",
+            f"first reached at round {reached['round']} ({reached['round'] / len(rows):.0%}"
+            f" of the budget)" if reached else
+            f"NEVER; epsilon was still {epsilons[-1]:.3f} at round {len(rows)}, against a declared"
+            f" floor of {declared_floor}. A step-counted anneal advances only as the agent"
+            " survives, so one that is too long never completes.",
         ))
 
     # 4. The numbers a diverging run would show.
@@ -200,9 +228,14 @@ def check_learning_curve(run_dir: Path) -> list[Check]:
     """The one check that needs the evaluation leg to have run."""
     summary_path = run_dir / "evaluation_summary.json"
     if not summary_path.is_file():
-        return [Check("validation score rises", None,
-                      "no evaluation_summary.json; run aggregate_results.py first."
-                      " This is the check the training telemetry cannot answer.")]
+        # A hard failure, not a SKIP.  SKIP does not affect the exit code, so a
+        # run whose evaluation leg never happened would report success -- and
+        # the learning-curve checks are the only ones that can say whether the
+        # agent learned anything at all.  Pass --training-only to ask for the
+        # mechanics alone; do not get there by leaving the summary missing.
+        return [Check("validation score rises", False,
+                      "no evaluation_summary.json. Run aggregate_results.py first, or pass"
+                      " --training-only if the mechanics are all you meant to check.")]
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     curve = summary.get("evaluation_suites", {}).get("primary", {}).get("validation_checkpoint_curve", [])
     points = [(row["checkpoint_round"], row["metrics"]["score"]["mean"])
@@ -211,8 +244,22 @@ def check_learning_curve(run_dir: Path) -> list[Check]:
         return [Check("validation score rises", None,
                       f"only {len(points)} evaluated checkpoint(s); need at least two")]
     rendered = ", ".join(f"{one}: {value:.2f}" for one, value in points)
-    checks = [Check("validation score rises", points[-1][1] > points[0][1],
-                    f"first {points[0][1]:.2f} -> last {points[-1][1]:.2f} ({rendered})")]
+    # G-A as docs/06 pre-registers it: the mean of the last two evaluated
+    # checkpoints minus the mean of the first two, against the 4.7 resolution
+    # from docs/01 section 7.21.  "last > first" is a weaker and different
+    # claim -- it passes on a single lucky final checkpoint, and it is not what
+    # the arm was registered against.
+    window = min(2, len(points) // 2)
+    early = statistics.fmean(value for _, value in points[:window])
+    late = statistics.fmean(value for _, value in points[-window:])
+    resolution = 4.7
+    checks = [Check(
+        f"G-A: mean(last {window}) - mean(first {window}) > {resolution}",
+        late - early > resolution,
+        f"{late:.2f} - {early:.2f} = {late - early:+.2f} ({rendered})"
+        + ("" if late - early > resolution else
+           " -- below the resolution of the five-seed spread, so this is not a learning signal"),
+    )]
     last = curve[-1]["metrics"]
     floors = {"distinct_cells": 20.0, "bomb_rate": 0.01}
     for metric, floor in floors.items():

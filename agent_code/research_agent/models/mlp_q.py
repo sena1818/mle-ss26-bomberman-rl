@@ -8,6 +8,7 @@ from pathlib import Path
 import numpy as np
 
 from ..config import ACTIONS
+from .base import validate_training_declarations
 
 
 class MLPQModel:
@@ -39,12 +40,7 @@ class MLPQModel:
             scale = np.sqrt(2.0 / fan_in) if layer < len(self.layer_sizes) - 2 else 0.01
             self.weights.append(generator.normal(0.0, scale, size=(fan_out, fan_in)).astype(np.float32))
             self.biases.append(np.zeros(fan_out, dtype=np.float32))
-        if optimizer not in {"sgd", "adam"}:
-            raise ValueError(f"Unsupported MLP optimizer {optimizer!r}.")
-        if td_loss not in {"mse", "huber"}:
-            raise ValueError(f"Unsupported MLP TD loss {td_loss!r}.")
-        if gradient_clip_norm is not None and gradient_clip_norm <= 0:
-            raise ValueError("gradient_clip_norm must be positive when declared.")
+        validate_training_declarations(optimizer, td_loss, gradient_clip_norm)
         self.learning_rate = float(learning_rate)
         self.optimizer = optimizer
         self.td_loss = td_loss

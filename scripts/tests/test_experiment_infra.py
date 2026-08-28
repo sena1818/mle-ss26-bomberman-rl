@@ -25,7 +25,7 @@ from agent_code.research_agent.config import (  # noqa: E402
     active_config as resolved_config,
     epsilon_for_training_round,
 )
-from experiment_lib import ConfigError, Experiment, resolved_runtime_config, verify_job_provenance, write_json  # noqa: E402
+from experiment_lib import ROOT, ConfigError, Experiment, resolved_runtime_config, verify_job_provenance, write_json  # noqa: E402
 from run_experiment import _archive_failed_attempt, build_jobs, execute_phase, load_context  # noqa: E402
 
 
@@ -996,3 +996,113 @@ class FourMainLineDeclarationTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AgentBlockFailsClosedTest(unittest.TestCase):
+    """The agent block used to drop keys it did not recognise, in silence.
+
+    Two step-size arms declared ``agent.learning_rate`` and had it discarded
+    here; both would have trained at the route default and measured a
+    difference of exactly zero after 4.4 hours per seed. The nested blocks in
+    this file -- replay, initial_model -- had always rejected unknown keys; the
+    block containing them had not.
+    """
+
+    def _config(self, **agent_overrides) -> dict:
+        payload = config()
+        payload["agent"].update(agent_overrides)
+        return payload
+
+    def test_an_unknown_agent_key_is_refused(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "config.json"
+            write_json(path, self._config(learninig_rate=1e-4))  # note the typo
+            with self.assertRaises(ConfigError) as caught:
+                Experiment.load(path)
+            self.assertIn("learninig_rate", str(caught.exception))
+
+    def test_a_declared_learning_rate_reaches_the_resolved_runtime_config(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "config.json"
+            write_json(path, self._config(learning_rate=1e-4))
+            experiment = Experiment.load(path)
+            self.assertEqual(experiment.learning_rate, 1e-4)
+            resolved = resolved_runtime_config(experiment)
+            self.assertEqual(resolved["config"]["learning_rate"], 1e-4)
+
+    def test_an_absent_learning_rate_keeps_the_route_default(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "config.json"
+            write_json(path, self._config())
+            experiment = Experiment.load(path)
+            self.assertIsNone(experiment.learning_rate)
+            from agent_code.research_agent.config import EXPERIMENTS
+            resolved = resolved_runtime_config(experiment)
+            self.assertEqual(resolved["config"]["learning_rate"],
+                             EXPERIMENTS[experiment.route].learning_rate)
+
+    def test_the_shipped_step_size_arms_actually_differ(self):
+        """The regression that would have caught the empty experiment."""
+        experiments = ROOT / "experiments"
+        rates = {}
+        for name in ("anchor", "lr1e4", "lr5e4"):
+            matches = sorted(experiments.glob(f"m4_*{name}*.json"))
+            self.assertEqual(len(matches), 1, f"expected exactly one {name} config")
+            resolved = resolved_runtime_config(Experiment.load(matches[0]))
+            rates[name] = resolved["config"]["learning_rate"]
+        self.assertEqual(len(set(rates.values())), 3,
+                         f"the step-size arms must resolve to three different rates, got {rates}")
+        self.assertEqual(rates["lr1e4"], 1e-4)
+        self.assertEqual(rates["lr5e4"], 5e-4)
+
+
+class KillDiagnosticDoesNotLeakAcrossRoundsTest(unittest.TestCase):
+    """A bomb dropped near the end of a round has no tick 3 or 4.
+
+    ``open_drops`` tracks a drop for the four ticks a bomb lives, to measure how
+    often A07's term is still non-zero when the follow-up transitions land. It
+    was initialised once for the whole run, so a drop left open when a round
+    ended kept ageing on the next round's board -- crediting follow-up ticks to
+    a position the bomb never occupied, and inflating the very activation rate
+    the diagnostic exists to report.
+    """
+
+    def test_the_round_loop_clears_the_pending_drops(self):
+        source = (ROOT / "scripts" / "diagnose_kill_opportunities.py").read_text(encoding="utf-8")
+        new_round = source.index("world.new_round()")
+        step_loop = source.index("while world.running:", new_round)
+        between = source[new_round:step_loop]
+        self.assertIn("open_drops.clear()", between,
+                      "pending drops must be cleared when a new round starts, "
+                      "before that round's steps are walked")
+
+
+class ShapedArmsStayOffTheNStepResonanceTest(unittest.TestCase):
+    """Which arms may use which n is experiment policy, not model behaviour.
+
+    Potential shaping contributes ``gamma^n phi(s_t+n) - phi(s_t)`` to an
+    n-step target, so a potential whose transient is exactly n long telescopes
+    to nothing.  A bomb lives BOMB_TIMER+1 transitions, and both potential_v1
+    (A06) and potential_v2 (A07) are transient over exactly that window --
+    measured in test_shaping, which is where that behaviour belongs.
+
+    What lives here is the consequence for the configs, because it is a rule
+    about which experiments may be run, and it will need per-arm exceptions the
+    moment a legitimate ablation wants one.  Keeping it inside the model tests
+    made every such change a two-file edit in an unrelated module.
+    """
+
+    def test_no_m4_arm_shapes_at_or_above_the_bomb_lifetime(self):
+        from agent_code.research_agent.config import BOMB_TIMER
+        checked = 0
+        for path in sorted((ROOT / "experiments").glob("m4_*.json")):
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            if not (payload.get("shaping") or {}).get("name"):
+                continue
+            n_step = payload["agent"]["n_step"]
+            self.assertLess(
+                n_step, BOMB_TIMER + 1,
+                f"{path.name} shapes at n_step={n_step}, at or above the bomb's "
+                f"{BOMB_TIMER + 1}-transition life, where the danger term telescopes away")
+            checked += 1
+        self.assertGreater(checked, 0, "no shaped M4 config found to check")

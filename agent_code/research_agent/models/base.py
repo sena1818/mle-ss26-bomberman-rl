@@ -37,3 +37,24 @@ class QModel(Protocol):
         """Overwrite this model's parameters with another's, in place."""
 
     def save(self, path: Path, *, metadata: dict | None = None) -> None: ...
+
+
+# The optimizer / loss / clip triple is declared per route and applied by every
+# gradient-based adapter.  Validating it in each adapter let the two drift: the
+# CNN accepted only what it happened to hardcode, and neither could tell you
+# which values were supported without reading both.  One place, one answer.
+SUPPORTED_OPTIMIZERS = frozenset({"sgd", "adam"})
+SUPPORTED_TD_LOSSES = frozenset({"mse", "huber"})
+
+
+def validate_training_declarations(optimizer: str, td_loss: str,
+                                   gradient_clip_norm: float | None) -> None:
+    """Refuse a declaration no adapter implements, naming what is supported."""
+    if optimizer not in SUPPORTED_OPTIMIZERS:
+        raise ValueError(
+            f"Unsupported optimizer {optimizer!r}; supported: {sorted(SUPPORTED_OPTIMIZERS)}.")
+    if td_loss not in SUPPORTED_TD_LOSSES:
+        raise ValueError(
+            f"Unsupported TD loss {td_loss!r}; supported: {sorted(SUPPORTED_TD_LOSSES)}.")
+    if gradient_clip_norm is not None and gradient_clip_norm <= 0:
+        raise ValueError("gradient_clip_norm must be positive when declared.")
