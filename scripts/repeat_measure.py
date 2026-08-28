@@ -131,12 +131,20 @@ def scaffold(args: argparse.Namespace) -> None:
         # nothing about the evaluation changes except which weights it loads.
         missing = sorted(wanted_rounds - {job.get("checkpoint_round") for job in selected})
         if missing:
-            templates = [job for job in candidates if job.get("checkpoint_round") is None]
+            # One template per (training seed, evaluation seed).  A round-addressed
+            # job serves as well as a latest one -- the round is overwritten either
+            # way, and a run that declares checkpoint_evaluation mode "rounds" has
+            # no latest job at all, which is how both fine-tuning arms are written.
+            templates: dict[tuple[int, int], dict] = {}
+            for job in candidates:
+                key = (job["train_seed"], job["seed"])
+                if key not in templates or job.get("checkpoint_round") is None:
+                    templates[key] = job
             if not templates:
                 raise SystemExit(
-                    f"rounds {missing} were never evaluated in {source} and there is no latest-checkpoint "
-                    "job to build them from")
-            for template in templates:
+                    f"rounds {missing} were never evaluated in {source} and there is no job "
+                    "to build them from")
+            for template in templates.values():
                 for checkpoint_round in missing:
                     job_id = (f"eval_{args.suite}_round{checkpoint_round:05d}"
                               f"_train{template['train_seed']}_seed{template['seed']}")

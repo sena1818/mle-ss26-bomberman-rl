@@ -155,6 +155,26 @@ class ScaffoldSelectsExactlyWhatWasAskedForTest(unittest.TestCase):
                                                       / "agent" / "checkpoints").glob("*.npz"))
                 self.assertEqual([name.split("_round")[1][:5] for name in copied], ["00500", "01000"])
 
+    def test_a_run_with_no_latest_job_still_yields_an_unevaluated_dose(self):
+        """mode "rounds" prepares no latest job, and the curve still has to work.
+
+        Both fine-tuning arms declare that mode, so the round-250 dose had no
+        latest job to template from and the whole curve came back empty.
+        """
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = _source_run(root, rounds=(250, 500, 1000))
+            for path in (source / "job_parameters").glob("*.json"):
+                if json.loads(path.read_text())["checkpoint_round"] is None:
+                    path.unlink()
+            destination = self._scaffold(root, checkpoint_round=[250, 1000], repeats=2)
+            jobs = [json.loads(path.read_text())
+                    for path in (destination / "job_parameters").glob("*.json")]
+            self.assertEqual({job["checkpoint_round"] for job in jobs}, {250, 1000})
+            # One job per (training seed, evaluation seed, round, repeat) and no more:
+            # every round-addressed job of the source must not become its own template.
+            self.assertEqual(len(jobs), len(TRAIN_SEEDS) * len(HOLDOUT) * 2 * 2)
+
     def test_a_run_that_addresses_only_rounds_says_which_rounds_it_has(self):
         """mode "rounds" prepares no latest job, so the finished arm needs a round."""
         with tempfile.TemporaryDirectory() as temporary:
