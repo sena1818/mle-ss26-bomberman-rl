@@ -49,16 +49,25 @@ class LinearQModel:
         self.bias[action_index] += learning_rate * td_error
         return td_error
 
-    def fit_batch(self, states: np.ndarray, action_indices: np.ndarray, targets: np.ndarray) -> np.ndarray:
-        """One SGD step on the mean squared TD error of the selected heads."""
+    def fit_batch(self, states: np.ndarray, action_indices: np.ndarray, targets: np.ndarray,
+                  weights: np.ndarray | None = None) -> np.ndarray:
+        """One SGD step on the mean squared TD error of the selected heads.
+
+        ``weights`` are prioritized replay's importance-sampling weights; the
+        returned TD errors stay unweighted, because they are what the buffer
+        prioritizes by.  ``None`` keeps the identical arithmetic.
+        """
         states = np.asarray(states, dtype=np.float32)
         action_indices = np.asarray(action_indices, dtype=np.intp)
         predictions = self.q_values_batch(states)[np.arange(len(action_indices)), action_indices]
         td_errors = np.asarray(targets, dtype=np.float32) - predictions
         scale = self.learning_rate / len(action_indices)
+        scaled = scale * td_errors
+        if weights is not None:
+            scaled = scaled * np.asarray(weights, dtype=np.float32)
         # Rows of the same action accumulate, hence add.at rather than fancy +=.
-        np.add.at(self.weights, action_indices, scale * td_errors[:, None] * states)
-        np.add.at(self.bias, action_indices, scale * td_errors)
+        np.add.at(self.weights, action_indices, scaled[:, None] * states)
+        np.add.at(self.bias, action_indices, scaled)
         return td_errors
 
     def clone(self) -> "LinearQModel":

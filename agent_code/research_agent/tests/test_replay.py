@@ -342,3 +342,142 @@ class GradientTelemetryTest(unittest.TestCase):
         learner = OnlineQLearner(config, LinearQModel(STATE_WIDTH, seed=0))
         learner.observe(transition(1.0))
         self.assertEqual(learner.step_diagnostics(), {"gradient_applied": True, "gradient_steps": 1})
+
+
+class PrioritizedReplayTest(unittest.TestCase):
+    """Proportional prioritized replay (Schaul et al. 2016).
+
+    The motivation on this line is measured rather than general: KILLED_OPPONENT
+    is 1.7% of the positive reward the agent sees and 191 times rarer than a
+    coin (docs/01 section 7.27.2).  That is the situation prioritization exists
+    for, so it is worth one arm -- but only if the arm is the thing it claims to
+    be, which is what these tests pin.
+    """
+
+    def _draw(self, buffer: ReplayBuffer, draws: int, batch: int = 8, beta: float = 1.0):
+        """Accumulate many small batches: the buffer refuses one larger than it holds."""
+        indices, weights = [], []
+        for _ in range(draws):
+            sampled = buffer.sample(batch, beta=beta)
+            indices.append(sampled["indices"])
+            weights.append(sampled["weights"])
+        return np.concatenate(indices), np.concatenate(weights)
+
+    def _buffer(self, size: int = 8, **kwargs) -> ReplayBuffer:
+        buffer = ReplayBuffer(size, 4, ACTION_COUNT, seed=0, **kwargs)
+        for index in range(size):
+            buffer.append(np.full(4, index / 100.0, dtype=np.float32), index % ACTION_COUNT, float(index),
+                          np.zeros(4, dtype=np.float32), np.ones(ACTION_COUNT, dtype=bool), False, 0.95)
+        return buffer
+
+    def test_uniform_sampling_is_untouched_and_its_weights_are_exactly_one(self):
+        """Every arm run before this existed has to keep the identical draw."""
+        left = self._buffer()
+        right = self._buffer()
+        left.rng = np.random.default_rng(7)
+        right.rng = np.random.default_rng(7)
+        first, second = left.sample(4), right.sample(4)
+        np.testing.assert_array_equal(first["indices"], second["indices"])
+        np.testing.assert_array_equal(first["weights"], np.ones(4, dtype=np.float32))
+        np.testing.assert_array_equal(first["rewards"], second["rewards"])
+
+    def test_update_priorities_does_nothing_under_uniform_sampling(self):
+        buffer = self._buffer()
+        buffer.update_priorities(np.array([0, 1]), np.array([100.0, 100.0]))
+        counts = np.bincount(self._draw(buffer, 250)[0], minlength=len(buffer))
+        # A uniform draw over eight rows: no row may run away with the batch.
+        self.assertLess(counts.max() / counts.min(), 1.6)
+
+    def test_a_surprising_transition_is_replayed_far_more_often(self):
+        buffer = self._buffer(sampling="prioritized", priority_exponent=1.0)
+        buffer.update_priorities(np.arange(8), np.array([0.0] * 7 + [10.0]))
+        counts = np.bincount(self._draw(buffer, 500)[0], minlength=8)
+        # Priority 10.001 against 0.001: the last row should take essentially
+        # the whole batch.  The exact ratio is the priority ratio, so this
+        # asserts the mechanism rather than a magic number.
+        self.assertGreater(counts[7] / counts.sum(), 0.98)
+
+    def test_the_priority_exponent_interpolates_towards_uniform(self):
+        flat = self._buffer(sampling="prioritized", priority_exponent=0.0)
+        flat.update_priorities(np.arange(8), np.array([0.0] * 7 + [10.0]))
+        counts = np.bincount(self._draw(flat, 500)[0], minlength=8)
+        self.assertLess(counts[7] / counts.sum(), 0.20, "exponent 0 must be uniform sampling")
+
+    def test_importance_weights_are_largest_for_the_rarest_draw_and_capped_at_one(self):
+        buffer = self._buffer(sampling="prioritized", priority_exponent=1.0)
+        # A mild contrast on purpose: at 9-against-0 the frequent row takes every
+        # draw and there is no rare row left to compare its weight against.
+        buffer.update_priorities(np.arange(8), np.array([3.0] + [1.0] * 7))
+        indices, weights = self._draw(buffer, 25, beta=1.0)
+        self.assertAlmostEqual(float(weights.max()), 1.0, places=6)
+        # Row 0 is drawn most often, so it is the one the correction shrinks.
+        heavy = weights[indices == 0]
+        light = weights[indices != 0]
+        self.assertTrue(len(heavy) and len(light))
+        self.assertLess(heavy.max(), light.min())
+
+    def test_beta_zero_switches_the_correction_off(self):
+        buffer = self._buffer(sampling="prioritized", priority_exponent=1.0)
+        buffer.update_priorities(np.arange(8), np.array([3.0] + [1.0] * 7))
+        np.testing.assert_allclose(self._draw(buffer, 6, beta=0.0)[1], 1.0, atol=1e-6)
+
+    def test_a_new_transition_enters_at_the_largest_priority(self):
+        """Otherwise a transition could be evicted before it is ever replayed."""
+        buffer = self._buffer(sampling="prioritized", priority_exponent=1.0)
+        buffer.update_priorities(np.arange(8), np.full(8, 5.0))
+        buffer.append(np.full(4, 0.5, dtype=np.float32), 0, 1.0,
+                      np.zeros(4, dtype=np.float32), np.ones(ACTION_COUNT, dtype=bool), False, 0.95)
+        self.assertEqual(buffer.priorities[0], buffer.priorities[:len(buffer)].max())
+
+    def test_a_zero_td_error_stays_reachable(self):
+        buffer = self._buffer(sampling="prioritized", priority_exponent=1.0)
+        buffer.update_priorities(np.arange(8), np.zeros(8))
+        self.assertGreater(buffer.priorities[:8].min(), 0.0)
+        self.assertEqual(len(set(self._draw(buffer, 60)[0].tolist())), 8)
+
+
+class PrioritizedLearnerTest(unittest.TestCase):
+    def _learner(self, **replay) -> ReplayQLearner:
+        settings = dict(capacity=64, batch_size=8, min_size=8, train_every=1, target_update_every=1000)
+        settings.update(replay)
+        config = validate_config(replace(
+            EXPERIMENTS["R01"], algorithm="q_learning",
+            replay=ReplayConfig(**settings)))
+        return ReplayQLearner(config, LinearQModel(STATE_WIDTH, learning_rate=0.01), seed=3)
+
+    def test_beta_anneals_from_the_declared_start_to_exactly_one(self):
+        learner = self._learner(sampling="prioritized", importance_sampling_start=0.4,
+                                importance_sampling_steps=100)
+        self.assertAlmostEqual(learner._importance_sampling_exponent(), 0.4)
+        learner.gradient_steps = 50
+        self.assertAlmostEqual(learner._importance_sampling_exponent(), 0.7)
+        learner.gradient_steps = 100
+        self.assertAlmostEqual(learner._importance_sampling_exponent(), 1.0)
+        learner.gradient_steps = 10_000
+        self.assertAlmostEqual(learner._importance_sampling_exponent(), 1.0,
+                               msg="beta must stay at 1, not overshoot")
+
+    def test_a_uniform_learner_reports_no_prioritization_telemetry(self):
+        learner = self._learner()
+        for index in range(20):
+            learner.observe(transition(index))
+        self.assertNotIn("importance_sampling_exponent", learner.step_diagnostics())
+
+    def test_the_prioritized_learner_records_that_it_was_live(self):
+        """A declared axis nobody can see afterwards is the section 7.29 failure."""
+        learner = self._learner(sampling="prioritized")
+        for index in range(20):
+            learner.observe(transition(index))
+        diagnostics = learner.step_diagnostics()
+        self.assertTrue(diagnostics["gradient_applied"])
+        self.assertAlmostEqual(diagnostics["importance_sampling_exponent"], 0.4, places=3)
+        self.assertLessEqual(diagnostics["mean_importance_weight"], 1.0)
+        self.assertGreater(diagnostics["min_importance_weight"], 0.0)
+
+    def test_training_moves_the_priorities_away_from_their_entry_value(self):
+        learner = self._learner(sampling="prioritized")
+        for index in range(40):
+            learner.observe(transition(index, reward=5.0 if index == 3 else 0.0))
+        priorities = learner.buffer.priorities[:len(learner.buffer)]
+        self.assertGreater(len(set(np.round(priorities, 6).tolist())), 1,
+                           "every priority is still the entry value; no error was written back")

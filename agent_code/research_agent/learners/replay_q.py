@@ -44,6 +44,8 @@ class ReplayQLearner:
             seed=seed,
             quantised_board=board_size,
             quantisation=quantisation,
+            sampling=self.settings.sampling,
+            priority_exponent=self.settings.priority_exponent,
         )
         self.rng = np.random.default_rng(seed)
         self.observed_transitions = 0
@@ -87,11 +89,14 @@ class ReplayQLearner:
                 "replay_size": len(self.buffer),
             }
             return 0.0
-        batch = self.buffer.sample(self.settings.batch_size)
+        beta = self._importance_sampling_exponent()
+        batch = self.buffer.sample(self.settings.batch_size, beta=beta)
         if self.settings.augmentation == "d4":
             batch = self._augment(batch)
         targets = self._targets(batch)
-        td_errors = self.model.fit_batch(batch["states"], batch["action_indices"], targets)
+        td_errors = self.model.fit_batch(
+            batch["states"], batch["action_indices"], targets, weights=batch["weights"])
+        self.buffer.update_priorities(batch["indices"], td_errors)
         self.gradient_steps += 1
         synchronised = self.gradient_steps % self.settings.target_update_every == 0
         if synchronised:
@@ -104,6 +109,12 @@ class ReplayQLearner:
             "mean_abs_td_error": float(np.abs(td_errors).mean()),
             "mean_target": float(np.mean(targets)),
         }
+        if self.settings.sampling == "prioritized":
+            # Recorded so a finished run can show the prioritization was live
+            # and how far beta had annealed, rather than being taken on trust.
+            self.last_step["importance_sampling_exponent"] = beta
+            self.last_step["mean_importance_weight"] = float(np.mean(batch["weights"]))
+            self.last_step["min_importance_weight"] = float(np.min(batch["weights"]))
         # Q statistics and the gradient norm come from the batch the model has
         # just put through the network.  Recomputing them here would cost
         # another forward pass -- about a quarter of the step -- for numbers the
@@ -111,6 +122,20 @@ class ReplayQLearner:
         if hasattr(self.model, "training_diagnostics"):
             self.last_step.update(self.model.training_diagnostics())
         return float(np.abs(td_errors).mean())
+
+    def _importance_sampling_exponent(self) -> float:
+        """Anneal beta from its declared start to 1.0 over the declared steps.
+
+        Beta has to reach 1 for the correction to be unbiased, and it starts
+        below 1 because the bias matters least early, when the value function is
+        wrong anyway and the benefit of replaying surprising transitions is
+        largest.  This is the schedule in Schaul et al. 2016 section 3.4.
+        """
+        if self.settings.sampling != "prioritized":
+            return 1.0
+        start = self.settings.importance_sampling_start
+        progress = min(1.0, self.gradient_steps / self.settings.importance_sampling_steps)
+        return start + progress * (1.0 - start)
 
     def end_round(self) -> None:
         """The buffer and the target network deliberately survive a round."""

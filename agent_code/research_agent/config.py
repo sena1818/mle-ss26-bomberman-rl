@@ -385,6 +385,23 @@ class ReplayConfig:
     # "none" or "d4": the eight board symmetries, only valid for a spatial,
     # agent-centred state representation.  See docs/05 section 5.4.
     augmentation: str = "none"
+    # "uniform" or "prioritized".  Proportional prioritized replay (Schaul et
+    # al. 2016): sample a transition with probability proportional to
+    # |TD error|^priority_exponent, and undo the resulting bias with importance
+    # sampling weights annealed from importance_sampling_start to 1.
+    #
+    # The motivation here is measured, not general: KILLED_OPPONENT is 1.7% of
+    # the positive reward this line sees and 191 times rarer than a coin
+    # (docs/01 section 7.27.2), which is the situation prioritization exists
+    # for.  Uniform sampling is the default and stays bit-identical.
+    sampling: str = "uniform"
+    priority_exponent: float = 0.6
+    importance_sampling_start: float = 0.4
+    # Gradient steps over which the importance-sampling exponent reaches 1.0.
+    # The default is the measured gradient-step count of a 5000-round arm on
+    # this recipe (513,253 for R02_9 seed 1001), so beta finishes annealing as
+    # training finishes rather than at an arbitrary point.
+    importance_sampling_steps: int = 513_000
 
     def __post_init__(self) -> None:
         if min(self.capacity, self.batch_size, self.min_size, self.train_every, self.target_update_every) < 1:
@@ -397,6 +414,14 @@ class ReplayConfig:
             raise ValueError("replay.min_size must be at least replay.batch_size.")
         if self.augmentation not in {"none", "d4"}:
             raise ValueError(f"replay.augmentation must be 'none' or 'd4', got {self.augmentation!r}")
+        if self.sampling not in {"uniform", "prioritized"}:
+            raise ValueError(f"replay.sampling must be 'uniform' or 'prioritized', got {self.sampling!r}")
+        if not 0.0 <= self.priority_exponent <= 1.0:
+            raise ValueError("replay.priority_exponent must lie in [0, 1].")
+        if not 0.0 <= self.importance_sampling_start <= 1.0:
+            raise ValueError("replay.importance_sampling_start must lie in [0, 1].")
+        if self.importance_sampling_steps < 1:
+            raise ValueError("replay.importance_sampling_steps must be positive.")
 
     @classmethod
     def parse(cls, value: dict | None) -> "ReplayConfig | None":
@@ -414,6 +439,12 @@ class ReplayConfig:
             train_every=int(value.get("train_every", cls.train_every)),
             target_update_every=int(value.get("target_update_every", cls.target_update_every)),
             augmentation=str(value.get("augmentation", cls.augmentation)),
+            sampling=str(value.get("sampling", cls.sampling)),
+            priority_exponent=float(value.get("priority_exponent", cls.priority_exponent)),
+            importance_sampling_start=float(
+                value.get("importance_sampling_start", cls.importance_sampling_start)),
+            importance_sampling_steps=int(
+                value.get("importance_sampling_steps", cls.importance_sampling_steps)),
         )
 
 

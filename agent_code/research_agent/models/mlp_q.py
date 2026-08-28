@@ -99,16 +99,28 @@ class MLPQModel:
         """Return one row of six Q-values per state in the batch."""
         return self._forward_batch(np.asarray(states, dtype=np.float32))[0]
 
-    def fit_batch(self, states: np.ndarray, action_indices: np.ndarray, targets: np.ndarray) -> np.ndarray:
-        """One SGD step on the mean squared TD error of the selected heads."""
+    def fit_batch(self, states: np.ndarray, action_indices: np.ndarray, targets: np.ndarray,
+                  weights: np.ndarray | None = None) -> np.ndarray:
+        """One SGD step on the mean TD loss of the selected heads.
+
+        ``weights`` are the per-sample importance-sampling weights prioritized
+        replay needs.  ``None`` means uniform and takes the identical arithmetic
+        path as before, so every arm run without prioritization is unchanged.
+        The returned TD errors are the *unweighted* ones: they are what the
+        buffer prioritizes by, and weighting them there would compound the
+        correction with the thing it corrects.
+        """
         states = np.asarray(states, dtype=np.float32)
         action_indices = np.asarray(action_indices, dtype=np.intp)
         predictions, activations, pre_activations = self._forward_batch(states)
         rows = np.arange(len(action_indices))
         td_errors = np.asarray(targets, dtype=np.float32) - predictions[rows, action_indices]
 
+        gradient = self._loss_gradient(td_errors)
+        if weights is not None:
+            gradient = gradient * np.asarray(weights, dtype=np.float32)
         delta = np.zeros_like(predictions)
-        delta[rows, action_indices] = self._loss_gradient(td_errors) / len(action_indices)
+        delta[rows, action_indices] = gradient / len(action_indices)
         self.last_hidden_zero_fraction = self._hidden_zero_fraction(pre_activations)
         weight_gradients: list[np.ndarray] = [np.empty_like(weight) for weight in self.weights]
         bias_gradients: list[np.ndarray] = [np.empty_like(bias) for bias in self.biases]

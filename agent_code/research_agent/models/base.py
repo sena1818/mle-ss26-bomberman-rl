@@ -27,7 +27,8 @@ class QModel(Protocol):
 
     def q_values_batch(self, states: np.ndarray) -> np.ndarray: ...
 
-    def fit_batch(self, states: np.ndarray, action_indices: np.ndarray, targets: np.ndarray) -> np.ndarray:
+    def fit_batch(self, states: np.ndarray, action_indices: np.ndarray, targets: np.ndarray,
+                  weights: np.ndarray | None = None) -> np.ndarray:
         """Fit the selected heads towards ``targets``; return the TD errors."""
 
     def clone(self) -> "QModel":

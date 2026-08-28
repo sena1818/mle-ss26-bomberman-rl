@@ -168,7 +168,8 @@ class CnnMlpQModel:
             values = self.network(self._tensor(board), self._tensor(globals_))
         return values.cpu().numpy()
 
-    def fit_batch(self, states: np.ndarray, action_indices: np.ndarray, targets: np.ndarray) -> np.ndarray:
+    def fit_batch(self, states: np.ndarray, action_indices: np.ndarray, targets: np.ndarray,
+                  weights: np.ndarray | None = None) -> np.ndarray:
         torch = _torch()
         board, globals_ = self._split(np.asarray(states, dtype=np.float32))
         actions = torch.from_numpy(np.asarray(action_indices, dtype=np.int64)).to(self.device)
@@ -176,8 +177,17 @@ class CnnMlpQModel:
         self.network.train()
         predictions = self.network(self._tensor(board), self._tensor(globals_))
         selected = predictions.gather(1, actions.unsqueeze(1)).squeeze(1)
-        loss = (torch.nn.functional.smooth_l1_loss(selected, wanted) if self.td_loss == "huber"
-                else torch.nn.functional.mse_loss(selected, wanted))
+        per_sample = (torch.nn.functional.smooth_l1_loss(selected, wanted, reduction="none")
+                      if self.td_loss == "huber"
+                      else torch.nn.functional.mse_loss(selected, wanted, reduction="none"))
+        if weights is None:
+            loss = per_sample.mean()
+        else:
+            # Prioritized replay's bias correction. Reduction stays a mean over
+            # the batch, so the effective step size does not change with the
+            # weights' scale -- they are normalised to a maximum of one.
+            loss = (per_sample * torch.from_numpy(
+                np.asarray(weights, dtype=np.float32)).to(self.device)).mean()
         self.optimizer.zero_grad(set_to_none=True)
         loss.backward()
         # A single clipped step keeps one unlucky batch from destroying a run.

@@ -1,4 +1,4 @@
-"""A fixed-capacity uniform experience replay buffer.
+"""A fixed-capacity experience replay buffer, uniform or prioritized.
 
 Preallocated NumPy arrays rather than a deque of Python objects: the M4 line
 stores 2316-float board states, and a ring of flat arrays keeps sampling to one
@@ -36,9 +36,13 @@ class ReplayBuffer:
         seed: int = 0,
         quantised_board: int = 0,
         quantisation: int = 0,
+        sampling: str = "uniform",
+        priority_exponent: float = 0.6,
     ):
         if capacity < 1 or state_dimension < 1 or action_count < 1:
             raise ValueError("ReplayBuffer needs a positive capacity, state dimension and action count.")
+        if sampling not in {"uniform", "prioritized"}:
+            raise ValueError(f"sampling must be 'uniform' or 'prioritized', got {sampling!r}")
         if quantised_board:
             if not 0 < quantised_board <= state_dimension:
                 raise ValueError("quantised_board must be a prefix length of the state vector.")
@@ -70,6 +74,13 @@ class ReplayBuffer:
         # gamma**n for the stored transition; n-step transitions of different
         # lengths coexist in one buffer, so the discount travels with the row.
         self.discounts = np.ones(self.capacity, dtype=np.float32)
+        self.sampling = sampling
+        self.priority_exponent = float(priority_exponent)
+        # Priorities are stored already raised to ``priority_exponent`` so that
+        # sampling is one normalisation instead of a power over the whole
+        # buffer on every gradient step.
+        self.priorities = np.zeros(self.capacity, dtype=np.float64)
+        self._max_priority = 1.0
         self._next_index = 0
         self._size = 0
 
@@ -99,6 +110,10 @@ class ReplayBuffer:
         else:
             self._store_state(index, next_state, into_next=True)
             self.next_legal_masks[index] = next_legal_mask
+        # A transition the learner has never seen gets the largest priority in
+        # the buffer, so every new experience is replayed at least once before
+        # its priority is decided by an actual TD error.
+        self.priorities[index] = self._max_priority
         self._next_index = (index + 1) % self.capacity
         self._size = min(self._size + 1, self.capacity)
 
@@ -144,11 +159,24 @@ class ReplayBuffer:
         tails = (self.next_state_tails if from_next else self.state_tails)[indices]
         return np.concatenate([self._levels[codes], tails], axis=1)
 
-    def sample(self, batch_size: int) -> dict[str, np.ndarray]:
-        """Return one uniformly drawn batch as a dictionary of column arrays."""
+    def sample(self, batch_size: int, *, beta: float = 1.0) -> dict[str, np.ndarray]:
+        """Return one drawn batch as a dictionary of column arrays.
+
+        ``indices`` and ``weights`` are always present.  Under uniform sampling
+        the weights are exactly one, so the learner has a single code path and
+        the uniform arm keeps the identical arithmetic it always had.
+
+        ``beta`` is the importance-sampling exponent and is ignored by uniform
+        sampling.  It is passed in rather than stored because it anneals with
+        the learner's gradient-step count, which the buffer does not know.
+        """
         if batch_size > self._size:
             raise ValueError(f"Cannot sample {batch_size} transitions from a buffer holding {self._size}.")
-        indices = self.rng.integers(0, self._size, size=batch_size)
+        if self.sampling == "uniform":
+            indices = self.rng.integers(0, self._size, size=batch_size)
+            weights = np.ones(batch_size, dtype=np.float32)
+        else:
+            indices, weights = self._prioritized_indices(batch_size, beta)
         return {
             "states": self._read_states(indices, from_next=False),
             "action_indices": self.action_indices[indices],
@@ -157,4 +185,45 @@ class ReplayBuffer:
             "next_legal_masks": self.next_legal_masks[indices],
             "terminals": self.terminals[indices],
             "discounts": self.discounts[indices],
+            "indices": indices,
+            "weights": weights,
         }
+
+    def _prioritized_indices(self, batch_size: int, beta: float) -> tuple[np.ndarray, np.ndarray]:
+        """Draw proportionally to priority and return the bias-correcting weights.
+
+        Deliberately a plain cumulative sum rather than a sum tree.  A sum tree
+        is O(log n) per draw against O(n) here, but n is the buffer size and the
+        O(n) part is one vectorised pass: at 50,000 entries it costs tens of
+        microseconds per gradient step, and a 5000-round arm performs about
+        513,000 of them -- roughly twenty seconds added to a job that runs for
+        well over an hour.  A sum tree would be several hundred lines of
+        index arithmetic to save that.
+        """
+        priorities = self.priorities[:self._size]
+        total = priorities.sum()
+        if total <= 0.0:
+            indices = self.rng.integers(0, self._size, size=batch_size)
+            return indices, np.ones(batch_size, dtype=np.float32)
+        probabilities = priorities / total
+        indices = self.rng.choice(self._size, size=batch_size, p=probabilities)
+        # w_i = (N * P(i))^-beta, normalised by the largest weight in the batch
+        # so the update is only ever scaled down.  Normalising by the buffer-wide
+        # maximum instead would make the effective step size depend on the single
+        # rarest transition present.
+        weights = (self._size * probabilities[indices]) ** (-float(beta))
+        weights = weights / weights.max()
+        return indices, weights.astype(np.float32)
+
+    def update_priorities(self, indices: np.ndarray, td_errors: np.ndarray, *, epsilon: float = 1e-3) -> None:
+        """Set the priority of the sampled rows from the errors they produced.
+
+        ``epsilon`` keeps a transition whose TD error is exactly zero reachable:
+        without it such a row could never be drawn again, and a row is only
+        uninteresting for the parameters that produced that error.
+        """
+        if self.sampling == "uniform":
+            return
+        priorities = (np.abs(np.asarray(td_errors, dtype=np.float64)) + epsilon) ** self.priority_exponent
+        self.priorities[np.asarray(indices, dtype=np.intp)] = priorities
+        self._max_priority = max(self._max_priority, float(priorities.max()))

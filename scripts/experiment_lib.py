@@ -152,7 +152,14 @@ DECLARATIVE_ROUTE_VALUES = {
 }
 
 
-_REPLAY_SETTINGS = {"capacity", "batch_size", "min_size", "train_every", "target_update_every", "augmentation"}
+_REPLAY_SETTINGS = {"capacity", "batch_size", "min_size", "train_every", "target_update_every",
+                    "augmentation", "sampling", "priority_exponent", "importance_sampling_start",
+                    "importance_sampling_steps"}
+# Which of them are not integers.  Everything else is parsed as an int, so a
+# float setting read through the integer branch would silently truncate 0.6 to 0
+# and turn prioritized sampling back into uniform.
+_REPLAY_IDENTIFIER_SETTINGS = {"augmentation", "sampling"}
+_REPLAY_FLOAT_SETTINGS = {"priority_exponent", "importance_sampling_start"}
 
 
 class ConfigError(ValueError):
@@ -175,8 +182,13 @@ def _parse_replay(value: Any) -> dict[str, Any] | None:
         raise ConfigError(f"Unknown agent.replay settings: {', '.join(unknown)}")
     parsed: dict[str, Any] = {}
     for key, setting in value.items():
-        if key == "augmentation":
-            parsed[key] = safe_identifier(setting, "agent.replay.augmentation")
+        if key in _REPLAY_IDENTIFIER_SETTINGS:
+            parsed[key] = safe_identifier(setting, f"agent.replay.{key}")
+        elif key in _REPLAY_FLOAT_SETTINGS:
+            try:
+                parsed[key] = float(setting)
+            except (TypeError, ValueError) as exc:
+                raise ConfigError(f"agent.replay.{key} must be a number") from exc
         else:
             try:
                 parsed[key] = int(setting)
