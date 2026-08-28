@@ -1,4 +1,4 @@
-# 在 BwUniCluster 上跑 M4
+# 在 bwUniCluster 3.0 (KIT) 上跑 M4
 
 > 面向 SLURM 集群。通用手册见 [M4_CLUSTER_RUNBOOK.md](M4_CLUSTER_RUNBOOK.md)。
 > **本文里标 ⚠️ 的三个值我无法替你确认**，第一次提交前必须自己查。
@@ -19,8 +19,23 @@ module avail python 2>&1 | head -30
 ws_allocate m4 60             # 工作区（家目录配额装不下，见 §4）
 ```
 
-对应改 `scripts/slurm_m4_stage.sh` 顶部的 `--partition`、`--time`、`module load`。
-脚本里写的 `single` / `24:00:00` / `devel/python/3.11` **是占位符，不是建议值**。
+对应改 `scripts/slurm_m4_stage.sh` 顶部的三个值。脚本现在默认 `--partition=cpu`
+——**3.0 用 `cpu` / `dev_cpu`，取代了 2.0 的 `single` / `multiple`**，但请用上面那条
+`sinfo` 确认，墙钟上限尤其要看。`--time=24:00:00` 和 module 名仍是占位符。
+
+## 1b. ⚠️ Lustre 与小文件
+
+bwUniCluster 3.0 的共享文件系统是 **Lustre**，而这个负载是**小文件密集**的：
+每个训练 job 每回合都往自己的 JSONL 追加一次（10,000 回合 × 5 seed），
+一个臂最终几千个文件。**如果训练明显慢于 benchmark 的预测，这是第一嫌疑。**
+
+```bash
+df -h "$TMPDIR"      # 节点本地 scratch 还剩多少
+```
+
+缓解办法是把 run 目录放在**节点本地 scratch** 上跑，结束时 rsync 回工作区。
+我没有把这个改进直接写进脚本——它会改变产物路径与 provenance 的落盘位置，
+应该在你确认 `$TMPDIR` 容量之后再决定。**先按现在的跑 pilot，看实测吞吐再说。**
 
 ## 2. 一次性准备（**登录节点**）
 

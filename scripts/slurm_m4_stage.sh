@@ -3,8 +3,9 @@
 #SBATCH --nodes=1                 # see NOTE 1: this workload does not span nodes
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16        # -> --jobs 16; do not exceed the node's cores
-#SBATCH --time=24:00:00           # CONFIRM against your partition's limit
-#SBATCH --partition=single        # CONFIRM with: sinfo -o "%P %l %c %m"
+#SBATCH --time=24:00:00           # CONFIRM against the partition's limit
+#SBATCH --partition=cpu           # bwUniCluster 3.0; CONFIRM: sinfo -o "%P %l %c %m"
+                                  # 3.0 replaced 2.0's single/multiple with cpu/dev_cpu
 #SBATCH --mem=32G                 # ~0.5 GB per concurrent training job, plus slack
 #SBATCH --output=%x_%j.out
 #SBATCH --error=%x_%j.err
@@ -30,6 +31,14 @@
 # NOTE 2  Thread oversubscription is the classic way to make this slower than a
 #         laptop.  With N concurrent jobs each defaulting to "use every core",
 #         the node thrashes.  All three limits below are required, not tidy.
+#
+# NOTE 3  This workload is small-file heavy and bwUniCluster's shared filesystem
+#         is Lustre, which is not.  Each training job appends to its own JSONL
+#         once per round -- 10,000 rounds x 5 seeds -- and an arm ends up with
+#         a few thousand files.  If training is much slower than the benchmark
+#         predicted, this is the first thing to suspect, and the fix is to run
+#         on the node-local scratch and copy the run directory back at the end.
+#         Check what you have with: df -h "$TMPDIR"
 
 set -u -o pipefail
 
@@ -38,7 +47,8 @@ DATE="${2:?usage: sbatch scripts/slurm_m4_stage.sh <stage> <date-tag>}"
 
 # --- site-specific: CONFIRM ALL THREE before the first submission ------------
 module purge
-module load devel/python/3.11 || { echo "adjust the module name: module avail python" >&2; exit 1; }
+module load devel/python/3.11 2>/dev/null || module load python 2>/dev/null || \
+    { echo "adjust the module name: module avail python" >&2; exit 1; }
 REPO="${REPO:-$HOME/bomberman_rl}"          # a clean CLONE at a committed revision
 VENV="${VENV:-$REPO/.venv}"                 # created once on a LOGIN node (compute nodes have no network)
 export LOG_DIR="${LOG_DIR:-$HOME/m4_logs}"  # NOT inside $REPO: a dirty tree makes prepare refuse
