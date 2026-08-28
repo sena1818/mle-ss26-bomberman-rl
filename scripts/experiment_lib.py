@@ -708,12 +708,17 @@ class Experiment:
                 "state_representation": self.state_representation,
                 "n_step": self.n_step,
                 "replay": self.replay,
+                # Inside the agent block, because that is where ``load`` reads
+                # it.  A job reloads the experiment from this snapshot, so a
+                # field written anywhere else is silently dropped on the way
+                # back in -- which is how a declared step size reached the
+                # snapshot, the reader, and then nothing.
+                "learning_rate": self.learning_rate,
             },
             "main_lines": list(self.lines),
             "reward_version": self.reward_version,
             "exploration_version": self.exploration_version,
             "learning_rate_schedule": self.learning_rate_schedule,
-            "learning_rate": self.learning_rate,
             "training": asdict(self.training),
             "evaluation": asdict(self.evaluation),
             "checkpoint_evaluation": asdict(self.checkpoint_evaluation),

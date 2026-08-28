@@ -741,6 +741,19 @@ def _boolean_environment(name: str, default: bool) -> bool:
     raise ValueError(f"{name} must be one of 1/0/true/false/yes/no, got {raw!r}")
 
 
+def _float_environment(name: str, default: float) -> float:
+    raw = os.environ.get(name)
+    if raw is None or raw == "":
+        return default
+    try:
+        value = float(raw)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be a number, got {raw!r}.") from exc
+    if value <= 0:
+        raise ValueError(f"{name} must be positive, got {value}.")
+    return value
+
+
 def _integer_environment(name: str, default: int) -> int:
     raw = os.environ.get(name)
     if raw is None or raw.strip() == "":
@@ -948,4 +961,12 @@ def active_config() -> ExperimentConfig:
         ),
         n_step=_integer_environment("BOMBERMAN_N_STEP", route_config.n_step),
         replay=_replay_environment("BOMBERMAN_REPLAY", route_config.replay),
+        # The step size and its schedule cross the process boundary the same
+        # way n_step and replay do.  Without this they reached the agent only
+        # by being baked into a route, so a config that declared a step size
+        # was recorded faithfully in the snapshot and then ignored by the
+        # process that trained -- which is what the M4 smoke caught.
+        learning_rate=_float_environment("BOMBERMAN_LEARNING_RATE", route_config.learning_rate),
+        learning_rate_schedule=os.environ.get(
+            "BOMBERMAN_LEARNING_RATE_SCHEDULE") or route_config.learning_rate_schedule,
     ))

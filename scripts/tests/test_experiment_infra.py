@@ -1106,3 +1106,36 @@ class ShapedArmsStayOffTheNStepResonanceTest(unittest.TestCase):
                 f"{BOMB_TIMER + 1}-transition life, where the danger term telescopes away")
             checked += 1
         self.assertGreater(checked, 0, "no shaped M4 config found to check")
+
+
+class SnapshotRoundTripsThroughItsOwnParserTest(unittest.TestCase):
+    """A job reloads its experiment from the snapshot, so the two must agree.
+
+    ``run_experiment.py`` calls ``Experiment.load`` on
+    ``experiment_config.snapshot.json``.  Any field the snapshot writes
+    somewhere ``load`` does not read is therefore recorded faithfully in the
+    artifact and then dropped on the way back in -- the run's own provenance
+    says one thing and the process that trained did another.  That is exactly
+    what happened to ``learning_rate``: written at the top level, read from the
+    agent block, and the two step-size arms trained at the route default while
+    their snapshots said otherwise.
+
+    Asserting the round trip catches the whole class, not the one instance.
+    """
+
+    def test_every_shipped_config_survives_a_snapshot_round_trip(self):
+        import dataclasses
+        checked = 0
+        for path in sorted((ROOT / "experiments").glob("*.json")):
+            experiment = Experiment.load(path)
+            with tempfile.TemporaryDirectory() as temporary:
+                snapshot_path = Path(temporary) / "experiment_config.snapshot.json"
+                write_json(snapshot_path, experiment.snapshot())
+                reloaded = Experiment.load(snapshot_path)
+            for field in dataclasses.fields(experiment):
+                self.assertEqual(
+                    getattr(reloaded, field.name), getattr(experiment, field.name),
+                    f"{path.name}: {field.name} does not survive the snapshot round trip",
+                )
+            checked += 1
+        self.assertGreater(checked, 0)
