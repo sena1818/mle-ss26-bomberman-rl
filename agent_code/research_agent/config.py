@@ -260,6 +260,26 @@ LEARNING_RATE_SCHEDULES = {
         "final_fraction": 0.2,
         "description": "L01's endpoints and length, annealed on a cosine instead of a line",
     },
+    # L05 and L06 spread the decay over a 10000-round budget instead of ending a
+    # quarter of the way in.  The 10000-round L01 arm climbed until about round
+    # 4500 and then went flat, which is roughly where its decay had finished and
+    # the remaining 5500 rounds became constant-rate training -- and constant
+    # rates plateau.  Annealing over the whole run is also how cosine is normally
+    # used.  Both stay in absolute rounds: a schedule whose length is written as
+    # a fraction of the budget is the E01 mistake, and it cost section 7.22 a
+    # conclusion.  Two of them so length and shape stay separable.
+    "L05": {
+        "kind": "linear_absolute",
+        "decay_rounds": 10000,
+        "final_fraction": 0.2,
+        "description": "L01's floor and line, reached over 10000 rounds instead of 2500",
+    },
+    "L06": {
+        "kind": "cosine_absolute",
+        "decay_rounds": 10000,
+        "final_fraction": 0.2,
+        "description": "L05's length and floor, annealed on a cosine",
+    },
 }
 LEARNING_RATE_SCHEDULE_VERSIONS = frozenset(LEARNING_RATE_SCHEDULES)
 
