@@ -954,10 +954,17 @@ def active_config() -> ExperimentConfig:
         raise ValueError(
             f"Unknown exploration version {exploration_version!r}; declared versions: {sorted(EXPLORATION_VERSIONS)}"
         )
+    schedule = os.environ.get("BOMBERMAN_LEARNING_RATE_SCHEDULE", route_config.learning_rate_schedule)
+    if schedule not in LEARNING_RATE_SCHEDULE_VERSIONS:
+        raise ValueError(
+            f"Unknown learning-rate schedule {schedule!r}; "
+            f"declared: {sorted(LEARNING_RATE_SCHEDULE_VERSIONS)}"
+        )
     return validate_config(replace(
         route_config,
         reward_version=reward_version,
         exploration_version=exploration_version,
+        learning_rate_schedule=schedule,
         terminal_on_truncation=_boolean_environment(
             "BOMBERMAN_TERMINAL_ON_TRUNCATION", route_config.terminal_on_truncation
         ),
