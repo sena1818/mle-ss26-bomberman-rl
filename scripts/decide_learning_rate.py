@@ -33,6 +33,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from experiment_lib import Experiment, RUNS_ROOT, resolved_runtime_config, write_json  # noqa: E402
 
 RESOLUTION = 4.7  # docs/01 section 7.21: the five-seed spread of the control
+DOWNSTREAM_ARMS = ("m4_r07_a06_e09_t02opp_opponents", "m4_r07_a03_e09_t02_no_shaping",
+                   "m4_r07_a06_e10_t02_bc", "m4_r08_a06_e09_t02_dueling")
+# The arms this decision is between, and the rate each is supposed to carry.
+# Checked rather than assumed: a decision computed over the wrong runs is worse
+# than no decision, because it looks like one.
+EXPECTED_RATES = {"anchor": 2.5e-4, "lr1e4": 1e-4, "lr5e4": 5e-4}
 
 
 def curve(run_dir: Path) -> list[tuple[int | None, float]]:
@@ -65,15 +71,83 @@ def describe(run_dir: Path) -> dict:
     }
 
 
+def verify(anchor_dir: Path) -> int:
+    """Refuse unless the decision exists AND the downstream configs carry it.
+
+    Printing the two numbers and continuing -- which is what the SLURM wrapper
+    did -- is not a gate.  A decision naming 1e-4 while all four downstream
+    configs say 5e-4 passed it, and so did four configs that named nothing and
+    silently fell back to the route default.  Both entry points call this, so
+    there is one implementation of the rule rather than two that can drift.
+    """
+    path = anchor_dir / "learning_rate_decision.json"
+    if not path.is_file():
+        print(f"REFUSED: no step-size decision at {path}", file=sys.stderr)
+        print("  Produce it with decide_learning_rate.py ... --apply", file=sys.stderr)
+        return 1
+    try:
+        decision = json.loads(path.read_text(encoding="utf-8"))
+        decided = float(decision["decided_learning_rate"])
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+        print(f"REFUSED: {path} is not a readable decision ({exc})", file=sys.stderr)
+        return 1
+
+    configured = {}
+    for arm in DOWNSTREAM_ARMS:
+        config_path = Path("experiments") / f"{arm}.json"
+        if not config_path.is_file():
+            print(f"REFUSED: missing downstream config {config_path}", file=sys.stderr)
+            return 1
+        # The RESOLVED rate, not the raw field: an arm that names nothing falls
+        # back to the route default, and that fallback has to be checked too.
+        configured[arm] = resolved_runtime_config(
+            Experiment.load(config_path))["config"]["learning_rate"]
+
+    wrong = {arm: rate for arm, rate in configured.items() if rate != decided}
+    if wrong:
+        print(f"REFUSED: the decision is {decided:.1e} but these arms resolve to something else:",
+              file=sys.stderr)
+        for arm, rate in sorted(wrong.items()):
+            print(f"    {rate:.1e}  {arm}", file=sys.stderr)
+        print("  Set agent.learning_rate in every downstream config and commit.", file=sys.stderr)
+        return 1
+    print(f"step size verified: decision and all {len(DOWNSTREAM_ARMS)} downstream arms are {decided:.1e}")
+    return 0
+
+
+def check_identity(anchor: dict, candidates: list[dict]) -> None:
+    """Refuse to decide between runs that are not the arms of this comparison.
+
+    A decision computed over a mislabelled or half-finished set of runs still
+    writes a decision file, and everything downstream then trusts it.
+    """
+    seen = {"anchor": anchor["learning_rate"],
+            **{one["run"].split("_")[1]: one["learning_rate"] for one in candidates}}
+    for label, expected in EXPECTED_RATES.items():
+        actual = seen.get(label)
+        if actual is None:
+            raise SystemExit(f"missing the {label} arm; this comparison needs all of "
+                             f"{sorted(EXPECTED_RATES)}")
+        if abs(actual - expected) > 1e-12:
+            raise SystemExit(f"the {label} arm resolves to {actual:.1e}, expected {expected:.1e}; "
+                             "these are not the arms this decision is defined over")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--anchor", required=True, help="the anchor run directory")
-    parser.add_argument("--candidate", action="append", default=[], required=True,
+    parser.add_argument("--candidate", action="append", default=[],
                         help="a step-size arm; repeat the flag")
     parser.add_argument("--apply", action="store_true",
                         help="write the decision file the SLURM wrapper requires")
+    parser.add_argument("--verify", action="store_true",
+                        help="check an existing decision against the downstream configs and exit")
     arguments = parser.parse_args()
+
+    if arguments.verify:
+        path = Path(arguments.anchor)
+        raise SystemExit(verify(path if path.is_dir() else RUNS_ROOT / path.name))
 
     def resolve(name: str) -> Path:
         path = Path(name)
@@ -81,6 +155,7 @@ def main() -> None:
 
     anchor = describe(resolve(arguments.anchor))
     candidates = [describe(resolve(one)) for one in arguments.candidate]
+    check_identity(anchor, candidates)
 
     print(f"{'run':34s} {'lr':>9s} {'final':>8s} {'trend':>8s} {'vs anchor':>10s}")
     print(f"{anchor['run']:34s} {anchor['learning_rate']:9.1e} "

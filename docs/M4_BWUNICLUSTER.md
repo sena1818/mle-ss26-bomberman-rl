@@ -1,17 +1,18 @@
 # 在 bwUniCluster 3.0 (KIT) 上跑 M4
 
 > 面向 SLURM 集群。通用手册见 [M4_CLUSTER_RUNBOOK.md](M4_CLUSTER_RUNBOOK.md)。
-> **本文里标 ⚠️ 的三个值我无法替你确认**，第一次提交前必须自己查。
+> 分区与 module 已按你在 `uc3n991` 上的实测确认：`cpu`（3 天上限、192 核/节点）、
+> `dev_cpu`（30 分钟）、`devel/python/3.12.3-gnu-14.2`。代码已在 `origin/master`。
 
-## 0. 现在还不能直接提交，有三件事挡着
+## 0. 开跑前的状态
 
-| | 阻塞项 | 怎么解 |
+| | 项 | 状态 |
 |---|---|---|
-| 1 | **M4 的代码还没推到 remote。**`prepare` 要求干净的**已提交** checkout，集群上是 clone 出来的，所以必须先推 | 决定是否把 `m4-prep` 合进 `master` 并 `git push` |
-| 2 | **集群上没有 torch，而计算节点通常没有外网** | 在**登录节点**建好 venv（见 §2） |
-| 3 | **三个站点相关的值我不能替你确认** | `sinfo`、`module avail`，见 §1 |
+| 1 | 代码在 remote 上 | ✅ 已推 `origin/master` |
+| 2 | 分区 / module | ✅ 已实测确认（见上） |
+| 3 | 集群上的 venv | ⬜ 见 §2，**必须在登录节点建**（计算节点无外网） |
 
-## 1. ⚠️ 三个必须自己确认的值
+## 1. 参考：查询命令
 
 ```bash
 sinfo -o "%P %l %c %m"        # 分区名、最大墙钟、每节点核数、内存
@@ -94,8 +95,15 @@ sbatch --partition=dev_cpu --time=00:20:00 --cpus-per-task=4 \
        --job-name=m4smoke scripts/slurm_m4_stage.sh smoke "$(date +%Y%m%d)"
 ```
 
-它几分钟就回来。**通了再提 pilot**——`cpu` 队列现在满负荷，排队时间长，
-不值得用一次排队去发现是 module 名写错了。
+**它不是"几分钟"**：这个 smoke 展开成 **74 个 job**（2 训练 + 72 评估，其中 24 个是
+`classic` + 3 个 `rule_based` 的 30 回合对局）。它是一次**完整的集成 smoke**，
+不是纯启动检查——`--time=00:20:00` 够不够**没有验证过**。
+
+**所以第一次就用 `dev_cpu` 跑它，正是为了在 30 分钟上限内知道答案。**
+如果超时，把 `--time` 提到 30 分钟上限重试；仍不够就说明这个 smoke 对 `dev_cpu` 太大，
+改用 `--partition=cpu --time=01:00:00`。
+
+**通了再提 pilot**——`cpu` 队列现在满负荷，排队久，不值得用一次排队去发现 module 名写错了。
 
 ## 3. 提交
 

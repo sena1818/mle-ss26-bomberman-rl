@@ -96,30 +96,15 @@ JOBS="${SLURM_CPUS_PER_TASK:-8}"
 # only in run_m4_line.sh.
 case "$STAGE" in
   opponents|no_shaping|bc|dueling)
-    DECISION="$REPO/runs/m4_anchor_${DATE}/learning_rate_decision.json"
-    [ -f "$DECISION" ] || {
-        echo "REFUSING $STAGE: the step size has not been decided." >&2
-        echo "  Expected: $DECISION" >&2
-        echo "  Produce it with:" >&2
+    "$VENV/bin/python" scripts/decide_learning_rate.py \
+        --anchor "runs/m4_anchor_${DATE}" --verify || {
+        echo "REFUSING $STAGE. Produce the decision with:" >&2
         echo "    $VENV/bin/python scripts/decide_learning_rate.py \\" >&2
         echo "        --anchor runs/m4_anchor_${DATE} \\" >&2
         echo "        --candidate runs/m4_lr1e4_${DATE} \\" >&2
         echo "        --candidate runs/m4_lr5e4_${DATE} --apply" >&2
-        echo "  then set agent.learning_rate in the four downstream configs and commit." >&2
         exit 1
     }
-    DECIDED=$("$VENV/bin/python" -c "import json,sys;print(json.load(open(sys.argv[1]))['decided_learning_rate'])" "$DECISION")
-    CONFIGURED=$("$VENV/bin/python" -c "
-import json, sys
-from pathlib import Path
-arms = ['m4_r07_a06_e09_t02opp_opponents', 'm4_r07_a03_e09_t02_no_shaping',
-        'm4_r07_a06_e10_t02_bc', 'm4_r08_a06_e09_t02_dueling']
-rates = {json.loads(Path(f'experiments/{a}.json').read_text())['agent'].get('learning_rate') for a in arms}
-if len(rates) != 1:
-    print('DISAGREE', file=sys.stderr); sys.exit(1)
-print(next(iter(rates)))
-") || { echo "REFUSING $STAGE: the four downstream configs disagree on the step size." >&2; exit 1; }
-    echo "step size: decided=$DECIDED configured=$CONFIGURED"
     ;;
 esac
 

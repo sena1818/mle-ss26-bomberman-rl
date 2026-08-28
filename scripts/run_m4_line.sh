@@ -124,26 +124,11 @@ run_stage() {
 }
 
 if [ "$LR_SETTLED" = "1" ] && [ "$DRY_RUN" != "1" ]; then
-  # --lr-settled asserts a decision was made and applied.  Check that it was:
-  # the four downstream arms must all carry the same step size, or the "same
-  # base" the increments are measured against does not exist.
-  $PYTHON - <<'CHECK' || exit 1
-import json, sys
-from pathlib import Path
-arms = ["m4_r07_a06_e09_t02opp_opponents", "m4_r07_a03_e09_t02_no_shaping",
-        "m4_r07_a06_e10_t02_bc", "m4_r08_a06_e09_t02_dueling"]
-rates = {a: json.loads(Path(f"experiments/{a}.json").read_text())["agent"].get("learning_rate")
-         for a in arms}
-if len(set(rates.values())) != 1:
-    print("--lr-settled, but the downstream arms disagree on the step size:", file=sys.stderr)
-    for arm, rate in rates.items():
-        print(f"    {rate!r:>10}  {arm}", file=sys.stderr)
-    print("  They are increments on one base; that base has to be one number.", file=sys.stderr)
-    sys.exit(1)
-settled = next(iter(rates.values()))
-print(f"--lr-settled: the four downstream arms all run at "
-      f"{'the route default (2.5e-4)' if settled is None else settled}")
-CHECK
+  # The same check the SLURM wrapper runs, from the same implementation.  This
+  # used to compare the four configs only to each other, so four arms that all
+  # named the wrong rate -- or named nothing and fell back to the route default
+  # -- satisfied it without the decision being consulted at all.
+  $PYTHON scripts/decide_learning_rate.py --anchor "runs/m4_anchor_${DATE}" --verify || exit 1
 fi
 
 say "M4 line, date tag ${DATE}, ${JOBS} parallel jobs, logs in ${LOG_DIR}"

@@ -54,9 +54,14 @@ BOMBERMAN_TORCH_DEVICE=cuda python scripts/benchmark_cnn.py --rounds 10000 --ste
 ./scripts/run_m4_line.sh --jobs 8 --date $(date +%Y%m%d)
 ```
 
-它按顺序做：装机检查 → **本机吞吐实测** → pilot → **gate** → anchor → **gate** →
-A03 / 对手 / BC / dueling，每个臂跑完自动 `aggregate` + `check_pilot` + `prune`。
+它按顺序做：装机检查 → **吞吐实测** → pilot → gate → anchor → gate → 两个步长臂
+→ **在步长决策处停下并退出**。每个臂跑完自动 `aggregate` + `check_pilot` + `prune`。
 
+- **它不会一口气跑完整条线。**步长决策之后必须人工执行
+  `scripts/decide_learning_rate.py --apply`、改四个下游配置并提交，
+  再用 `--lr-settled` 重跑才会继续。
+- `--lr-settled` 会调用 `decide_learning_rate.py --verify`，
+  **要求决策文件存在、且四个下游臂解析出的学习率都等于决策值**。
 - **gate 不过就停**，不会继续烧后面的臂。
 - 已完成的臂（存在 `evaluation_summary.json`）自动跳过，**中断后重跑安全**。
 - `--from anchor` 从指定阶段开始；`--dry-run` 只打印计划。
