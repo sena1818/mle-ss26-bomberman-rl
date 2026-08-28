@@ -1,0 +1,125 @@
+# Bomberman M3 手工特征线 —— 以 R02_9 为基线继续提升
+
+## 先读这些（按顺序）
+
+1. `docs/05_路线重构与实验排期.md` 的 §0 全部（§0.1 → §0.24）。项目状态的唯一入口，
+   按时间顺序写，后面的节会更正前面的节。
+2. `docs/01_实验路线_奖励_课程训练设计.md` 的 §7.20 → §7.29（本轮全部结果与更正）。
+   更早的 M3 线是 §7.10 → §7.16。
+3. `docs/01` 的 §2.1、§2.2（为什么在 T02 训练、T03 评估；跨任务分数不可比）
+4. `docs/01` 的 §8.1–§8.3（指标定义、行为 gate、G1/G2/G3 阈值）
+
+## 当前基线：R02_9
+
+比赛设置（`classic` + 3 × `rule_based_agent`）十次重复 **3.6371**（sd 0.1214），
+`coins_share` 0.3449，kills 0.1080/局，`suicides` 0.316/局，单人 classic 4.880。
+run 目录 `runs/m3_lr_decay_5000_vs3rb_20260827/`。
+
+完整配方：
+
+- 路线 `R02_9` = `handcrafted_v3`（62 维）+ MLP 62-128-64-6 + `double_dqn`
+- Adam，学习率 5e-4 线性衰减到 1e-4，历时 **2500 绝对回合**，之后保持
+- Huber loss + grad clip 10（从未触发）
+- replay 50k / batch 32 / min 1000 / target 每 500 步
+- `n_step = 5`
+- 奖励 `A06`（`COIN_COLLECTED` 1.0、`KILLED_OPPONENT` 5.0、`CRATE_DESTROYED` 0.1、
+  `COIN_FOUND` 0.2、死亡 −1.0 每次死亡计一次）+ 势函数 `potential_v1`
+- 探索 `E02`（ε=0.30 保持 400 局 → 线性降到 0.05 历时 1600 局，均为绝对回合数）
+- 训练 `T02` loot-crate + 3 个 `rule_based_agent`，5000 局 × 5 seed（1001–1005），全部 fresh start
+- 评估 3 个 holdout seed（3001–3003）× 30 局
+
+## 已经被数据关闭的方向（不要重做）
+
+| 方向 | 依据 |
+|---|---|
+| 击杀 / 对手塑形（A07） | 两次尝试。边际转化率 0.02%：多放 809 弹 → +0.2 击杀。取用率翻倍（6.8% → 12.2%）而 kills 0.1149 → 0.1151 |
+| 更强的手工逃生特征 | 单人致命拍已 0/113 在 `v3` 里不可分辨；多人 73.2% 不可分辨，但那部分是 `escape_search` 结构上看不见的（对手未来移动/放弹、残留爆炸） |
+| 学习率调度选型 | 底值（2.5e-5，`t = +0.65`）、形状（余弦，`t = −0.02`）都测不出；**衰减历时拉长到 5000 可分辨更差（`t = −6.86`）** |
+| 预算 | 5000 / 7000 / 10000 两两不可分辨（`t = +1.50` / `−0.27`） |
+| n_step | 在此配方上 n=3 可分辨更差（`−0.286`，`t = −19.7`）。n=5 保留 |
+| 网络宽度 | `(128,64)` 在 lr 1e-3 下有害，步长减半后与对照持平——是配方伪影 |
+| 探索 hold 长度 | 100 / 400 / 1000 两端都不可分辨 |
+| 探索 floor 抬高 | 0.05 → 0.10 掉 8.61（loot-crate），`crates_per_round` 83 → 62 |
+| 加大死亡惩罚 | §0.8 |
+| C02 课程 | §7.13.5：一个从未见过 `T01` 的 agent 已把 `T01` 打到 49.25/50 |
+| escape 专项地图 | `SCENARIOS` 只有 `{CRATE_DENSITY, COIN_COUNT}`，自定义布局要改官方 `environment.py` |
+| 推理期安全掩码 | 上限约总死亡 10%——73.2% 的致命拍在掩码能用的特征里不可分辨 |
+
+## 唯一还没试过、且直接指向评估任务的方向
+
+**两阶段微调**：以 `R02_9` 的权重为起点，在 **`T03`（classic，真正的评估任务）+ 3 对手**上
+用小学习率微调一段。
+
+- §7.14.3 测过**从零**在 classic 上训练更差（1.389 vs 2.227），但那是从零学；
+  信号密度的论证（`T03` 每弹只露 0.17 枚币）只适用于从零学
+- 基础设施现成：`BOMBERMAN_CONTINUE=1` + `BOMBERMAN_MODEL_PATH`（§8.6 的 BC 热启动走这条路）
+- **它违反硬规矩第 4 条「别从旧 checkpoint 续训」**——那条规矩是为了臂间可比，
+  两阶段训练是故意设计，须显式标注为例外，对照是 `R02_9` 自己
+- 风险未测：classic 每局只有 9 枚币，微调可能冲掉在 loot-crate 上学到的东西
+
+## 判定标准
+
+**比赛设置（`classic` + 3 对手）是被评分的口径，也是唯一的 promotion 指标。**
+
+- 门槛：两臂**各测一次**要差 **0.246**（σ = 0.089，§7.20 用 20 次重复量出）
+- **单次测量什么也定不了。**声称任何比赛设置的结论前，必须两臂**各十次重复**：
+  用 `scripts/run_experiment.py job` 重跑同一批 15 个 holdout job，Welch 检验，`|t| > 2.3`
+- 门槛可以用样本量买下来：重复 n 次，标准误降到 `1/√n`
+- loot-crate **solo** 的门槛是 **4.7**（跨 seed sd 3.77，五 seed 均值）
+- loot-crate **+ 对手** 的门槛约 **2.85**（口径不同，别照抄 4.7）
+- 每跑完一个臂检查 `round_end_mispredictions` 的**终值**（不是逐回合求和——它是每 job 的累计
+  计数器，求和会把 17 报成 23,331）。非零时逐个核对：目前所有非零都发生在
+  「收满 50 枚金币、清空棋盘」的回合上，是 `round_end_reason` 的烟雾期近似，良性
+
+> **门槛管的是「能不能写进结论」，不管「该选哪个」。**`p = 0.134` 意思是没有足够证据
+> 声称更好，不是有证据说一样。挑提交 agent 时按点估计选是合理的；写报告时不能声称有差别。
+
+## 八条硬规矩
+
+1. `prepare` 要求干净的已提交 checkout，每个 job 执行前再验一次 provenance。
+   **服务器上有 job 在跑时绝不 `git pull`**——会让剩余 job 全部失败
+2. 本机可能有别的会话在改同一个仓库。本机跑长实验用 `git worktree add --detach`
+3. 凡经过选种的数字，必须同时报告全部 training seed 的分布
+4. 别从旧 checkpoint 续训（两阶段微调是唯一的显式例外，须标注）
+5. 写文档保留原表、并列新表，在旧节顶部加指向新节的提示。**不要覆盖已发表的数字**
+6. 跑完压缩：`scripts/prune_runs.py --run-dir runs/<id> --drop-runtime --compress-logs --apply`，
+   再 `--slim-copy` 拉轻量副本回本机
+7. 拉完归档跑 `python scripts/verify_run_archives.py`
+8. 每个分数写明「哪个 scenario + 有没有对手」，跨这两个维度的数字不并列
+
+## 两个必须知道的环境事实
+
+- **`rule_based_agent` 不确定**：`agent_code/rule_based_agent/callbacks.py:69` 调
+  `np.random.seed()`（无参数）。**带对手的臂不可复现**；solo 臂是确定的（逐位一致）
+- **每个声明轴都必须跨过进程边界。**agent 是独立进程，从路线名 + `BOMBERMAN_*` 重建配置。
+  本轮有一个轴（`learning_rate_schedule`）接进了配置解析和 snapshot 却没进环境变量，
+  导致三个臂跑成同一个调度、两个已汇报的结论作废（§7.29.1）。
+  `scripts/tests/test_experiment_infra.py::DeclaredAxesReachTheAgentTest` 现在守着这一条
+
+## 怎么跑
+
+Hetzner 8 核：`root@46.224.43.9`，密钥 `~/.ssh/automobility_hetzner`，
+仓库 `/root/bomberman-r01`，解释器 `.venv/bin/python`（numpy + tqdm，无 pygame/torch）。
+
+```bash
+ssh -i ~/.ssh/automobility_hetzner root@46.224.43.9 \
+  'cd /root/bomberman-r01 && nohup setsid .venv/bin/python scripts/run_experiment.py run \
+     --config experiments/<config>.json --run-id <id> --jobs 8 \
+     > /root/<id>.log 2>&1 < /dev/null & disown' > /dev/null 2>&1
+```
+
+日志写 `/root/` 而非仓库内，否则工作区变脏、下次 `prepare` 被拒。
+等待用 `pgrep -f "^\.venv/bin/python scripts/run_experiment"`——**必须带 `^` 锚点**。
+
+实测成本：5000 局 + 3 对手约 **70 分钟**；10000 局约 **131 分钟**；5000 局单人约 **49 分钟**；
+十次重复（150 job）约 **9 分钟**；击杀 / 逃生诊断约 **5 分钟**。
+
+## 一条方法论提醒
+
+本轮有**七个**从代码或数据推理得出、听起来完全合理、却被实测推翻的机制假设：
+势函数偏向 WAIT、对手堵死逃生路、高估导致 WAIT、容量不足、预算是最大杠杆、
+塑形能把 5.0 传回放弹动作、震荡是在最优附近打转。**共同点都是先有故事、后有数据。**
+
+有效的做法一直是反过来：`v2`/`v3` 之所以成功，是先量出了 94.4% 这个具体数字才动手；
+A07 之所以能干净地关闭，是先量出了 0.02% 的边际转化率。
+**提假设可以，但在数据之前不要写进结论，也不要据此设计实验。**
