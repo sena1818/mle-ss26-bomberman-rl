@@ -42,7 +42,7 @@ REWARD_VERSIONS = frozenset({"A00", "A01", "A02", "A03", "A05", "A06", "A07"})
 # parameter, so a finished run's snapshot names the exact schedule it saw --
 # the same discipline as A00--A06 and R02_1--R02_3.
 EXPLORATION_VERSIONS = frozenset({"E00", "E01", "E02", "E03", "E04", "E05", "E06", "E07", "E08",
-                                  "E09", "E10"})
+                                  "E09", "E10", "E11"})
 # How a curriculum indexes its exploration schedule.  A curriculum segment is a
 # separate game process whose round counter restarts at 1, so the schedule needs
 # an explicit choice instead of an accidental one.
@@ -202,6 +202,23 @@ EXPLORATION_SCHEDULES = {
         "final_epsilon": 0.05,
         "description": "E09 with the start lowered to 0.20; hold and anneal lengths are"
                        " unchanged (warm start from a behaviour-cloned policy)",
+    },
+    # E11 exists for a *second* training stage that continues an already-trained
+    # model.  Every E02-family arm ends at epsilon 0.05 and holds it; a second
+    # stage that started a hold-then-anneal schedule over again would spend its
+    # first hundreds of rounds at 0.30, which is not "continue training on a new
+    # task" but "partially unlearn the policy and retrain it".  0.05 is not a new
+    # number: it is the floor the first stage was already running at, so the
+    # scenario is the only thing that changes at the seam.
+    #
+    # It is a schedule rather than E00 because E00 returns the *route's* epsilon
+    # field (0.15 on every M3 route) and there is no environment variable for
+    # that field, so E00 cannot express 0.05 without a new route.
+    "E11": {
+        "kind": "constant",
+        "epsilon": 0.05,
+        "description": "epsilon is 0.05 throughout -- the floor the E02 family ends at, so a"
+                       " continuation stage explores exactly as its first stage finished",
     },
 }
 
@@ -882,6 +899,12 @@ def epsilon_for_training_round(config: ExperimentConfig, round_number: int, trai
         )
     if config.exploration_version == "E00":
         return config.epsilon
+    # Any other constant schedule states its epsilon in the catalogue rather than
+    # reading the route's field, which is what lets a continuation stage declare
+    # a floor the route never mentions.  E00 keeps its own branch above so that
+    # every arm run before this existed takes the identical code path.
+    if EXPLORATION_SCHEDULES.get(config.exploration_version, {}).get("kind") == "constant":
+        return float(EXPLORATION_SCHEDULES[config.exploration_version]["epsilon"])
     if EXPLORATION_SCHEDULES.get(config.exploration_version, {}).get("kind") == "hold_then_linear_steps":
         raise ValueError(
             f"{config.exploration_version} is a step-counted schedule; "

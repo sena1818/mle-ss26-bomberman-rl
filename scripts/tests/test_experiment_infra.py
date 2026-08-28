@@ -28,7 +28,8 @@ from agent_code.research_agent.config import (  # noqa: E402
     epsilon_for_training_round,
 )
 from experiment_lib import ROOT, ConfigError, Experiment, resolved_runtime_config, verify_job_provenance, write_json  # noqa: E402
-from run_experiment import _archive_failed_attempt, build_jobs, execute_phase, load_context  # noqa: E402
+from run_experiment import (  # noqa: E402
+    _archive_failed_attempt, _publish_segment_checkpoints, build_jobs, execute_phase, load_context)
 
 
 def config(route: str = "R01", reward_version: str = "A00", exploration_version: str = "E00") -> dict:
@@ -716,6 +717,82 @@ class CurriculumAnnealTest(unittest.TestCase):
         self.assertEqual(experiment.snapshot()["curriculum"]["anneal_mode"], "per_segment")
 
 
+class CurriculumCheckpointsAreWhereEvaluationLooksTest(unittest.TestCase):
+    """A warm-started arm has to be sweepable by checkpoint, like any other.
+
+    ``build_jobs`` addresses periodic checkpoints at ``jobs/<train job>/agent/
+    checkpoints`` for every arm.  A curriculum job runs each segment in its own
+    artifact directory, so its checkpoints landed under ``segments/<id>/agent/
+    checkpoints`` and the two paths never met: ``checkpoint_evaluation`` modes
+    ``all`` and ``rounds`` found nothing and the run failed in its evaluation
+    phase.  The two-stage fine-tuning arm is the first to need both at once.
+    """
+
+    def _checkpoint(self, directory: Path, round_number: int, updates: int) -> Path:
+        directory.mkdir(parents=True, exist_ok=True)
+        path = directory / f"R02_9_A06_classic_seed1001_round{round_number:05d}_updates{updates:08d}.npz"
+        path.write_bytes(b"not really a checkpoint")
+        return path
+
+    def test_a_single_segment_publishes_under_the_unchanged_round_number(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            job_dir = Path(temporary) / "jobs" / "train_seed1001"
+            segment = job_dir / "segments" / "segment01_classic"
+            for round_number in (250, 500):
+                self._checkpoint(segment / "agent" / "checkpoints", round_number, round_number * 40)
+            published = _publish_segment_checkpoints(segment, job_dir, rounds_before=0)
+            self.assertEqual(published, 2)
+            names = sorted(path.name for path in (job_dir / "agent" / "checkpoints").glob("*.npz"))
+            self.assertEqual([name.split("_round")[1][:5] for name in names], ["00250", "00500"])
+
+    def test_a_later_segment_is_renumbered_to_the_cumulative_round(self):
+        """The round the evaluation job asks for counts the whole curriculum."""
+        with tempfile.TemporaryDirectory() as temporary:
+            job_dir = Path(temporary) / "jobs" / "train_seed1001"
+            for index, (scenario, before) in enumerate(
+                    (("classic", 0), ("loot_crate", 500)), start=1):
+                segment = job_dir / "segments" / f"segment{index:02d}_{scenario}"
+                for local in (250, 500):
+                    self._checkpoint(segment / "agent" / "checkpoints", local, local * 40)
+                _publish_segment_checkpoints(segment, job_dir, rounds_before=before)
+            names = sorted(path.name for path in (job_dir / "agent" / "checkpoints").glob("*.npz"))
+            self.assertEqual([name.split("_round")[1][:5] for name in names],
+                             ["00250", "00500", "00750", "01000"])
+
+    def test_two_segments_claiming_one_round_is_an_error_not_a_silent_overwrite(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            job_dir = Path(temporary) / "jobs" / "train_seed1001"
+            for index in (1, 2):
+                segment = job_dir / "segments" / f"segment{index:02d}_classic"
+                self._checkpoint(segment / "agent" / "checkpoints", 250, 10000)
+                if index == 1:
+                    _publish_segment_checkpoints(segment, job_dir, rounds_before=0)
+                    continue
+                with self.assertRaises(RuntimeError):
+                    _publish_segment_checkpoints(segment, job_dir, rounds_before=0)
+
+    def test_the_published_path_is_the_one_build_jobs_will_search(self):
+        """Bind the two sides together so a rename on either fails here."""
+        with tempfile.TemporaryDirectory() as temporary:
+            payload = curriculum_config()
+            payload["checkpoint_evaluation"] = {"mode": "all", "validation_seeds": [21, 22]}
+            path = Path(temporary) / "config.json"
+            write_json(path, payload)
+            experiment = Experiment.load(path)
+            jobs = build_jobs(experiment, Path(temporary) / "run")
+            searched = {job["checkpoint_search_relpath"] for job in jobs
+                        if job.get("checkpoint_search_relpath")}
+            self.assertEqual(searched, {"jobs/train_seed11/agent/checkpoints",
+                                        "jobs/train_seed12/agent/checkpoints"})
+
+            job_dir = Path(temporary) / "run" / "jobs" / "train_seed11"
+            segment = job_dir / "segments" / "segment01_classic"
+            self._checkpoint(segment / "agent" / "checkpoints", 2, 80)
+            _publish_segment_checkpoints(segment, job_dir, rounds_before=0)
+            relative = (job_dir / "agent" / "checkpoints").relative_to(Path(temporary) / "run")
+            self.assertIn(str(relative), searched)
+
+
 class TerminalOnTruncationDeclarationTest(unittest.TestCase):
     def test_the_flag_defaults_to_false_and_reaches_the_runtime_snapshot(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -814,6 +891,11 @@ class DeclaredAxesReachTheAgentTest(unittest.TestCase):
         "n_step": "BOMBERMAN_N_STEP",
         "terminal_on_truncation": "BOMBERMAN_TERMINAL_ON_TRUNCATION",
         "replay": "BOMBERMAN_REPLAY",
+        # The step-size *level* is an experiment axis for the same reason the
+        # schedule is (agent.learning_rate, section 7.24), and a continuation
+        # stage is the first arm that relies on it while also changing route
+        # defaults, so it is guarded here rather than assumed.
+        "learning_rate": "BOMBERMAN_LEARNING_RATE",
     }
 
     def test_the_runner_exports_every_axis_in_every_environment_block(self):
@@ -852,6 +934,19 @@ class DeclaredAxesReachTheAgentTest(unittest.TestCase):
             with patch.dict(os.environ, {"BOMBERMAN_EXPERIMENT": "R02_8", variable: value}, clear=False):
                 self.assertEqual(getattr(active_config(), attribute), value,
                                  f"{variable} did not reach the agent's config")
+        # The step size is a float, so it needs its own round trip rather than
+        # a string comparison.  A continuation stage declares 1e-4 against a
+        # route whose own field is 5e-4; if that did not cross, the arm would
+        # fine-tune at five times the intended rate and look like a scenario
+        # effect.
+        with patch.dict(os.environ,
+                        {"BOMBERMAN_EXPERIMENT": "R02_9", "BOMBERMAN_LEARNING_RATE": "0.0001"},
+                        clear=False):
+            self.assertEqual(active_config().learning_rate, 1e-4)
+        with patch.dict(os.environ, {"BOMBERMAN_EXPERIMENT": "R02_9"}, clear=False):
+            os.environ.pop("BOMBERMAN_LEARNING_RATE", None)
+            self.assertEqual(active_config().learning_rate, 5e-4,
+                             "an undeclared step size must fall back to the route's own")
 
 
 class AbsoluteExplorationScheduleTest(unittest.TestCase):

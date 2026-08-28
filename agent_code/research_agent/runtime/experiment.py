@@ -626,6 +626,12 @@ class ExperimentRuntime:
         A constant schedule (L00) is left strictly alone rather than reassigned
         to the same value, so every arm run before the schedule existed keeps
         the identical code path and stays bit-comparable.
+
+        The round offset is applied here for the same reason epsilon applies it:
+        a curriculum segment is a separate process whose round counter restarts
+        at 1, so without it a segmented run would replay the start of the decay
+        inside every segment.  No finished run is affected -- every curriculum
+        arm so far ran L00, which returns above.
         """
         if not self.train or self.model is None:
             return
@@ -633,7 +639,7 @@ class ExperimentRuntime:
             return
         self.model.learning_rate = learning_rate_for_training_round(
             self.config,
-            round_number=self.round_number,
+            round_number=self._round_offset() + self.round_number,
             training_rounds=self._training_rounds(),
         )
 

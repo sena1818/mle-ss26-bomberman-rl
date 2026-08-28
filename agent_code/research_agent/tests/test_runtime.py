@@ -521,7 +521,7 @@ class ExperimentRuntimeTest(unittest.TestCase):
         self.assertEqual(
             EXPLORATION_VERSIONS,
             frozenset({"E00", "E01", "E02", "E03", "E04", "E05", "E06", "E07", "E08",
-                       "E09", "E10"}),
+                       "E09", "E10", "E11"}),
         )
         self.assertEqual(exploration_specification("E01")["hold_fraction"], 0.20)
         # 500 rounds: 1--100 at 0.30, then decay to exactly 0.05 at round 500.
@@ -654,12 +654,38 @@ class ColdAndWarmStartScheduleTest(unittest.TestCase):
 
     def test_every_earlier_schedule_starts_at_the_same_epsilon(self):
         """The fact that makes E07 necessary rather than a preference."""
+        # E00 and E11 are constants and have no start to compare; E07--E10 are
+        # the deep line's own cold and warm starts, which is what this test is
+        # about.  Everything else is a first-stage schedule for a shallow model.
         starts = {
             name: schedule.get("initial_epsilon")
             for name, schedule in EXPLORATION_SCHEDULES.items()
-            if name not in {"E00", "E07", "E08", "E09", "E10"}
+            if name not in {"E00", "E07", "E08", "E09", "E10", "E11"}
         }
         self.assertEqual(set(starts.values()), {0.30})
+
+    def test_e11_continues_at_the_floor_its_first_stage_ended_on(self):
+        """A continuation stage must not restart the exploration schedule.
+
+        The number is not free: every E02-family arm anneals to 0.05 and holds
+        there, so a second stage that warm-starts one of those checkpoints has
+        to be handed the same 0.05 or the seam itself changes the policy.  E00
+        cannot express it -- it returns the route's own epsilon field (0.15 on
+        every M3 route), which no environment variable overrides.
+        """
+        floors = {name: schedule["final_epsilon"]
+                  for name, schedule in EXPLORATION_SCHEDULES.items()
+                  if name in {"E02", "E03", "E04", "E06"}}
+        self.assertEqual(EXPLORATION_SCHEDULES["E11"]["epsilon"], 0.05)
+        self.assertEqual(set(floors.values()) - {0.10}, {0.05})
+        config = replace(active_config(), exploration_version="E11")
+        for round_number in (1, 2, 1500, 3000):
+            self.assertEqual(epsilon_for_training_round(config, round_number, 3000), 0.05)
+        # E00 still reads the route field, unchanged, on the same code path.
+        self.assertEqual(
+            epsilon_for_training_round(replace(config, exploration_version="E00"), 1, 3000),
+            config.epsilon,
+        )
 
     def test_e07_holds_at_one_then_reaches_the_floor_on_schedule(self):
         config = replace(active_config(), exploration_version="E07")

@@ -101,8 +101,11 @@ IMPLEMENTED_ROUTES = {
     "R02_9": {
         "lines": ("M3",),
         "declaration": ("mlp_q", "double_dqn", "handcrafted_v3"),
+        # E11 is opened here and nowhere else: it is the continuation floor for a
+        # second training stage warm-started from an R02_9 checkpoint, and R02_9
+        # is the only route that has such a checkpoint to continue from.
+        "exploration_versions": {"E00", "E01", "E02", "E03", "E04", "E05", "E06", "E11"},
         "reward_versions": _VECTOR_REWARD_VERSIONS,
-        "exploration_versions": {"E00", "E01", "E02", "E03", "E04", "E05", "E06"},
     },
     "R07": {
         "lines": ("M4",),

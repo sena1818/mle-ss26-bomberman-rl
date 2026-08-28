@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import secrets
 import shutil
 import subprocess
@@ -396,6 +397,51 @@ def _combine_training_stats(segment_stats: list[tuple[str, Path]], agent_name: s
     return {"by_agent": {agent_name: by_agent}, "by_round": by_round}
 
 
+_CHECKPOINT_ROUND = re.compile(r"_round(\d{5})_")
+
+
+def _publish_segment_checkpoints(segment_dir: Path, job_dir: Path, rounds_before: int) -> int:
+    """Copy one segment's checkpoints to where every other tool looks for them.
+
+    A curriculum segment is its own game process writing into its own artifact
+    directory, so its checkpoints land under ``segments/<id>/agent/checkpoints``
+    while ``build_jobs`` addresses checkpoints at ``<job>/agent/checkpoints`` --
+    the path a non-curriculum training job writes.  Nothing reconciled the two,
+    so ``checkpoint_evaluation`` modes ``all`` and ``rounds`` found no
+    checkpoints at all for a warm-started arm and the run died in its evaluation
+    phase.  Publishing here keeps one canonical location for the aggregator, the
+    repeat-measurement scaffolding and any later reader.
+
+    The round number in the name is rewritten to the *cumulative* round, because
+    that is the number the evaluation jobs were prepared against: the segment
+    process counts from 1 again, but the budget those jobs were expanded from is
+    the whole curriculum.  With a single segment the two coincide and the name is
+    unchanged.  The ``updates`` field stays per-segment and is not read by
+    anything; only the round is addressable.
+    """
+    source = segment_dir / "agent" / "checkpoints"
+    if not source.is_dir():
+        return 0
+    destination = job_dir / "agent" / "checkpoints"
+    destination.mkdir(parents=True, exist_ok=True)
+    published = 0
+    for checkpoint in sorted(source.glob("*.npz")):
+        match = _CHECKPOINT_ROUND.search(checkpoint.name)
+        if match is None:
+            raise RuntimeError(f"Checkpoint name has no round field: {checkpoint}")
+        cumulative = rounds_before + int(match.group(1))
+        name = _CHECKPOINT_ROUND.sub(f"_round{cumulative:05d}_", checkpoint.name, count=1)
+        target = destination / name
+        if target.exists():
+            raise RuntimeError(
+                f"Two curriculum segments both published round {cumulative}: {target}. "
+                "Segment round offsets are wrong."
+            )
+        shutil.copy2(checkpoint, target)
+        published += 1
+    return published
+
+
 def execute_curriculum_job(run_dir: Path, job: dict, experiment: Experiment, job_dir: Path, *, keep_runtime: bool = False) -> None:
     """Continue one model through a frozen sequence of private scenario segments."""
     input_model = Path(job["input_model_path"])
@@ -404,6 +450,7 @@ def execute_curriculum_job(run_dir: Path, job: dict, experiment: Experiment, job
     manifest: list[dict] = []
     stats: list[tuple[str, Path]] = []
     previous_model = input_model
+    rounds_before = 0
     try:
         for index, segment in enumerate(job["curriculum"]["segments"], start=1):
             segment_id = f"segment{index:02d}_{segment['scenario'].replace('-', '_')}"
@@ -429,9 +476,13 @@ def execute_curriculum_job(run_dir: Path, job: dict, experiment: Experiment, job
             if not output_model.is_file():
                 raise FileNotFoundError(f"Curriculum segment did not produce latest_model.npz: {output_model}")
             record["output_sha256"] = _sha256(output_model)
+            record["rounds_before"] = rounds_before
+            record["published_checkpoints"] = _publish_segment_checkpoints(
+                segment_dir, job_dir, rounds_before)
             manifest.append(record)
             stats.append((segment_id, stats_path))
             previous_model = output_model
+            rounds_before += int(segment["rounds"])
     except (FileNotFoundError, subprocess.CalledProcessError):
         raise
     final_model = job_dir / "agent" / "latest_model.npz"
