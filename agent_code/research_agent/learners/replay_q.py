@@ -1,4 +1,4 @@
-"""Replay-based Q-learning with a target network: DQN and Double DQN.
+"""Replay-based Q-learning with a target network: DQN, Double DQN and C51.
 
 Used by the M2 replay arm, the M3 replay arm and the whole M4 line.  Which of
 the two targets is computed is decided by ``config.algorithm``:
@@ -36,6 +36,15 @@ class ReplayQLearner:
         self.settings = config.replay
         self.model = model
         self.target_model = model.clone()
+        # A distributional head regresses a whole probability vector, so it has
+        # its own target construction and its own loss.  Detected from the model
+        # rather than from the config so a mismatched pair fails here instead of
+        # training a scalar target into a categorical head.
+        self.distributional = hasattr(model, "project_targets")
+        if self.distributional != (config.network == "categorical_mlp_q"):
+            raise TypeError(
+                f"Route {config.name} declares network {config.network!r} but was handed a "
+                f"{type(model).__name__}; the target construction would not match the head.")
         board_size, quantisation = quantised_board_spec(config.state_encoder)
         self.buffer = ReplayBuffer(
             self.settings.capacity,
@@ -93,9 +102,19 @@ class ReplayQLearner:
         batch = self.buffer.sample(self.settings.batch_size, beta=beta)
         if self.settings.augmentation == "d4":
             batch = self._augment(batch)
-        targets = self._targets(batch)
-        td_errors = self.model.fit_batch(
-            batch["states"], batch["action_indices"], targets, weights=batch["weights"])
+        if self.distributional:
+            target_probabilities = self._categorical_targets(batch)
+            errors = self.model.fit_batch_distribution(
+                batch["states"], batch["action_indices"], target_probabilities,
+                weights=batch["weights"])
+            # The expectation of the target distribution, so that mean_target
+            # means the same thing here as in every scalar arm.
+            targets = target_probabilities @ self.model.support
+            td_errors = errors
+        else:
+            targets = self._targets(batch)
+            td_errors = self.model.fit_batch(
+                batch["states"], batch["action_indices"], targets, weights=batch["weights"])
         self.buffer.update_priorities(batch["indices"], td_errors)
         self.gradient_steps += 1
         synchronised = self.gradient_steps % self.settings.target_update_every == 0
@@ -157,6 +176,30 @@ class ReplayQLearner:
         continues = ~batch["terminals"]
         next_value = np.where(continues, next_value, 0.0)
         return batch["rewards"] + batch["discounts"] * next_value
+
+    def _categorical_targets(self, batch: dict[str, np.ndarray]) -> np.ndarray:
+        """Return the projected target distribution for one sampled batch.
+
+        The action whose distribution is bootstrapped is chosen exactly the way
+        the scalar arms choose it -- by expected value, masked to legal actions,
+        with Double DQN selecting on the online network and evaluating on the
+        target one.  Only *what* is carried back differs: the whole distribution
+        of the chosen action rather than its mean.
+        """
+        masks = batch["next_legal_masks"]
+        next_probabilities = self.target_model.distribution_batch(batch["next_states"])
+        if self.config.algorithm == "double_dqn":
+            selector = self.model.q_values_batch(batch["next_states"])
+        elif self.config.algorithm == "q_learning":
+            selector = next_probabilities @ self.model.support
+        else:
+            raise NotImplementedError(
+                f"ReplayQLearner does not implement algorithm {self.config.algorithm!r}.")
+        chosen = np.argmax(np.where(masks, selector, -np.inf), axis=1)
+        rows = np.arange(len(chosen))
+        return self.model.project_targets(
+            batch["rewards"], batch["discounts"], batch["terminals"],
+            next_probabilities[rows, chosen])
 
     def _augment(self, batch: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
         """Relabel each sampled transition under a random board symmetry.

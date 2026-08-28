@@ -30,6 +30,15 @@ def build_model(config: ExperimentConfig, input_dim: int, *, seed: int) -> QMode
             input_dim, config.hidden_layers, seed=seed, learning_rate=config.learning_rate,
             optimizer=config.optimizer, td_loss=config.td_loss, gradient_clip_norm=config.gradient_clip_norm,
         )
+    if config.network == "categorical_mlp_q":
+        from .categorical_mlp_q import CategoricalMLPQModel
+
+        return CategoricalMLPQModel(
+            input_dim, config.hidden_layers, seed=seed, learning_rate=config.learning_rate,
+            atoms=config.atoms, value_min=config.value_min, value_max=config.value_max,
+            optimizer=config.optimizer, td_loss=config.td_loss,
+            gradient_clip_norm=config.gradient_clip_norm,
+        )
     if config.network in _CNN_NETWORKS:
         from .cnn_mlp_q import CnnMlpQModel
 
@@ -64,6 +73,24 @@ def load_model(config: ExperimentConfig, path: Path) -> QModel:
                 f"Checkpoint {path} has hidden layers {model.layer_sizes[1:-1]}, "
                 f"but {config.name} declares {tuple(config.hidden_layers)}."
             )
+        return model
+    if config.network == "categorical_mlp_q":
+        from .categorical_mlp_q import CategoricalMLPQModel
+
+        model = CategoricalMLPQModel.load(
+            path, learning_rate=config.learning_rate, optimizer=config.optimizer,
+            td_loss=config.td_loss, gradient_clip_norm=config.gradient_clip_norm)
+        if model.layer_sizes[1:-1] != tuple(config.hidden_layers):
+            raise ValueError(
+                f"Checkpoint {path} has hidden layers {model.layer_sizes[1:-1]}, "
+                f"but {config.name} declares {tuple(config.hidden_layers)}.")
+        if (model.atoms, model.value_min, model.value_max) != (
+                config.atoms, config.value_min, config.value_max):
+            raise ValueError(
+                f"Checkpoint {path} has support ({model.atoms} atoms, "
+                f"[{model.value_min}, {model.value_max}]) but {config.name} declares "
+                f"({config.atoms} atoms, [{config.value_min}, {config.value_max}]); "
+                "the same weights mean different values on a different support.")
         return model
     if config.network in _CNN_NETWORKS:
         from .cnn_mlp_q import CnnMlpQModel

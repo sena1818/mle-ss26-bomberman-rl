@@ -479,6 +479,13 @@ class ExperimentConfig:
     learning_rate_schedule: str = "L00"
     td_loss: str = "mse"
     gradient_clip_norm: float | None = None
+    # The fixed value support of a distributional (C51) head, ignored by every
+    # scalar network.  It is a route field because a support that does not cover
+    # the returns the environment produces silently clips every target outside
+    # it, which makes it part of the agent design rather than a tuning knob.
+    atoms: int = 51
+    value_min: float = -2.0
+    value_max: float = 12.0
 
 
 EXPERIMENTS = {
@@ -750,6 +757,40 @@ EXPERIMENTS = {
         td_loss="huber",
         gradient_clip_norm=10.0,
     ),
+    # R02_10 is R02_9 with a distributional value head.  It is a separate route
+    # rather than a flag because C51 changes the model's output shape and its
+    # loss together -- that is what C51 is -- so a finished run's declaration has
+    # to name the head it actually trained.  Everything else is R02_9's.
+    #
+    # The support is measured, not chosen for roundness.  R02_9's own batch-mean
+    # TD targets run from -0.29 to 3.57 over 14,699 training rounds, and a single
+    # target can reach roughly 12 when a five-step window collects coins and a
+    # kill together.  [-2, 12] over 51 atoms puts the resolution (0.28) where the
+    # mass is and leaves the tails inside the grid.
+    "R02_10": ExperimentConfig(
+        name="R02_10",
+        lines=("M3",),
+        state_encoder="handcrafted_v3",
+        network="categorical_mlp_q",
+        algorithm="double_dqn",
+        learning_rate=5e-4,
+        discount=0.95,
+        epsilon=0.15,
+        safety_filter="legality_only",
+        feature_version="handcrafted_v3",
+        reward_version=REWARD_VERSION,
+        exploration_version=EXPLORATION_VERSION,
+        terminal_on_truncation=TERMINAL_ON_TRUNCATION,
+        hidden_layers=(128, 64),
+        replay=ReplayConfig(),
+        learning_rate_schedule="L01",
+        optimizer="adam",
+        td_loss="cross_entropy",
+        gradient_clip_norm=10.0,
+        atoms=51,
+        value_min=-2.0,
+        value_max=12.0,
+    ),
     "R07": ExperimentConfig(
         name="R07",
         lines=("M4",),
@@ -1014,12 +1055,32 @@ def learning_rate_specification(schedule_version: str) -> dict:
 
 def validate_config(config: ExperimentConfig) -> ExperimentConfig:
     """Fail closed on a combination no learner or model adapter implements."""
+    from .models.base import SUPPORTED_TD_LOSSES
     if config.n_step < 1:
         raise ValueError(f"n_step must be at least 1, got {config.n_step}.")
+    distributional = config.network == "categorical_mlp_q"
+    if distributional:
+        if config.td_loss != "cross_entropy":
+            raise ValueError(
+                "A categorical head is trained by cross-entropy; "
+                f"{config.name} declares td_loss {config.td_loss!r}.")
+        if config.replay is None:
+            raise ValueError(
+                "A categorical head needs the batch learner: it has no online "
+                "single-transition update, so a replay block must be declared.")
+        if config.atoms < 2 or not config.value_max > config.value_min:
+            raise ValueError(
+                "A categorical head needs at least two atoms and value_max > value_min.")
+    elif config.td_loss == "cross_entropy":
+        raise ValueError(
+            f"td_loss 'cross_entropy' is the distributional head's loss, but "
+            f"{config.name} declares network {config.network!r}.")
     if config.optimizer not in {"sgd", "adam"}:
         raise ValueError(f"optimizer must be 'sgd' or 'adam', got {config.optimizer!r}.")
-    if config.td_loss not in {"mse", "huber"}:
-        raise ValueError(f"td_loss must be 'mse' or 'huber', got {config.td_loss!r}.")
+    # The set of losses lives in models.base so the adapters and this validator
+    # cannot drift; which of them a given head may declare is checked above.
+    if config.td_loss not in SUPPORTED_TD_LOSSES:
+        raise ValueError(f"td_loss must be one of {sorted(SUPPORTED_TD_LOSSES)}, got {config.td_loss!r}.")
     if config.gradient_clip_norm is not None and config.gradient_clip_norm <= 0:
         raise ValueError("gradient_clip_norm must be positive when declared.")
     if config.algorithm == "double_dqn" and config.replay is None:

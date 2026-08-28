@@ -29,10 +29,16 @@ class MLPQModel:
         optimizer: str = "sgd",
         td_loss: str = "mse",
         gradient_clip_norm: float | None = None,
+        output_dim: int | None = None,
     ):
         if input_dim < 1 or not hidden_layers or any(width < 1 for width in hidden_layers):
             raise ValueError("MLPQModel requires a positive input dimension and non-empty positive hidden layers.")
-        self.layer_sizes = (int(input_dim), *(int(width) for width in hidden_layers), len(ACTIONS))
+        # ``output_dim`` exists for the distributional head, which predicts
+        # ``actions * atoms`` numbers rather than one per action.  Everything
+        # below the head -- initialization, backprop, Adam, clipping -- is the
+        # same arithmetic, so the subclass widens the head instead of copying it.
+        width = len(ACTIONS) if output_dim is None else int(output_dim)
+        self.layer_sizes = (int(input_dim), *(int(width_) for width_ in hidden_layers), width)
         generator = np.random.default_rng(seed)
         self.weights: list[np.ndarray] = []
         self.biases: list[np.ndarray] = []

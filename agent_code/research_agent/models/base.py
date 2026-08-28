@@ -45,7 +45,11 @@ class QModel(Protocol):
 # CNN accepted only what it happened to hardcode, and neither could tell you
 # which values were supported without reading both.  One place, one answer.
 SUPPORTED_OPTIMIZERS = frozenset({"sgd", "adam"})
-SUPPORTED_TD_LOSSES = frozenset({"mse", "huber"})
+# "cross_entropy" belongs to the distributional head only: C51 regresses a
+# probability vector onto a projected target distribution, so a squared or Huber
+# error over a scalar has nothing to apply to.  Declared rather than implied, so
+# a run snapshot says which loss actually ran.
+SUPPORTED_TD_LOSSES = frozenset({"mse", "huber", "cross_entropy"})
 
 
 def validate_training_declarations(optimizer: str, td_loss: str,

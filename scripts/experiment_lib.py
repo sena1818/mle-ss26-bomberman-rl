@@ -107,6 +107,15 @@ IMPLEMENTED_ROUTES = {
         "exploration_versions": {"E00", "E01", "E02", "E03", "E04", "E05", "E06", "E11"},
         "reward_versions": _VECTOR_REWARD_VERSIONS,
     },
+    # R02_10 is R02_9 with a distributional (C51) value head.  It opens the same
+    # exploration versions so it can be run on the schedule R02_9 was run on and
+    # differ in the head alone.
+    "R02_10": {
+        "lines": ("M3",),
+        "declaration": ("categorical_mlp_q", "double_dqn", "handcrafted_v3"),
+        "reward_versions": _VECTOR_REWARD_VERSIONS,
+        "exploration_versions": {"E00", "E01", "E02", "E03", "E04", "E05", "E06", "E11"},
+    },
     "R07": {
         "lines": ("M4",),
         "declaration": ("cnn_mlp_q", "double_dqn", "board_egocentric_v2"),
@@ -142,7 +151,7 @@ _RUNTIME_IGNORED = shutil.ignore_patterns("__pycache__", "*.pyc", "tests", "arti
 # ``dqn`` is absent on purpose -- classic DQN is ``q_learning`` plus a declared
 # ``replay`` block, so having both would let one setup be spelled two ways.
 DECLARATIVE_ROUTE_VALUES = {
-    "model": {"linear_q", "mlp_q", "cnn_q", "cnn_mlp_q", "dueling_cnn_mlp_q"},
+    "model": {"linear_q", "mlp_q", "categorical_mlp_q", "cnn_q", "cnn_mlp_q", "dueling_cnn_mlp_q"},
     "algorithm": {"q_learning", "sarsa", "double_dqn"},
     "state_representation": {
         "handcrafted_v1", "handcrafted_v2", "handcrafted_v3",

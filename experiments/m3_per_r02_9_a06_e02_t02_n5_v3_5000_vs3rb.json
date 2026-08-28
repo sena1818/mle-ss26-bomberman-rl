@@ -1,0 +1,150 @@
+{
+  "_design_note": "Prioritized experience replay (Schaul et al. 2016) as the only changed field: agent.replay.sampling uniform -> prioritized. The motivation is measured rather than general. KILLED_OPPONENT is 1.7% of the positive reward this agent sees and 191 times rarer than a coin (section 7.27.2), and prioritization exists for exactly that -- replaying the transitions whose TD error says the value function was surprised, instead of the ones that happen to be numerous. Beta anneals 0.4 -> 1.0 over 513,000 gradient steps, which is the measured gradient-step count of a 5000-round arm on this recipe, so the bias correction finishes as training finishes.",
+  "_predeclared_design_numbers": {
+    "changed_factor": "agent.replay.sampling: uniform -> prioritized. Every other field is R02_9's.",
+    "control": "runs/m3_lr_decay_5000_vs3rb_20260827/ (R02_9), ten repeats of the holdout classic_versus_opponents suite: score 3.6371, sd 0.1214, coins_share 0.3449. This arm's config is that config with one field changed.",
+    "falsification": "Indistinguishable from R02_9 on the tournament suite over ten repeats closes prioritized replay on this line. A drop closes it more firmly: the arm would then be paying variance for a rarity that is not the bottleneck.",
+    "prediction": "Faster early learning on the loot-crate primary curve. On the tournament score the prediction is weak and stated as such: section 7.32 measured that the agent already values kills correctly -- 0.562 a round against an opponent that does not dodge -- so prioritization would be speeding up something already learned. The budget is also closed at 5000 rounds (section 7.30.4), which is where sample efficiency would otherwise cash out.",
+    "reporting": "All five training-seed distributions, coins_share and suicides beside every score, and the learning curve on the loot-crate primary suite. Every score names its scenario and whether opponents were present.",
+    "resolution_tournament": "Two arms measured once each need a gap of 0.246 on the tournament suite (section 7.20.2). The quoted comparison is ten repeats per arm of the same fifteen holdout jobs, Welch, |t| > 2.3.",
+    "the_mechanism_check": "The learner records the live importance-sampling exponent and the batch's weights every gradient step. If mean_importance_weight is 1.0 throughout, the prioritization never engaged and the arm is void -- the section 7.29 failure, checked rather than assumed.",
+    "the_metric_that_decides_it": "Official score on classic + 3 rule_based_agent, holdout seeds, ten repeats. That is the competition setting and the only promotion metric."
+  },
+  "agent": {
+    "algorithm": "double_dqn",
+    "model": "mlp_q",
+    "n_step": 5,
+    "name": "research_agent",
+    "replay": {
+      "batch_size": 32,
+      "capacity": 50000,
+      "importance_sampling_start": 0.4,
+      "importance_sampling_steps": 513000,
+      "min_size": 1000,
+      "priority_exponent": 0.6,
+      "sampling": "prioritized",
+      "target_update_every": 500,
+      "train_every": 1
+    },
+    "state_representation": "handcrafted_v3"
+  },
+  "checkpoint_evaluation": {
+    "holdout_seeds": [
+      3001,
+      3002,
+      3003
+    ],
+    "mode": "all",
+    "validation_seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation": {
+    "budget": {
+      "checkpoint_every": 250,
+      "rounds": 30
+    },
+    "opponents": [
+      "rule_based_agent",
+      "rule_based_agent",
+      "rule_based_agent"
+    ],
+    "scenario": "loot-crate",
+    "seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation_suites": {
+    "classic_solo": {
+      "budget": {
+        "checkpoint_every": 250,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "classic_versus_opponents": {
+      "budget": {
+        "checkpoint_every": 250,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [
+        "rule_based_agent",
+        "rule_based_agent",
+        "rule_based_agent"
+      ],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    }
+  },
+  "experiment_id": "M3_PER_R02_9_A06_E02_C00_T02_n5_5000_vs3rb",
+  "exploration_version": "E02",
+  "promotion": {
+    "primary_metric": "score"
+  },
+  "reward_version": "A06",
+  "route": "R02_9",
+  "schema_version": 1,
+  "shaping": {
+    "name": "potential_v1"
+  },
+  "terminal_on_truncation": false,
+  "training": {
+    "budget": {
+      "checkpoint_every": 250,
+      "rounds": 5000
+    },
+    "opponents": [
+      "rule_based_agent",
+      "rule_based_agent",
+      "rule_based_agent"
+    ],
+    "scenario": "loot-crate",
+    "seeds": [
+      1001,
+      1002,
+      1003,
+      1004,
+      1005
+    ]
+  }
+}

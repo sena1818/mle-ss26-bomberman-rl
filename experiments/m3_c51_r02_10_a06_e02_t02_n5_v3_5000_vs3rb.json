@@ -1,0 +1,146 @@
+{
+  "_design_note": "C51 (Bellemare et al. 2017): predict the distribution of the return over 51 fixed atoms instead of its mean. Declared as route R02_10 rather than as an algorithm field because C51 changes the head's output shape and its loss together -- 6 numbers become 6x51 probabilities and Huber becomes cross-entropy -- and that pair is what C51 is. Everything else is R02_9's: handcrafted_v3, (128, 64), Double DQN action selection on the expectation, Adam, clip 10, n-step 5, the same replay block, E02 and L01.\n\nThe support is measured, not chosen for roundness. R02_9's own batch-mean TD targets run from -0.29 to 3.57 across 14,699 training rounds, and a single target reaches roughly 12 when a five-step window collects coins and a kill together. [-2, 12] over 51 atoms puts the resolution (0.28) where the mass is and leaves the tails inside the grid.",
+  "_predeclared_design_numbers": {
+    "changed_factor": "The value head: scalar Q with Huber loss -> categorical distribution over 51 atoms on [-2, 12] with cross-entropy. Route R02_9 -> R02_10, which differ in network and td_loss and nothing else.",
+    "control": "runs/m3_lr_decay_5000_vs3rb_20260827/ (R02_9), ten repeats of the holdout classic_versus_opponents suite: score 3.6371, sd 0.1214, coins_share 0.3449. This arm's config is that config with one field changed.",
+    "falsification": "Indistinguishable from R02_9 over ten repeats closes distributional value estimation on this line.",
+    "prediction": "A richer per-step training signal, which on Atari is worth more than any other single Rainbow component. The returns here are genuinely bimodal -- a round ends either in a death or in a collection run -- which is the shape a mean squashes and a distribution keeps. Stated honestly: this is a prediction about the learning signal, not a mechanism aimed at any gap this line has measured.",
+    "reporting": "All five training-seed distributions, coins_share and suicides beside every score, and the learning curve on the loot-crate primary suite. Every score names its scenario and whether opponents were present.",
+    "resolution_tournament": "Two arms measured once each need a gap of 0.246 on the tournament suite (section 7.20.2). The quoted comparison is ten repeats per arm of the same fifteen holdout jobs, Welch, |t| > 2.3.",
+    "the_mechanism_check": "Two ways this head fails quietly, both checked rather than assumed. First, the support: if the projected targets pile up on the first or last atom, the grid is clipping and the arm measures the grid rather than C51. Second, mean_target is reported as the expectation of the projected distribution, so it is comparable with every scalar arm's mean_target and a divergence shows up in the same number it always did.",
+    "the_metric_that_decides_it": "Official score on classic + 3 rule_based_agent, holdout seeds, ten repeats. That is the competition setting and the only promotion metric."
+  },
+  "agent": {
+    "algorithm": "double_dqn",
+    "model": "categorical_mlp_q",
+    "n_step": 5,
+    "name": "research_agent",
+    "replay": {
+      "batch_size": 32,
+      "capacity": 50000,
+      "min_size": 1000,
+      "target_update_every": 500,
+      "train_every": 1
+    },
+    "state_representation": "handcrafted_v3"
+  },
+  "checkpoint_evaluation": {
+    "holdout_seeds": [
+      3001,
+      3002,
+      3003
+    ],
+    "mode": "all",
+    "validation_seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation": {
+    "budget": {
+      "checkpoint_every": 250,
+      "rounds": 30
+    },
+    "opponents": [
+      "rule_based_agent",
+      "rule_based_agent",
+      "rule_based_agent"
+    ],
+    "scenario": "loot-crate",
+    "seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation_suites": {
+    "classic_solo": {
+      "budget": {
+        "checkpoint_every": 250,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "classic_versus_opponents": {
+      "budget": {
+        "checkpoint_every": 250,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [
+        "rule_based_agent",
+        "rule_based_agent",
+        "rule_based_agent"
+      ],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    }
+  },
+  "experiment_id": "M3_C51_R02_10_A06_E02_C00_T02_n5_5000_vs3rb",
+  "exploration_version": "E02",
+  "promotion": {
+    "primary_metric": "score"
+  },
+  "reward_version": "A06",
+  "route": "R02_10",
+  "schema_version": 1,
+  "shaping": {
+    "name": "potential_v1"
+  },
+  "terminal_on_truncation": false,
+  "training": {
+    "budget": {
+      "checkpoint_every": 250,
+      "rounds": 5000
+    },
+    "opponents": [
+      "rule_based_agent",
+      "rule_based_agent",
+      "rule_based_agent"
+    ],
+    "scenario": "loot-crate",
+    "seeds": [
+      1001,
+      1002,
+      1003,
+      1004,
+      1005
+    ]
+  }
+}
