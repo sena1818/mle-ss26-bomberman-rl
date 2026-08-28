@@ -90,8 +90,10 @@ export LOG_DIR="$HOME/m4_logs"
 正式排队前，用 20 回合的 smoke 证明 module / venv / REPO / provenance 全链路是通的：
 
 ```bash
-sbatch --partition=dev_cpu --time=00:20:00 --cpus-per-task=4 \
+mkdir -p "$LOG_DIR"
+sbatch --partition=dev_cpu --time=00:30:00 --cpus-per-task=8 \
        --export=ALL,REPO="$REPO",VENV="$VENV",LOG_DIR="$LOG_DIR" \
+       --output="$LOG_DIR/%x_%j.out" --error="$LOG_DIR/%x_%j.err" \
        --job-name=m4smoke scripts/slurm_m4_stage.sh smoke "$(date +%Y%m%d)"
 ```
 
@@ -113,11 +115,17 @@ sbatch --partition=dev_cpu --time=00:20:00 --cpus-per-task=4 \
 ```bash
 D=$(date +%Y%m%d)
 X="ALL,REPO=$REPO,VENV=$VENV,LOG_DIR=$LOG_DIR"
+mkdir -p "$LOG_DIR"
+# REQUIRED. SLURM writes these relative to the SUBMIT directory -- this
+# repository -- and creates them before the job runs, which makes the checkout
+# dirty and makes prepare refuse. There is no safe default, so pass them every
+# time.
+O="--output=$LOG_DIR/%x_%j.out --error=$LOG_DIR/%x_%j.err"
 
-p=$(sbatch --parsable --export=$X --job-name=m4pilot  scripts/slurm_m4_stage.sh pilot  $D)
-a=$(sbatch --parsable --export=$X --dependency=afterok:$p --job-name=m4anchor scripts/slurm_m4_stage.sh anchor $D)
-sbatch --export=$X --dependency=afterok:$a --job-name=m4lr1 scripts/slurm_m4_stage.sh lr1e4 $D
-sbatch --export=$X --dependency=afterok:$a --job-name=m4lr5 scripts/slurm_m4_stage.sh lr5e4 $D
+p=$(sbatch --parsable --export=$X $O --job-name=m4pilot  scripts/slurm_m4_stage.sh pilot  $D)
+a=$(sbatch --parsable --export=$X $O --dependency=afterok:$p --job-name=m4anchor scripts/slurm_m4_stage.sh anchor $D)
+sbatch --export=$X $O --dependency=afterok:$a --job-name=m4lr1 scripts/slurm_m4_stage.sh lr1e4 $D
+sbatch --export=$X $O --dependency=afterok:$a --job-name=m4lr5 scripts/slurm_m4_stage.sh lr5e4 $D
 ```
 
 `afterok` 就是 gate：`check_pilot.py` 失败让 SLURM job 非零退出，后面的依赖自动取消。

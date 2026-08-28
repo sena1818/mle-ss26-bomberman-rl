@@ -8,8 +8,15 @@
                                   # 192 cores/node; dev_cpu = 30 min, good for a
                                   # launch-path test before queueing a real stage
 #SBATCH --mem=32G                 # ~0.5 GB per concurrent training job, plus slack
-#SBATCH --output=%x_%j.out
-#SBATCH --error=%x_%j.err
+# NO --output/--error defaults on purpose.  SLURM writes them relative to the
+# SUBMIT directory, which is this repository, and it creates them the moment
+# the job starts -- before anything runs.  git status --porcelain counts
+# untracked files, so prepare then sees a dirty checkout and refuses.  A
+# default here would be a trap, so the submission must pass both:
+#
+#   --output="$LOG_DIR/%x_%j.out" --error="$LOG_DIR/%x_%j.err"
+#
+# The preflight below fails with the reason if anything dirties the tree.
 #
 # One SLURM job = one stage of the M4 line.  Chain them with dependencies so a
 # stage that fails its gate stops the rest:
@@ -87,6 +94,29 @@ done
 }
 
 cd "$REPO" || exit 1
+
+# The highest-probability failure, named rather than left to a generic refusal
+# three layers down: a long run requires a clean committed checkout, and the
+# easiest way to break that is to let SLURM write this job's own log into it.
+DIRT=$(git status --porcelain)
+if [ -n "$DIRT" ]; then
+    echo "REFUSING: $REPO is not a clean checkout, and prepare requires one." >&2
+    echo "$DIRT" | sed 's/^/    /' >&2
+    echo "" >&2
+    case "$DIRT" in
+        *.out*|*.err*|*slurm-*)
+            echo "  Those look like this job's own SLURM logs.  They land in the SUBMIT" >&2
+            echo "  directory, which is this repository.  Resubmit with both of:" >&2
+            echo "      --output=\"\$LOG_DIR/%x_%j.out\" --error=\"\$LOG_DIR/%x_%j.err\"" >&2
+            echo "  and delete the stray files before retrying." >&2
+            ;;
+        *)
+            echo "  Commit them, remove them, or exclude them locally, then resubmit." >&2
+            ;;
+    esac
+    exit 1
+fi
+
 JOBS="${SLURM_CPUS_PER_TASK:-8}"
 
 # The step-size decision is a gate, not a convention.  An increment submitted
