@@ -1,5 +1,8 @@
 # M4 集群执行手册
 
+> **在 bwUniCluster 3.0 上跑请看 [M4_BWUNICLUSTER.md](M4_BWUNICLUSTER.md)**，那份是当前的。
+> 本文是 scheduler-agnostic 的通用说明；§2 的臂顺序与 §0 的 benchmark 路径**曾经是旧的，已同步**。
+
 > 面向：把 M4 的臂送上计算集群的人。本机不需要跑任何东西。
 > 配方与判据见 [06 文档](06_M4学习式空间表示线设计.md)；集群通用流程见 [cluster_execution.md](cluster_execution.md)。
 
@@ -16,7 +19,7 @@ python -c "import torch; print(torch.__version__, torch.cuda.is_available())"
 
 ```bash
 python scripts/benchmark_cnn.py --rounds 10000 --steps-per-round 300 \
-    --output diagnostics/m4_throughput_<host>_<date>.json
+    --output "$LOG_DIR/m4_throughput_<host>_<date>.json"     # 仓库外！
 ```
 
 它会打印每个梯度步的完整耗时、env steps/s 和推理余量。**只有当这台机器的
@@ -71,13 +74,19 @@ nohup setsid ./scripts/run_m4_line.sh --jobs 8 --date $(date +%Y%m%d) \
 ## 2. 顺序（每一步的产物决定下一步跑不跑）
 
 ```text
-P  pilot        5000 局 ×2 seed    38 job    ~1 h    ← 必须先跑完并看 §3
-1  anchor      10000 局 ×5 seed   335 job    ~4 h/seed
-2  A03 去塑形  10000 局 ×5 seed   335 job
-3  对手暴露    10000 局 ×5 seed   335 job
-4  BC 热启动   10000 局 ×5 seed   335 job
-5  dueling     10000 局 ×5 seed   335 job
+P   pilot        5000 局 ×2 seed    38 job    ~1 h    ← 必须先跑完并看 §3
+1   anchor      10000 局 ×5 seed   335 job    ~4.4 h/seed   gate: G-A
+2a  步长 1e-4   10000 局 ×5 seed   335 job    ┐ 互相独立，可并行
+2b  步长 5e-4   10000 局 ×5 seed   335 job    ┘
+--- 强制停一次：scripts/decide_learning_rate.py --apply ---
+3   对手暴露    10000 局 ×5 seed   335 job
+4   A03 去塑形  10000 局 ×5 seed   335 job
+5   BC 热启动   10000 局 ×5 seed   335 job
+6   dueling     10000 局 ×5 seed   335 job
 ```
+
+**步长决策是硬 gate**：`slurm_m4_stage.sh` 与 `run_m4_line.sh` 都会拒绝在
+`runs/m4_anchor_<date>/learning_rate_decision.json` 不存在时跑任何增量。
 
 ## 3. pilot 的验收条件（**不过就不要开正式臂**）
 

@@ -3,9 +3,10 @@
 #SBATCH --nodes=1                 # see NOTE 1: this workload does not span nodes
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16        # -> --jobs 16; do not exceed the node's cores
-#SBATCH --time=24:00:00           # CONFIRM against the partition's limit
-#SBATCH --partition=cpu           # bwUniCluster 3.0; CONFIRM: sinfo -o "%P %l %c %m"
-                                  # 3.0 replaced 2.0's single/multiple with cpu/dev_cpu
+#SBATCH --time=24:00:00           # cpu allows up to 3-00:00:00
+#SBATCH --partition=cpu           # bwUniCluster 3.0, confirmed: cpu = 3 day limit,
+                                  # 192 cores/node; dev_cpu = 30 min, good for a
+                                  # launch-path test before queueing a real stage
 #SBATCH --mem=32G                 # ~0.5 GB per concurrent training job, plus slack
 #SBATCH --output=%x_%j.out
 #SBATCH --error=%x_%j.err
@@ -47,9 +48,16 @@ DATE="${2:?usage: sbatch scripts/slurm_m4_stage.sh <stage> <date-tag>}"
 
 # --- site-specific: CONFIRM ALL THREE before the first submission ------------
 module purge
-module load devel/python/3.11 2>/dev/null || module load python 2>/dev/null || \
-    { echo "adjust the module name: module avail python" >&2; exit 1; }
-REPO="${REPO:-$HOME/bomberman_rl}"          # a clean CLONE at a committed revision
+# Must be the SAME interpreter the venv was built with on the login node, or
+# the venv's symlinked python and the loaded module's shared libraries diverge.
+module load devel/python/3.12.3-gnu-14.2 || {
+    echo "module devel/python/3.12.3-gnu-14.2 unavailable; module avail python" >&2; exit 1; }
+# Default to the directory sbatch was invoked from, which is the repository if
+# you submit from inside it.  $HOME/bomberman_rl was the old default and is
+# wrong for the documented setup, where the clone lives in a workspace: the job
+# failed at `cd "$REPO"` with nothing having run.  Override with REPO=... if you
+# submit from somewhere else.
+REPO="${REPO:-${SLURM_SUBMIT_DIR:-$PWD}}"
 VENV="${VENV:-$REPO/.venv}"                 # created once on a LOGIN node (compute nodes have no network)
 export LOG_DIR="${LOG_DIR:-$HOME/m4_logs}"  # NOT inside $REPO: a dirty tree makes prepare refuse
 # ----------------------------------------------------------------------------
@@ -61,8 +69,59 @@ export OMP_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
 
+# Fail here, with the reason, rather than three lines later on a missing file.
+for required in "scripts/run_experiment.py" "experiments" ".git"; do
+    [ -e "$REPO/$required" ] || {
+        echo "REPO=$REPO does not look like this repository (missing $required)." >&2
+        echo "  Submit from inside the clone, or pass it explicitly:" >&2
+        echo "    sbatch --export=ALL,REPO=\"\$PWD\",VENV=\"\$PWD/.venv\",LOG_DIR=\"\$HOME/m4_logs\" \\" >&2
+        echo "           scripts/slurm_m4_stage.sh <stage> <date>" >&2
+        exit 1
+    }
+done
+[ -x "$VENV/bin/python" ] || {
+    echo "No interpreter at $VENV/bin/python. Build it on a LOGIN node:" >&2
+    echo "    module load devel/python/3.12.3-gnu-14.2" >&2
+    echo "    python -m venv .venv && .venv/bin/python -m pip install numpy tqdm torch" >&2
+    exit 1
+}
+
 cd "$REPO" || exit 1
 JOBS="${SLURM_CPUS_PER_TASK:-8}"
+
+# The step-size decision is a gate, not a convention.  An increment submitted
+# before it exists is measured against a base nobody chose -- which is the
+# mistake docs/05 section 0.20 recorded and this ordering exists to avoid.  A
+# human can always sbatch a stage directly, so the check lives here too, not
+# only in run_m4_line.sh.
+case "$STAGE" in
+  opponents|no_shaping|bc|dueling)
+    DECISION="$REPO/runs/m4_anchor_${DATE}/learning_rate_decision.json"
+    [ -f "$DECISION" ] || {
+        echo "REFUSING $STAGE: the step size has not been decided." >&2
+        echo "  Expected: $DECISION" >&2
+        echo "  Produce it with:" >&2
+        echo "    $VENV/bin/python scripts/decide_learning_rate.py \\" >&2
+        echo "        --anchor runs/m4_anchor_${DATE} \\" >&2
+        echo "        --candidate runs/m4_lr1e4_${DATE} \\" >&2
+        echo "        --candidate runs/m4_lr5e4_${DATE} --apply" >&2
+        echo "  then set agent.learning_rate in the four downstream configs and commit." >&2
+        exit 1
+    }
+    DECIDED=$("$VENV/bin/python" -c "import json,sys;print(json.load(open(sys.argv[1]))['decided_learning_rate'])" "$DECISION")
+    CONFIGURED=$("$VENV/bin/python" -c "
+import json, sys
+from pathlib import Path
+arms = ['m4_r07_a06_e09_t02opp_opponents', 'm4_r07_a03_e09_t02_no_shaping',
+        'm4_r07_a06_e10_t02_bc', 'm4_r08_a06_e09_t02_dueling']
+rates = {json.loads(Path(f'experiments/{a}.json').read_text())['agent'].get('learning_rate') for a in arms}
+if len(rates) != 1:
+    print('DISAGREE', file=sys.stderr); sys.exit(1)
+print(next(iter(rates)))
+") || { echo "REFUSING $STAGE: the four downstream configs disagree on the step size." >&2; exit 1; }
+    echo "step size: decided=$DECIDED configured=$CONFIGURED"
+    ;;
+esac
 
 echo "stage=$STAGE date=$DATE jobs=$JOBS node=$(hostname) repo=$REPO"
 git -C "$REPO" rev-parse --short HEAD
@@ -74,6 +133,7 @@ stage, date, jobs = sys.argv[1], sys.argv[2], sys.argv[3]
 # The stage table lives in run_m4_line.sh; this dispatches one of them so that
 # each SLURM job is one stage and the scheduler owns the ordering.
 config = {
+    "smoke":      "m4_r07_a06_e00_smoke",   # 20 rounds; proves the launch path only
     "pilot":      "m4_r07_a06_e09_t02_pilot",
     "anchor":     "m4_r07_a06_e09_t02_anchor",
     "lr1e4":      "m4_r07_a06_e09_t02_lr1e4",
@@ -84,6 +144,8 @@ config = {
     "dueling":    "m4_r08_a06_e09_t02_dueling",
 }[stage]
 run_id = f"m4_{stage}_{date}"
+# The smoke is 20 rounds and cannot pass a learning gate by construction; it
+# exists to prove module, venv, REPO and provenance all line up.
 gate = ["--training-only"] if stage not in {"pilot", "anchor"} else []
 steps = [
     ["scripts/run_experiment.py", "run", "--config", f"experiments/{config}.json",

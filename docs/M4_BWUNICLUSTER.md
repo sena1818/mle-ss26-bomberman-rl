@@ -25,35 +25,55 @@ ws_allocate m4 60             # 工作区（家目录配额装不下，见 §4�
 
 ## 1b. ⚠️ Lustre 与小文件
 
-bwUniCluster 3.0 的共享文件系统是 **Lustre**，而这个负载是**小文件密集**的：
-每个训练 job 每回合都往自己的 JSONL 追加一次（10,000 回合 × 5 seed），
-一个臂最终几千个文件。**如果训练明显慢于 benchmark 的预测，这是第一嫌疑。**
+bwUniCluster 3.0 的共享文件系统是 **Lustre**：文件切片摊在多台存储服务器上并行读写，
+但**所有 open / close / stat 都要问一台全集群共用的元数据服务器（MDS）**。
+大文件顺序 I/O 极快，海量小操作很慢、而且拖累别人。
+
+这个 agent **每个 action 写一条 JSONL**（不是每回合）：一个训练 job 约 **114 万条**，
+一个五 seed 的臂约 **570 万条**。
+
+**已修的部分**：句柄现在每个 job 只 open 一次（之前是每条记录 open+write+close），
+去掉了约 **1140 万次元数据操作/臂**。记录仍逐条 flush，所以读到的东西没变。
+
+**没修的部分**：写操作**没有批量化**，仍是每个 action 一次 `write + flush`。
+所以那个 logger 微基准的「快 84%」**不能外推成整条训练快 84%**——它减轻的是元数据压力，
+大量小写入仍可能拖慢吞吐。**如果实测吞吐明显低于 benchmark，这仍是第一嫌疑。**
 
 ```bash
 df -h "$TMPDIR"      # 节点本地 scratch 还剩多少
 ```
 
-缓解办法是把 run 目录放在**节点本地 scratch** 上跑，结束时 rsync 回工作区。
-我没有把这个改进直接写进脚本——它会改变产物路径与 provenance 的落盘位置，
-应该在你确认 `$TMPDIR` 容量之后再决定。**先按现在的跑 pilot，看实测吞吐再说。**
+缓解办法是把 run 目录放在**节点本地 scratch** 上跑，结束时 rsync 回工作区——
+bwHPC 官方文档明确说 `$TMPDIR` 在计算节点本地 SSD 上，并且专门建议反复访问数据的
+AI 训练用它（[Filesystem Details](https://wiki.bwhpc.de/e/BwUniCluster3.0/Hardware_and_Architecture/Filesystem_Details)）。
+
+**我没有把它自动化**，因为它会改变产物与 provenance 的落盘位置，需要 trap 保证
+作业被杀时也能把结果拷回来——那是个要写对的脚本，不是一行 `cd`。
+**先在 workspace 上跑 pilot 验证逻辑；只有实测吞吐明显偏低时才值得做这件事。**
 
 ## 2. 一次性准备（**登录节点**）
 
+**module 必须和建 venv 时用的是同一个**，否则 venv 里符号链接的解释器和作业里加载的
+共享库对不上：
+
 ```bash
-ws_allocate m4 60                       # 或你们站点的等价命令
+module load devel/python/3.12.3-gnu-14.2
+ws_allocate m4 60
 cd "$(ws_find m4)"
-git clone <your-remote> bomberman_rl && cd bomberman_rl
-git checkout <the commit you pushed>
+git clone git@github.com:sena1818/mle-ss26-bomberman-rl.git bomberman_rl
+cd bomberman_rl
 
 python -m venv .venv
 .venv/bin/python -m pip install numpy tqdm torch
 .venv/bin/python -c "import numpy, torch; print(numpy.__version__, torch.__version__)"
 
-export REPO="$PWD" VENV="$PWD/.venv" LOG_DIR="$HOME/m4_logs"
+export REPO="$PWD"
+export VENV="$PWD/.venv"
+export LOG_DIR="$HOME/m4_logs"
 ```
 
-**`.venv` 放在仓库根目录**，不要放进 job artifact 之下（runtime allowlist 有意排除它）。
-`LOG_DIR` **必须在仓库外**——写进仓库会让工作区变脏，下一次 `prepare` 直接拒绝。
+`.venv` 放仓库根目录，不要放进 job artifact 之下（runtime allowlist 有意排除它）。
+**`LOG_DIR` 必须在仓库外**——写进仓库工作区变脏，下一次 `prepare` 直接拒绝。
 
 **先实测吞吐，不要用我这台 Mac 的数字外推**：
 
@@ -63,24 +83,47 @@ export REPO="$PWD" VENV="$PWD/.venv" LOG_DIR="$HOME/m4_logs"
 ```
 
 **只有当 `gradient_step_seconds` 与 20.34 ms 同量级时，§5 的时间表才成立。**
-集群单核通常比 Apple M4 慢 1.5–2 倍，慢多少直接乘到墙钟上。
 
-## 3. 提交（每个 stage 一个 SLURM job，用依赖串起来）
+### 2b. 先用 `dev_cpu` 验证启动路径（30 分钟上限，专为这个用）
+
+正式排队前，用 20 回合的 smoke 证明 module / venv / REPO / provenance 全链路是通的：
+
+```bash
+sbatch --partition=dev_cpu --time=00:20:00 --cpus-per-task=4 \
+       --export=ALL,REPO="$REPO",VENV="$VENV",LOG_DIR="$LOG_DIR" \
+       --job-name=m4smoke scripts/slurm_m4_stage.sh smoke "$(date +%Y%m%d)"
+```
+
+它几分钟就回来。**通了再提 pilot**——`cpu` 队列现在满负荷，排队时间长，
+不值得用一次排队去发现是 module 名写错了。
+
+## 3. 提交
+
+**必须显式传路径。**`slurm_m4_stage.sh` 默认把 `SLURM_SUBMIT_DIR` 当作仓库（从 clone 里
+提交就对了），但显式传更稳，尤其是从别处提交时：
 
 ```bash
 D=$(date +%Y%m%d)
-p=$(sbatch --parsable --job-name=m4pilot  scripts/slurm_m4_stage.sh pilot  $D)
-a=$(sbatch --parsable --dependency=afterok:$p --job-name=m4anchor scripts/slurm_m4_stage.sh anchor $D)
-sbatch --dependency=afterok:$a --job-name=m4lr1 scripts/slurm_m4_stage.sh lr1e4 $D
-sbatch --dependency=afterok:$a --job-name=m4lr5 scripts/slurm_m4_stage.sh lr5e4 $D
+X="ALL,REPO=$REPO,VENV=$VENV,LOG_DIR=$LOG_DIR"
+
+p=$(sbatch --parsable --export=$X --job-name=m4pilot  scripts/slurm_m4_stage.sh pilot  $D)
+a=$(sbatch --parsable --export=$X --dependency=afterok:$p --job-name=m4anchor scripts/slurm_m4_stage.sh anchor $D)
+sbatch --export=$X --dependency=afterok:$a --job-name=m4lr1 scripts/slurm_m4_stage.sh lr1e4 $D
+sbatch --export=$X --dependency=afterok:$a --job-name=m4lr5 scripts/slurm_m4_stage.sh lr5e4 $D
 ```
 
-`afterok` 意味着**gate 不过就不往下跑**：`check_pilot.py` 失败会让 SLURM job 以非零退出，
-后面的依赖自动取消。这正是我们要的行为。
+`afterok` 就是 gate：`check_pilot.py` 失败让 SLURM job 非零退出，后面的依赖自动取消。
+`lr1e4` 与 `lr5e4` 只依赖 anchor、互相独立，队列允许就并行。
 
-`lr1e4` 与 `lr5e4` 只依赖 anchor、互相独立，**队列允许就并行**。
+**跑完这四个必须停。**步长决策:
 
-**跑完这四个就停。**步长决策见 [06 文档 §8](06_M4学习式空间表示线设计.md)。
+```bash
+.venv/bin/python scripts/decide_learning_rate.py \
+    --anchor runs/m4_anchor_$D --candidate runs/m4_lr1e4_$D --candidate runs/m4_lr5e4_$D --apply
+```
+
+然后把选中的值写进四个下游配置的 `agent.learning_rate` **并提交**。
+**`slurm_m4_stage.sh` 会拒绝**在决策文件不存在、或四个配置不一致时跑任何增量。
 
 ## 4. 三个容易踩的坑（都不是 SLURM 常识，是这个工作负载特有的）
 
