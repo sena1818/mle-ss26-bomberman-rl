@@ -200,14 +200,50 @@ def check_training_job(job_dir: Path, rows: list[dict], min_size: int | None) ->
                    " -- a run whose gradients sit on the clip is diverging, not training"),
             ))
 
-    # 5. The invariant every finished run in this project is checked against.
-    mispredictions = rows[-1].get("round_end_mispredictions") if rows else None
-    checks.append(Check(
-        f"{name}: round_end_mispredictions is zero",
-        mispredictions == 0,
-        f"final value {mispredictions} (this is a cumulative counter -- read the final"
-        " value, never the sum over rounds)",
-    ))
+    # 5. Round-end agreement, split by direction because the two are not the
+    #    same finding.  This check used to assert the TOTAL was zero, which was
+    #    stricter than the metric it was reading: round_end_reason's docstring
+    #    calls the smoke-stage approximation unavoidable, and docs/05 section
+    #    0.18 accepted 17 of them on M3.9 after confirming what they were.
+    last = rows[-1] if rows else {}
+    total = last.get("round_end_mispredictions")
+    unpredicted = last.get("round_end_unpredicted")
+    early = last.get("round_end_predicted_early")
+    reasons = last.get("round_end_predicted_early_reasons") or {}
+
+    if unpredicted is None:
+        # A run from before the split; only the conflated total exists, so the
+        # old strict reading is the only safe one.
+        checks.append(Check(
+            f"{name}: round_end_mispredictions is zero",
+            total == 0,
+            f"final value {total}; this run predates the split into predicted_early "
+            "and unpredicted, so the two directions cannot be told apart",
+        ))
+    else:
+        # The direction that is a defect: the framework ended a round the
+        # runtime did not expect, so that transition bootstrapped where it
+        # should have used target = r.
+        checks.append(Check(
+            f"{name}: no round ended without being predicted",
+            unpredicted == 0,
+            f"round_end_unpredicted = {unpredicted}"
+            + ("" if unpredicted == 0 else
+               " -- these transitions bootstrapped where they should have used target = r"),
+        ))
+        # The direction the docstring says is unavoidable.  Reported, and only
+        # accepted while it is the reason that makes it harmless.
+        off_task = {reason: count for reason, count in reasons.items() if reason != "TASK_COMPLETE"}
+        checks.append(Check(
+            f"{name}: early round-end predictions are the documented smoke approximation",
+            not off_task,
+            f"round_end_predicted_early = {early}, reasons {reasons or '{}'}"
+            + (" -- TASK_COMPLETE means nothing collectable or destructible was left and no"
+               " opponent was alive, so the true remaining return was zero and target = r was"
+               " right anyway; bounded at two steps per round by the smoke stage"
+               if not off_task else
+               f" -- {sorted(off_task)} is NOT the smoke approximation and is not covered by it"),
+        ))
 
     segments = []
     for low, high in ((1, 1000), (1001, 2000), (2001, 3000), (3001, 5000), (5001, 10000)):

@@ -236,7 +236,25 @@ class ExperimentRuntime:
         # action.  See docs/05 section 1.10.
         self._delivered_key: tuple[int, int] | None = None
         self._predicted_round_end = False
+        self._predicted_reason: str | None = None
+        # One total, kept so every published run stays comparable, plus the two
+        # directions split out.  They are not interchangeable and must not share
+        # one counter, which is the same rule ``round_end_reason`` states for
+        # TASK_COMPLETE and TRUNCATION, applied one level down:
+        #
+        #  predicted_early  the smoke-stage approximation the docstring says is
+        #                   unavoidable.  It can only fire when nothing
+        #                   collectable or destructible is left and no opponent
+        #                   is alive, so the true remaining return is zero and
+        #                   ``target = r`` was right anyway.  Bounded at two
+        #                   steps per round.
+        #  unpredicted      the framework ended a round the runtime did not
+        #                   expect.  That transition bootstrapped where it
+        #                   should have used ``target = r``.  A real defect.
         self.round_end_mispredictions = 0
+        self.round_end_predicted_early = 0
+        self.round_end_unpredicted = 0
+        self.round_end_predicted_early_reasons: dict[str, int] = {}
         # Shaping is derived from the reward version and shares the learner's
         # gamma, which is what makes the policy-invariance argument hold.
         self.shaping: PotentialShaping | None = build_shaping(config)
@@ -325,8 +343,16 @@ class ExperimentRuntime:
         elif self._predicted_round_end:
             # The previous step was predicted to end the round and did not.  Only
             # the smoke-stage approximation in ``round_end_reason`` can cause this.
+            # The predicted reason is recorded rather than assumed: the claim
+            # that this is benign rests on it being TASK_COMPLETE, where the
+            # remaining true return is zero.
             self.round_end_mispredictions += 1
-            self.logger.warning("Predicted a round end at step %s that did not happen", self._delivered_key)
+            self.round_end_predicted_early += 1
+            reason = self._predicted_reason or "unknown"
+            self.round_end_predicted_early_reasons[reason] = (
+                self.round_end_predicted_early_reasons.get(reason, 0) + 1)
+            self.logger.warning("Predicted a round end (%s) at step %s that did not happen",
+                                reason, self._delivered_key)
         if _is_unusable_action(action):
             # A timeout or a silenced agent error has no six-action index.  The
             # step is skipped rather than mapped onto an action never chosen.
@@ -350,6 +376,7 @@ class ExperimentRuntime:
         )
         self._delivered_key = (round_number, int(old_game_state["step"]))
         self._predicted_round_end = reason is not ROUND_CONTINUES
+        self._predicted_reason = None if reason is ROUND_CONTINUES else str(reason)
 
     def _is_terminal(self, reason: str | None) -> bool:
         """Map a round-end reason onto a TD target.
@@ -385,8 +412,11 @@ class ExperimentRuntime:
             # here are a superset (they add SURVIVED_ROUND), which no registered
             # reward version weights, so re-reading them would change nothing.
             if not self._predicted_round_end:
+                # The other direction, and the one that is a defect: this
+                # transition bootstrapped where it should have used target = r.
                 self.round_end_mispredictions += 1
-                self.logger.warning("Round ended at step %s without being predicted", key)
+                self.round_end_unpredicted += 1
+                self.logger.error("Round ended at step %s without being predicted", key)
         elif _is_unusable_action(last_action):
             # No six-action index, so the fatal step cannot become a target.
             self.logger.warning("Skipping a final transition with unusable action %r", last_action)
@@ -458,6 +488,9 @@ class ExperimentRuntime:
             "learner_gradient_step": self.round_last_gradient_step or None,
             "model_diagnostics": self._round_model_diagnostics(),
             "round_end_mispredictions": self.round_end_mispredictions,
+            "round_end_predicted_early": self.round_end_predicted_early,
+            "round_end_unpredicted": self.round_end_unpredicted,
+            "round_end_predicted_early_reasons": dict(self.round_end_predicted_early_reasons),
             "events": self.round_event_counts,
             "checkpoint": str(saved_checkpoint) if saved_checkpoint else None,
             "latest_model": str(latest_path),
