@@ -25,7 +25,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from experiment_lib import RUNS_ROOT  # noqa: E402
+from experiment_lib import ROOT, RUNS_ROOT  # noqa: E402
+
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+# Imported, never spelled out.  The runtime serialises this constant into the
+# round_end record; hardcoding the identifier as a string here compared
+# "TASK_COMPLETE" against the value "task_complete" and rejected every benign
+# event -- the exact opposite of what the check was written to do.
+from agent_code.research_agent.runtime.experiment import TASK_COMPLETE  # noqa: E402
 
 
 class Check:
@@ -233,17 +241,41 @@ def check_training_job(job_dir: Path, rows: list[dict], min_size: int | None) ->
         ))
         # The direction the docstring says is unavoidable.  Reported, and only
         # accepted while it is the reason that makes it harmless.
-        off_task = {reason: count for reason, count in reasons.items() if reason != "TASK_COMPLETE"}
+        # Accepted only while every occurrence is accounted for AND every one
+        # of them is TASK_COMPLETE, which is the property that makes it
+        # harmless.  Fail closed: an early count with missing, empty or
+        # incomplete reasons is an unexplained event, not a benign one.
+        off_task = {reason: count for reason, count in reasons.items() if reason != TASK_COMPLETE}
+        accounted = sum(reasons.values()) if reasons else 0
+        explained = (early == 0) or (not off_task and accounted == early)
+        if early == 0:
+            detail = "none"
+        elif off_task:
+            detail = (f"round_end_predicted_early = {early}, reasons {reasons}"
+                      f" -- {sorted(off_task)} is not {TASK_COMPLETE!r} and is not covered by the"
+                      " smoke approximation")
+        elif accounted != early:
+            detail = (f"round_end_predicted_early = {early} but the reasons account for"
+                      f" {accounted} ({reasons or '{}'}) -- unexplained occurrences cannot be"
+                      " assumed benign")
+        else:
+            detail = (f"round_end_predicted_early = {early}, all {TASK_COMPLETE!r}"
+                      " -- nothing collectable or destructible was left and no opponent was"
+                      " alive, so the true remaining return was zero and target = r was right"
+                      " anyway; bounded at two steps per round by the smoke stage")
         checks.append(Check(
-            f"{name}: early round-end predictions are the documented smoke approximation",
-            not off_task,
-            f"round_end_predicted_early = {early}, reasons {reasons or '{}'}"
-            + (" -- TASK_COMPLETE means nothing collectable or destructible was left and no"
-               " opponent was alive, so the true remaining return was zero and target = r was"
-               " right anyway; bounded at two steps per round by the smoke stage"
-               if not off_task else
-               f" -- {sorted(off_task)} is NOT the smoke approximation and is not covered by it"),
+            f"{name}: every early round-end prediction is the documented smoke approximation",
+            explained, detail,
         ))
+        # The two directions must add up to the total they were split from, or
+        # one of the three numbers is not measuring what it claims to.
+        if total is not None:
+            checks.append(Check(
+                f"{name}: the split accounts for the total",
+                total == early + unpredicted,
+                f"{total} total = {early} early + {unpredicted} unpredicted"
+                + ("" if total == early + unpredicted else " -- these do not reconcile"),
+            ))
 
     segments = []
     for low, high in ((1, 1000), (1001, 2000), (2001, 3000), (3001, 5000), (5001, 10000)):

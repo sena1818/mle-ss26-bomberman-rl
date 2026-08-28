@@ -114,3 +114,67 @@ class VerifyGateTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RoundEndGateVerdictTest(unittest.TestCase):
+    """The checker's verdict on each shape of round_end record.
+
+    The bug this exists to prevent: the checker compared the identifier
+    "TASK_COMPLETE" against the value the runtime serialises, "task_complete",
+    so every benign smoke event was classified as unexplained and hard-failed
+    -- the exact opposite of what the split was written to do. Source-reading
+    tests did not notice.
+    """
+
+    def setUp(self):
+        import check_pilot
+        self.check_pilot = check_pilot
+
+    def _verdicts(self, **round_end):
+        row = {"round": 10, "updates_this_round": 5, "gradient_steps_this_round": 1,
+               "epsilon": 0.05, "round_end_mispredictions": 0,
+               "round_end_predicted_early": 0, "round_end_unpredicted": 0,
+               "round_end_predicted_early_reasons": {}, **round_end}
+        checks = self.check_pilot.check_training_job(Path("train_seed1"), [row], None)
+        return {check.name.split(": ", 1)[1]: check for check in checks}
+
+    def test_a_benign_smoke_event_passes(self):
+        from agent_code.research_agent.runtime.experiment import TASK_COMPLETE
+        verdicts = self._verdicts(round_end_mispredictions=11, round_end_predicted_early=11,
+                                  round_end_predicted_early_reasons={TASK_COMPLETE: 11})
+        self.assertTrue(verdicts["every early round-end prediction is the documented smoke approximation"].passed)
+        self.assertTrue(verdicts["no round ended without being predicted"].passed)
+        self.assertTrue(verdicts["the split accounts for the total"].passed)
+
+    def test_a_round_ending_unannounced_fails(self):
+        verdicts = self._verdicts(round_end_mispredictions=1, round_end_unpredicted=1)
+        self.assertFalse(verdicts["no round ended without being predicted"].passed)
+
+    def test_an_early_prediction_for_another_reason_fails(self):
+        verdicts = self._verdicts(round_end_mispredictions=3, round_end_predicted_early=3,
+                                  round_end_predicted_early_reasons={"truncation": 3})
+        self.assertFalse(verdicts["every early round-end prediction is the documented smoke approximation"].passed)
+
+    def test_unexplained_early_predictions_fail_closed(self):
+        """A count with no reasons is unexplained, not benign."""
+        from agent_code.research_agent.runtime.experiment import TASK_COMPLETE
+        for reasons in ({}, {TASK_COMPLETE: 2}):
+            verdicts = self._verdicts(round_end_mispredictions=5, round_end_predicted_early=5,
+                                      round_end_predicted_early_reasons=reasons)
+            self.assertFalse(
+                verdicts["every early round-end prediction is the documented smoke approximation"].passed,
+                f"reasons {reasons} account for fewer than the 5 counted")
+
+    def test_numbers_that_do_not_reconcile_fail(self):
+        from agent_code.research_agent.runtime.experiment import TASK_COMPLETE
+        verdicts = self._verdicts(round_end_mispredictions=99, round_end_predicted_early=2,
+                                  round_end_predicted_early_reasons={TASK_COMPLETE: 2})
+        self.assertFalse(verdicts["the split accounts for the total"].passed)
+
+    def test_a_run_from_before_the_split_keeps_the_strict_reading(self):
+        row = {"round": 10, "updates_this_round": 5, "gradient_steps_this_round": 1,
+               "epsilon": 0.05, "round_end_mispredictions": 11}
+        checks = self.check_pilot.check_training_job(Path("train_seed1"), [row], None)
+        strict = [c for c in checks if "round_end_mispredictions is zero" in c.name]
+        self.assertEqual(len(strict), 1, "a pre-split run must fall back to the strict check")
+        self.assertFalse(strict[0].passed)

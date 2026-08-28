@@ -30,6 +30,7 @@ from agent_code.research_agent.config import MAX_STEPS
 from agent_code.research_agent.runtime.experiment import (
     DEATH_PENALTIES,
     REWARD_TABLES,
+    TASK_COMPLETE,
     reward_for_events,
     reward_specification,
 )
@@ -748,39 +749,99 @@ class StepCountedScheduleTest(unittest.TestCase):
 class RoundEndMispredictionDirectionsTest(unittest.TestCase):
     """The two directions are different findings and must not share a counter.
 
-    ``round_end_reason``'s own docstring says the smoke-stage approximation is
+    ``round_end_reason``'s docstring calls the smoke-stage approximation
     unavoidable: ``time_to_stop`` needs ``len(self.explosions) == 0`` while an
     explosion lingers two further steps as harmless smoke, and
-    ``explosion_map`` exposes only its dangerous stage.  So predicting the end
-    up to two steps early is expected, and it can only happen when nothing
-    collectable or destructible is left and no opponent is alive -- where the
-    remaining true return is zero and ``target = r`` was correct anyway.
+    ``explosion_map`` exposes only its dangerous stage.  Predicting the end up
+    to two steps early is therefore expected, and it can only happen once
+    nothing collectable or destructible is left and no opponent is alive --
+    where the remaining true return is zero and ``target = r`` was right.
 
     A round ending WITHOUT being predicted is the opposite: that transition
-    bootstrapped where it should have been terminal.  One counter could not
-    tell them apart, and check_pilot asserted that counter was zero, which was
-    stricter than docs/05 section 0.18, where 17 of the benign kind were
-    accepted on M3.9 after being identified.
+    bootstrapped where it should have been terminal.
+
+    These drive the real callback sequence rather than reading the source, and
+    they assert the record the checker actually consumes.  The previous version
+    of these tests searched the file for identifiers, which is why it did not
+    notice that the checker compared "TASK_COMPLETE" against the value
+    "task_complete" and rejected every benign event.
     """
 
-    def test_the_total_still_counts_both(self):
-        from agent_code.research_agent.runtime.experiment import ExperimentRuntime
-        for field in ("round_end_mispredictions", "round_end_predicted_early",
-                      "round_end_unpredicted", "round_end_predicted_early_reasons"):
-            self.assertIn(field, ExperimentRuntime.__init__.__code__.co_names + (
-                "round_end_predicted_early_reasons",),
-                f"{field} must be initialised on the runtime")
+    def _environment(self, temporary: str) -> dict:
+        return {
+            "BOMBERMAN_ARTIFACT_DIR": str(Path(temporary) / "agent"),
+            "BOMBERMAN_RUN_ID": "misprediction_test",
+            "BOMBERMAN_SCENARIO": "classic",
+            "BOMBERMAN_SEED": "3",
+            "BOMBERMAN_CHECKPOINT_EVERY": "1",
+        }
 
-    def test_the_round_end_record_carries_both_directions(self):
-        source = (Path(__file__).resolve().parents[1] / "runtime" / "experiment.py").read_text()
-        record = source[source.index('"round_end_mispredictions":'):]
-        record = record[:record.index("}")]
-        for field in ("round_end_predicted_early", "round_end_unpredicted",
-                      "round_end_predicted_early_reasons"):
-            self.assertIn(field, record, f"{field} must reach the round_end record")
+    def _last_round_end(self, temporary: str) -> dict:
+        path = Path(temporary) / "agent" / "agent.jsonl"
+        records = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+        return [record for record in records if record["kind"] == "round_end"][-1]
 
-    def test_the_benign_direction_records_why_it_was_benign(self):
-        """The claim rests on TASK_COMPLETE, so the reason is stored not assumed."""
-        source = (Path(__file__).resolve().parents[1] / "runtime" / "experiment.py").read_text()
-        self.assertIn("self._predicted_reason", source)
-        self.assertIn("round_end_predicted_early_reasons[reason]", source)
+    def test_a_board_cleared_before_the_framework_stops_counts_as_predicted_early(self):
+        """The smoke case: the runtime sees a finished board, the world does not."""
+        with tempfile.TemporaryDirectory() as temporary:
+          with patch.dict(os.environ, self._environment(temporary), clear=False):
+            runtime = started_runtime(temporary)
+            # Deliver a cleared successor: the runtime predicts the round ends.
+            runtime.observe(game_state(1), "WAIT", game_state(1, cleared=True), [])
+            # The framework delivers another step of the same round anyway,
+            # which is exactly what lingering smoke causes.
+            runtime.observe(game_state(2), "WAIT", game_state(2, cleared=True), [])
+            runtime.end_round(game_state(2), "WAIT", ["SURVIVED_ROUND"])
+
+            self.assertEqual(runtime.round_end_predicted_early, 1)
+            self.assertEqual(runtime.round_end_unpredicted, 0)
+            self.assertEqual(runtime.round_end_mispredictions, 1)
+            self.assertEqual(runtime.round_end_predicted_early_reasons, {TASK_COMPLETE: 1})
+
+            record = self._last_round_end(temporary)
+            self.assertEqual(record["round_end_predicted_early"], 1)
+            self.assertEqual(record["round_end_unpredicted"], 0)
+            self.assertEqual(record["round_end_predicted_early_reasons"], {TASK_COMPLETE: 1})
+
+    def test_a_round_that_ends_unannounced_counts_as_unpredicted(self):
+        """The defect: that transition bootstrapped where it should not have."""
+        with tempfile.TemporaryDirectory() as temporary:
+          with patch.dict(os.environ, self._environment(temporary), clear=False):
+            runtime = started_runtime(temporary)
+            # Both states of one delivery carry the same step number, which is
+            # the convention drive_round documents.  The successor still has a
+            # coin on the board, so nothing is predicted...
+            runtime.observe(game_state(2), "WAIT", game_state(2), [])
+            # ...and then the framework ends the round on that very step.
+            runtime.end_round(game_state(2), "WAIT", ["SURVIVED_ROUND"])
+
+            self.assertEqual(runtime.round_end_unpredicted, 1)
+            self.assertEqual(runtime.round_end_predicted_early, 0)
+            self.assertEqual(runtime.round_end_mispredictions, 1)
+
+            record = self._last_round_end(temporary)
+            self.assertEqual(record["round_end_unpredicted"], 1)
+            self.assertEqual(record["round_end_predicted_early"], 0)
+
+    def test_the_split_reconciles_with_the_total(self):
+        with tempfile.TemporaryDirectory() as temporary:
+          with patch.dict(os.environ, self._environment(temporary), clear=False):
+            runtime = started_runtime(temporary)
+            runtime.observe(game_state(1), "WAIT", game_state(1, cleared=True), [])
+            runtime.observe(game_state(2), "WAIT", game_state(2, cleared=True), [])
+            runtime.end_round(game_state(2), "WAIT", ["SURVIVED_ROUND"])
+            record = self._last_round_end(temporary)
+            self.assertEqual(record["round_end_mispredictions"],
+                             record["round_end_predicted_early"] + record["round_end_unpredicted"])
+
+    def test_a_clean_round_records_zero_in_both_directions(self):
+        with tempfile.TemporaryDirectory() as temporary:
+          with patch.dict(os.environ, self._environment(temporary), clear=False):
+            runtime = started_runtime(temporary)
+            drive_round(runtime, steps=3, died=False, final_events=["SURVIVED_ROUND"],
+                        end_reason="task_complete")
+            record = self._last_round_end(temporary)
+            self.assertEqual(
+                (record["round_end_mispredictions"], record["round_end_predicted_early"],
+                 record["round_end_unpredicted"], record["round_end_predicted_early_reasons"]),
+                (0, 0, 0, {}))
