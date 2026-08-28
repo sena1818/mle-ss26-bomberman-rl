@@ -45,7 +45,13 @@ def _snapshot() -> dict:
 
 
 def _source_run(root: Path, rounds: tuple[int, ...] = (500, 1000)) -> Path:
-    """A finished run with a checkpoint sweep on the tournament suite."""
+    """A finished run with a checkpoint sweep on the tournament suite.
+
+    ``rounds`` are the saved checkpoints; only those the config declared get an
+    evaluation job.  The fixture declares every round except 250, which stands
+    for "saved, but never evaluated".
+    """
+    evaluated = tuple(one for one in rounds if one != 250)
     run_dir = root / "source"
     write_json(run_dir / "experiment_config.snapshot.json", _snapshot())
     for train_seed in TRAIN_SEEDS:
@@ -57,7 +63,7 @@ def _source_run(root: Path, rounds: tuple[int, ...] = (500, 1000)) -> Path:
         (run_dir / "jobs" / f"train_seed{train_seed}" / "agent" / "latest_model.npz").write_bytes(b"weights")
         for role, seeds in (("validation", VALIDATION), ("holdout", HOLDOUT)):
             for seed in seeds:
-                for checkpoint_round in rounds:
+                for checkpoint_round in evaluated:
                     job_id = (f"eval_classic_versus_opponents_round{checkpoint_round:05d}"
                               f"_train{train_seed}_seed{seed}")
                     write_json(run_dir / "job_parameters" / f"{job_id}.json", {
@@ -149,12 +155,41 @@ class ScaffoldSelectsExactlyWhatWasAskedForTest(unittest.TestCase):
                                                       / "agent" / "checkpoints").glob("*.npz"))
                 self.assertEqual([name.split("_round")[1][:5] for name in copied], ["00500", "01000"])
 
-    def test_a_round_that_was_never_evaluated_is_refused(self):
+    def test_a_round_with_no_saved_checkpoint_is_refused(self):
+        """Not evaluated is recoverable; not saved is not."""
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             _source_run(root)
             with self.assertRaises(SystemExit):
                 self._scaffold(root, checkpoint_round=[750])
+
+    def test_a_saved_checkpoint_the_run_never_evaluated_is_built_from_its_latest_job(self):
+        """A run saves every checkpoint_every rounds but evaluates only what it declared.
+
+        A dose curve that could ask about only the declared rounds would be
+        limited by a choice made before any of the doses were seen, which is
+        exactly backwards: the first dose curve here was flat after round 500
+        and the interesting question moved to a round the run had not evaluated.
+        """
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = _source_run(root, rounds=(250, 500, 1000))
+            # The run evaluated 500 and 1000; 250 exists on disk but was not asked about.
+            self.assertFalse(any("round00250" in path.name
+                                 for path in (source / "job_parameters").glob("*.json")))
+            destination = self._scaffold(root, checkpoint_round=[250, 500], repeats=2)
+            jobs = [json.loads(path.read_text())
+                    for path in (destination / "job_parameters").glob("*.json")]
+            self.assertEqual({job["checkpoint_round"] for job in jobs}, {250, 500})
+            self.assertEqual({job["seed_role"] for job in jobs}, {"holdout"})
+            for job in jobs:
+                self.assertIsNone(job["model_relpath"], "a round-addressed job resolves by round")
+                self.assertEqual(job["checkpoint_search_relpath"],
+                                 f"jobs/train_seed{job['train_seed']}/agent/checkpoints")
+            for train_seed in TRAIN_SEEDS:
+                copied = sorted(path.name for path in (destination / "jobs" / f"train_seed{train_seed}"
+                                                      / "agent" / "checkpoints").glob("*.npz"))
+                self.assertEqual([name.split("_round")[1][:5] for name in copied], ["00250", "00500"])
 
     def test_an_existing_destination_is_never_overwritten(self):
         with tempfile.TemporaryDirectory() as temporary:

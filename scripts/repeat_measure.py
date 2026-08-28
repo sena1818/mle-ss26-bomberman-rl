@@ -99,25 +99,51 @@ def scaffold(args: argparse.Namespace) -> None:
         raise SystemExit(f"refusing to overwrite {destination}")
 
     wanted_rounds = set(args.checkpoint_round) if args.checkpoint_round else None
-    selected: list[dict] = []
+    candidates: list[dict] = []
     for job_file in sorted((source / "job_parameters").glob("*.json")):
         job = json.loads(job_file.read_text(encoding="utf-8"))
         if job.get("mode") != "eval" or job.get("suite") != args.suite:
             continue
-        if job.get("seed_role") != args.seed_role:
-            continue
-        if wanted_rounds is None:
-            if job.get("checkpoint_round") is not None:
-                continue
-        elif job.get("checkpoint_round") not in wanted_rounds:
-            continue
-        selected.append(job)
+        if job.get("seed_role") == args.seed_role:
+            candidates.append(job)
+    if not candidates:
+        raise SystemExit(f"no {args.seed_role} jobs of suite {args.suite!r} in {source}")
+
+    if wanted_rounds is None:
+        selected = [job for job in candidates if job.get("checkpoint_round") is None]
+        if not selected:
+            raise SystemExit(f"no {args.seed_role} job addresses the latest checkpoint in {source}")
+    else:
+        selected = [job for job in candidates if job.get("checkpoint_round") in wanted_rounds]
+        # A run saves a checkpoint every ``checkpoint_every`` rounds but only
+        # prepares evaluation jobs for the rounds its config named, and a dose
+        # curve should be able to ask about a saved checkpoint the original run
+        # did not happen to evaluate.  The template is the run's own latest-job
+        # for the same suite, seed role, training seed and evaluation seed, so
+        # nothing about the evaluation changes except which weights it loads.
+        missing = sorted(wanted_rounds - {job.get("checkpoint_round") for job in selected})
+        if missing:
+            templates = [job for job in candidates if job.get("checkpoint_round") is None]
+            if not templates:
+                raise SystemExit(
+                    f"rounds {missing} were never evaluated in {source} and there is no latest-checkpoint "
+                    "job to build them from")
+            for template in templates:
+                for checkpoint_round in missing:
+                    job_id = (f"eval_{args.suite}_round{checkpoint_round:05d}"
+                              f"_train{template['train_seed']}_seed{template['seed']}")
+                    selected.append(dict(
+                        template, job_id=job_id, model_relpath=None,
+                        checkpoint_round=checkpoint_round,
+                        checkpoint_search_relpath=str(
+                            Path("jobs") / f"train_seed{template['train_seed']}" / "agent" / "checkpoints"),
+                        artifact_relpath=str(Path("jobs") / job_id)))
+            print(f"rounds {missing} were not evaluated by {args.source_run}; "
+                  "built from its latest-checkpoint jobs")
     if not selected:
         raise SystemExit(
             f"no {args.seed_role} jobs of suite {args.suite!r} "
-            f"{'at rounds ' + ','.join(map(str, sorted(wanted_rounds))) if wanted_rounds else 'at the latest checkpoint'} "
-            f"in {source}"
-        )
+            f"at rounds {sorted(wanted_rounds)} in {source}")
 
     (destination / "job_parameters").mkdir(parents=True)
     shutil.copy2(source / "experiment_config.snapshot.json", destination / "experiment_config.snapshot.json")
