@@ -182,6 +182,12 @@ def _pool(run_dir: Path) -> tuple[str, dict[str | None, dict[int, dict[str, floa
         round_tag = match.group("round")
         grouped.setdefault(round_tag, {}).setdefault(
             int(match.group("repeat")), []).append(_job_metrics(stats_path, agent_name))
+    if not grouped:
+        raise SystemExit(
+            f"{run_dir} has no readable repeat jobs. Job directories must be named the way "
+            "run_experiment builds them, with the repeat suffix appended last: "
+            "eval[_<suite>][_round<NNNNN>]_train<seed>_seed<seed>_rep<NN>. "
+            "Reporting an empty pool as a number is how a run with the wrong layout becomes a result.")
     if len(suites) > 1:
         raise SystemExit(f"{run_dir} mixes suites {sorted(suites)}; a pooled number must name one")
     pooled: dict[str | None, dict[int, dict[str, float]]] = {}
@@ -196,7 +202,7 @@ def _pool(run_dir: Path) -> tuple[str, dict[str | None, dict[int, dict[str, floa
             repeat: {metric: statistics.fmean(job[metric] for job in jobs) for metric in METRICS}
             for repeat, jobs in complete.items()
         }
-    return (suites.pop() if suites else "primary"), pooled
+    return suites.pop(), pooled
 
 
 def _welch(left: list[float], right: list[float]) -> tuple[float, float]:

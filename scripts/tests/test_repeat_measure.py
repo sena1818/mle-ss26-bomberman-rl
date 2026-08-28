@@ -213,6 +213,21 @@ class ReportPoolsAndDiscriminatesTest(unittest.TestCase):
             # 3.0 coins per round for us against 1.0 for the single opponent.
             self.assertAlmostEqual(pooled[None][1]["coins_share"], 0.75)
 
+    def test_an_unreadable_layout_is_refused_rather_than_pooled_as_nothing(self):
+        """The failure mode this replaced: a silent empty pool with a default name.
+
+        Repeat runs scaffolded by hand put the repeat index in whatever position
+        the author liked, and a reader that skipped what it could not parse
+        reported an empty directory as a suite it had never seen.
+        """
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            run_dir = _finished_repeats(root, "arm", {1: 3.6, 2: 3.7})
+            for job_dir in sorted((run_dir / "jobs").glob("eval*")):
+                job_dir.rename(job_dir.with_name(job_dir.name.replace("_rep", "_r7000_rep")))
+            with self.assertRaises(SystemExit):
+                repeat_measure._pool(run_dir)
+
     def test_two_scenarios_are_refused_rather_than_tabulated_side_by_side(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
