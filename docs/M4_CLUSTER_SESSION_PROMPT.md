@@ -20,7 +20,8 @@ cd /pfs/work9/workspace/scratch/hd_cn362-m4/bomberman_rl
 export REPO="$PWD" VENV="$PWD/.venv" LOG_DIR="$HOME/m4_logs"
 export X="ALL,REPO=$REPO,VENV=$VENV,LOG_DIR=$LOG_DIR"
 export O="--output=$LOG_DIR/%x_%j.out --error=$LOG_DIR/%x_%j.err"
-D=$(date +%Y%m%d)
+D=20260828b          # 新 tag。整批四个 stage 必须用同一个，
+                     # 因为步长 gate 找的是 runs/m4_anchor_$D/learning_rate_decision.json
 ```
 
 venv 已建（Python 3.12.3 + numpy 2.5.2 + torch 2.13.0）。分区 `cpu`（3 天上限、192 核/节点）、
@@ -34,10 +35,31 @@ venv 已建（Python 3.12.3 + numpy 2.5.2 + torch 2.13.0）。分区 `cpu`（3 �
 | **benchmark**（计算节点实测） | `gradient_step` **14.78 ms**、**246 env/s**、**3.4 h/seed**（比 Apple M4 快 1.38×）；torch 冷 import 9 秒（Lustre，可忍） |
 | **日志体积** | `framework_game.log` 60%、`agent.jsonl` 37%；eval job 占 97%。`/pfs/work9` 剩 1.7 PB，**空间不是约束，不要优化它** |
 
-## 现在的状态
+## 现在的状态：pilot 学会了，但要用新 tag 重跑一次
 
-`m4pilot`（job 6733100）在 `cpu` 队列排队中。一个 SLURM job = 一个 stage，
-stage 内部用 `--jobs 8` 并发跑 38 个实验 job（2 训练 seed + 36 评估）。
+**第一次 pilot（job 6733100，tag `20260828`）的科学结论是好的：**
+
+| 检查 | 结果 |
+|---|---|
+| **G-A：validation 上升** | **+29.03**（29.31 − 0.27），门槛 4.7 ✅ |
+| 非退化 | `distinct_cells` 112.34、`bomb_rate` 0.0955、`wait_fraction` 0.155 ✅ |
+| replay / 首次梯度 / ε 触底 / 数值稳定 / 未触裁剪 | 全过 ✅ |
+| 压缩后目录 | 639 MB |
+
+**它挂在一个我写错的断言上。**两个 seed 的 `round_end_mispredictions` 终值是 1 和 11，
+而 `check_pilot` 当时硬写 `== 0`。日志证实 12 次**全部**是
+`Predicted a round end … that did not happen`，零次 `without being predicted`
+——即 `round_end_reason` docstring 里写明的**烟雾期近似**（清板后框架还留最多两步无害烟雾）。
+
+**协议已修订并提交**（见 `docs/06` §0b）：两个方向拆开，
+`round_end_unpredicted > 0` **硬失败**，`round_end_predicted_early` 只在原因确为
+`task_complete` 且计数对得上时接受。
+
+**必须用一个新的、没用过的 tag 重跑 pilot**：旧 run 的 JSONL 里没有新字段，
+新 gate 对它走旧的严格判定，必然还是失败。**不要拿旧 pilot 当作绿灯直接发 anchor。**
+
+一个 SLURM job = 一个 stage，stage 内部用 `--jobs 8` 并发跑 38 个实验 job
+（2 训练 seed + 36 评估）。
 
 ## 第一批要跑的四个 stage
 
@@ -58,12 +80,16 @@ sbatch --export=$X $O --partition=cpu --time=08:00:00 --cpus-per-task=8 --mem=16
 
 `afterok` 就是 gate：`check_pilot.py` 失败让 SLURM job 非零退出，后续依赖自动取消。
 
-## pilot 回来后必须看的三件事
+## pilot 重跑回来后看什么
 
-1. **`check_pilot` 的检查 5（validation 分数是否上升）——这是整条线里唯一还没验过的操作性问题。**
-   它决定后面三个臂值不值得跑。
-2. **真实磁盘**：`du -sh runs/m4_pilot_$D`（压缩前后），用它替换文档里的外推估计。
-3. **实际吞吐** vs benchmark 的 246 env/s。明显更低就先怀疑 Lustre，`df -h "$TMPDIR"`。
+1. **`check_pilot` 必须全绿。**特别看这两行（新增的）：
+   - `no round ended without being predicted` —— 必须 PASS，这是真 bug 的那个方向
+   - `every early round-end prediction is the documented smoke approximation` ——
+     允许非零，但原因必须全是 `task_complete` 且计数对得上
+2. **G-A 应当复现** `+29` 量级（第一次是 +29.03）。
+3. **真实磁盘**：`du -sh runs/m4_pilot_$D`（第一次压缩后 639 MB）。
+
+**全绿才发 anchor。**
 
 ## 步长决策：硬 gate，绕不过去
 
