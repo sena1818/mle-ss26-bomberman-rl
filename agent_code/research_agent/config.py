@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 import json
+import math
 import os
 
 
@@ -246,6 +247,44 @@ LEARNING_RATE_SCHEDULES = {
         "decay_rounds": 5000,
         "final_fraction": 0.2,
         "description": "L01's floor reached over 5000 rounds instead of 2500",
+    },
+    # L04 shares L01's endpoints and length exactly, so the ONLY thing that
+    # differs is the shape between them: cosine spends longer near the initial
+    # rate and drops fastest in the middle, where linear falls at a constant
+    # rate throughout.  Keeping the endpoints identical is what makes the
+    # comparison about the shape rather than about the floor or the length,
+    # which L02 and L03 already vary one at a time.
+    "L04": {
+        "kind": "cosine_absolute",
+        "decay_rounds": 2500,
+        "final_fraction": 0.2,
+        "description": "L01's endpoints and length, annealed on a cosine instead of a line",
+    },
+    # L05 and L06 spread the decay over a 10000-round budget instead of ending a
+    # quarter of the way in.  The 10000-round L01 arm climbed until about round
+    # 4500 and then went flat, which is roughly where its decay had finished and
+    # the remaining 5500 rounds became constant-rate training -- and constant
+    # rates plateau.  Annealing over the whole run is also how cosine is normally
+    # used.  Both stay in absolute rounds: a schedule whose length is written as
+    # a fraction of the budget is the E01 mistake, and it cost section 7.22 a
+    # conclusion.  Two of them so length and shape stay separable.
+    #
+    # 7000 rather than 10000, and that also supplies the control for free: L01
+    # is absolute, so the 10000-round L01 arm's round-7000 checkpoint IS L01 at
+    # a 7000-round budget, with identical epsilon and step size on every round
+    # up to it.  No separate control arm is needed, the same way E02's absolute
+    # schedule made F2's round-2500 checkpoint the n-step control (section 7.27.1).
+    "L05": {
+        "kind": "linear_absolute",
+        "decay_rounds": 7000,
+        "final_fraction": 0.2,
+        "description": "L01's floor and line, reached over 7000 rounds instead of 2500",
+    },
+    "L06": {
+        "kind": "cosine_absolute",
+        "decay_rounds": 7000,
+        "final_fraction": 0.2,
+        "description": "L05's length and floor, annealed on a cosine",
     },
 }
 LEARNING_RATE_SCHEDULE_VERSIONS = frozenset(LEARNING_RATE_SCHEDULES)
@@ -903,6 +942,8 @@ def learning_rate_for_training_round(config: ExperimentConfig, round_number: int
     if round_number >= decay_rounds:
         return final
     progress = (round_number - 1) / decay_rounds
+    if schedule["kind"] == "cosine_absolute":
+        return final + (initial - final) * 0.5 * (1.0 + math.cos(math.pi * progress))
     return initial + progress * (final - initial)
 
 
@@ -952,10 +993,17 @@ def active_config() -> ExperimentConfig:
         raise ValueError(
             f"Unknown exploration version {exploration_version!r}; declared versions: {sorted(EXPLORATION_VERSIONS)}"
         )
+    schedule = os.environ.get("BOMBERMAN_LEARNING_RATE_SCHEDULE", route_config.learning_rate_schedule)
+    if schedule not in LEARNING_RATE_SCHEDULE_VERSIONS:
+        raise ValueError(
+            f"Unknown learning-rate schedule {schedule!r}; "
+            f"declared: {sorted(LEARNING_RATE_SCHEDULE_VERSIONS)}"
+        )
     return validate_config(replace(
         route_config,
         reward_version=reward_version,
         exploration_version=exploration_version,
+        learning_rate_schedule=schedule,
         terminal_on_truncation=_boolean_environment(
             "BOMBERMAN_TERMINAL_ON_TRUNCATION", route_config.terminal_on_truncation
         ),

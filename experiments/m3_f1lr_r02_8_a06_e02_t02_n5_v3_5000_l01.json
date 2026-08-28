@@ -1,0 +1,138 @@
+{
+  "_design_note": "F1 with the decayed step size. R02_9 showed the schedule is worth +1.0976 on the tournament suite against F2 (t = +20.2), and F1 is F2's solo twin -- same route, same budget, no opponents in training. This is the solo submission candidate under the recipe that won the tournament one. Its control is runs/m3_f1_wide_ddqn_5000_20260827/, which differs in learning_rate_schedule alone.",
+  "_predeclared_design_numbers": {
+    "changed_factor": "learning_rate_schedule L00 -> L01; everything else is F1's",
+    "control": "runs/m3_f1_wide_ddqn_5000_20260827/ -- loot-crate 37.371, classic solo 7.140, suicides 0.233, 8.8 deaths per thousand bombs",
+    "falsification": "Within 4.7 on loot-crate and within 1.01 on classic solo means the schedule's value is specific to the opponent setting.",
+    "prediction": "None stated. The tournament effect was large, but F1 is solo and its curve was still creeping up at 5000 rather than plateauing, so the same mechanism may have less to recover here.",
+    "reporting": "All five training-seed distributions, every G2 threshold, and the checkpoint curve.",
+    "resolution_loot_crate": "Solo suite: the 2000-round control's cross-seed sd of 3.77 gives a resolvable gap of 4.7; classic solo needs about 1.01.",
+    "the_metric_that_decides_it": "Deaths per thousand bombs from diagnose_bomb_escape.py against F1's 8.8, alongside score. Report mean_hidden_zero_fraction too."
+  },
+  "agent": {
+    "algorithm": "double_dqn",
+    "model": "mlp_q",
+    "n_step": 5,
+    "name": "research_agent",
+    "replay": {
+      "batch_size": 32,
+      "capacity": 50000,
+      "min_size": 1000,
+      "target_update_every": 500,
+      "train_every": 1
+    },
+    "state_representation": "handcrafted_v3"
+  },
+  "checkpoint_evaluation": {
+    "holdout_seeds": [
+      3001,
+      3002,
+      3003
+    ],
+    "mode": "all",
+    "validation_seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation": {
+    "budget": {
+      "checkpoint_every": 250,
+      "rounds": 30
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation_suites": {
+    "classic_solo": {
+      "budget": {
+        "checkpoint_every": 250,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "classic_versus_opponents": {
+      "budget": {
+        "checkpoint_every": 250,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [
+        "rule_based_agent",
+        "rule_based_agent",
+        "rule_based_agent"
+      ],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    }
+  },
+  "experiment_id": "M3_F1LR_R02_8_A06_E02_C00_T02_n5_5000_L01",
+  "exploration_version": "E02",
+  "learning_rate_schedule": "L01",
+  "promotion": {
+    "primary_metric": "score"
+  },
+  "reward_version": "A06",
+  "route": "R02_8",
+  "schema_version": 1,
+  "shaping": {
+    "name": "potential_v1"
+  },
+  "terminal_on_truncation": false,
+  "training": {
+    "budget": {
+      "checkpoint_every": 250,
+      "rounds": 5000
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      1001,
+      1002,
+      1003,
+      1004,
+      1005
+    ]
+  }
+}

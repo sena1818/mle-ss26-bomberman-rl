@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import statistics
 import sys
@@ -14,6 +15,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 SCRIPTS = Path(__file__).resolve().parents[1]
+ROOT_DIR = SCRIPTS.parent
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
@@ -789,6 +791,67 @@ class ParallelPhaseTest(unittest.TestCase):
     def test_a_phase_with_no_jobs_is_a_no_op(self):
         with patch("run_experiment.execute_job", side_effect=AssertionError("must not run")):
             execute_phase(Path("/runs/x"), [], "train", 4)
+
+
+class DeclaredAxesReachTheAgentTest(unittest.TestCase):
+    """Every axis a config can declare has to cross the process boundary.
+
+    The agent is a separate process that rebuilds its config from the route name
+    it is handed plus BOMBERMAN_* variables.  An axis added to the config schema
+    and to resolved_runtime_config but not to that environment is silently
+    ignored: the agent falls back to the route default and the arm trains as
+    though nothing was declared.  That is what happened to learning_rate_schedule
+    -- the L02/L03/L04 arms all ran L01 and looked identical to it, which read as
+    'the schedule does not matter' (docs/01 section 7.29).
+
+    Comparing the two sides by name is what makes the next such axis fail loudly.
+    """
+
+    ENVIRONMENT_BY_AXIS = {
+        "reward_version": "BOMBERMAN_REWARD_VERSION",
+        "exploration_version": "BOMBERMAN_EXPLORATION_VERSION",
+        "learning_rate_schedule": "BOMBERMAN_LEARNING_RATE_SCHEDULE",
+        "n_step": "BOMBERMAN_N_STEP",
+        "terminal_on_truncation": "BOMBERMAN_TERMINAL_ON_TRUNCATION",
+        "replay": "BOMBERMAN_REPLAY",
+    }
+
+    def test_the_runner_exports_every_axis_in_every_environment_block(self):
+        """Counting, not just presence: there are two environment blocks.
+
+        execute_job builds one and the curriculum path builds another.  A
+        variable present in only one is exported for some jobs and not others,
+        which an `in` check cannot see -- so each axis is required to appear as
+        often as BOMBERMAN_EXPLORATION_VERSION, an axis known to be wired into
+        both.
+        """
+        source = (SCRIPTS / "run_experiment.py").read_text(encoding="utf-8")
+        expected = source.count('"BOMBERMAN_EXPLORATION_VERSION":')
+        self.assertGreaterEqual(expected, 2, "the reference axis is no longer in both blocks")
+        for axis, variable in self.ENVIRONMENT_BY_AXIS.items():
+            self.assertEqual(
+                source.count(f'"{variable}":'), expected,
+                f"{variable} ({axis}) is exported {source.count(chr(34) + variable + chr(34) + ':')} "
+                f"times but the reference axis is exported {expected}; an axis missing from one "
+                f"environment block is silently ignored for those jobs")
+
+    def test_the_agent_reads_every_axis_the_runner_exports(self):
+        config_source = (ROOT_DIR / "agent_code/research_agent/config.py").read_text(encoding="utf-8")
+        for axis, variable in self.ENVIRONMENT_BY_AXIS.items():
+            self.assertIn(variable, config_source,
+                          f"the agent never reads {variable} for {axis}")
+
+    def test_an_override_actually_changes_what_the_agent_would_run(self):
+        """The end-to-end check: declare it, and see it on the other side."""
+        from agent_code.research_agent.config import active_config
+        for variable, value, attribute in (
+            ("BOMBERMAN_LEARNING_RATE_SCHEDULE", "L01", "learning_rate_schedule"),
+            ("BOMBERMAN_REWARD_VERSION", "A03", "reward_version"),
+            ("BOMBERMAN_EXPLORATION_VERSION", "E02", "exploration_version"),
+        ):
+            with patch.dict(os.environ, {"BOMBERMAN_EXPERIMENT": "R02_8", variable: value}, clear=False):
+                self.assertEqual(getattr(active_config(), attribute), value,
+                                 f"{variable} did not reach the agent's config")
 
 
 class AbsoluteExplorationScheduleTest(unittest.TestCase):

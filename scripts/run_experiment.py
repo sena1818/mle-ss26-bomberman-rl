@@ -334,6 +334,8 @@ def _run_curriculum_segment(
         "BOMBERMAN_EXPERIMENT": experiment.route,
         "BOMBERMAN_REWARD_VERSION": experiment.reward_version,
         "BOMBERMAN_EXPLORATION_VERSION": experiment.exploration_version,
+        "BOMBERMAN_LEARNING_RATE_SCHEDULE": _resolved_schedule(experiment),
+        
         "BOMBERMAN_TERMINAL_ON_TRUNCATION": "1" if experiment.terminal_on_truncation else "0",
         "BOMBERMAN_N_STEP": str(experiment.n_step),
         "BOMBERMAN_LEARNING_RATE": ("" if experiment.learning_rate is None
@@ -455,6 +457,20 @@ def _discard_runtime(runtime: Path, keep_runtime: bool) -> None:
     shutil.rmtree(runtime, ignore_errors=True)
 
 
+def _resolved_schedule(experiment) -> str:
+    """The learning-rate schedule the agent process must actually run.
+
+    An experiment may override the route's default, and the override only takes
+    effect if it crosses the process boundary: the agent builds its config from
+    the route name it is handed, so a declared schedule that never reaches it
+    trains as though it had not been declared.  That is exactly what happened to
+    the L02/L03/L04 arms (docs/01 section 7.29) -- they all ran L01.
+    """
+    if experiment.learning_rate_schedule is not None:
+        return experiment.learning_rate_schedule
+    return resolved_runtime_config(experiment)["config"]["learning_rate_schedule"]
+
+
 def execute_job(job_file: Path, *, retry: bool = False, keep_runtime: bool = False) -> None:
     run_dir, job, experiment = load_context(job_file)
     verify_job_provenance(run_dir)
@@ -486,6 +502,7 @@ def execute_job(job_file: Path, *, retry: bool = False, keep_runtime: bool = Fal
         "BOMBERMAN_EXPERIMENT": experiment.route,
         "BOMBERMAN_REWARD_VERSION": experiment.reward_version,
         "BOMBERMAN_EXPLORATION_VERSION": experiment.exploration_version,
+        "BOMBERMAN_LEARNING_RATE_SCHEDULE": _resolved_schedule(experiment),
         "BOMBERMAN_TERMINAL_ON_TRUNCATION": "1" if experiment.terminal_on_truncation else "0",
         "BOMBERMAN_N_STEP": str(experiment.n_step),
         "BOMBERMAN_LEARNING_RATE": ("" if experiment.learning_rate is None
