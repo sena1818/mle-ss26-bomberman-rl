@@ -112,7 +112,15 @@ def scaffold(args: argparse.Namespace) -> None:
     if wanted_rounds is None:
         selected = [job for job in candidates if job.get("checkpoint_round") is None]
         if not selected:
-            raise SystemExit(f"no {args.seed_role} job addresses the latest checkpoint in {source}")
+            # checkpoint_evaluation mode "rounds" addresses the final model by its
+            # round number and prepares no ``latest`` job at all, so "give me the
+            # finished arm" has to be spelled with the round.  Say which rounds
+            # exist rather than only that this one does not.
+            available = sorted({job["checkpoint_round"] for job in candidates})
+            raise SystemExit(
+                f"no {args.seed_role} job addresses the latest checkpoint in {source}; "
+                f"this run addresses its checkpoints by round. Pass --checkpoint-round; "
+                f"rounds evaluated: {available}")
     else:
         selected = [job for job in candidates if job.get("checkpoint_round") in wanted_rounds]
         # A run saves a checkpoint every ``checkpoint_every`` rounds but only

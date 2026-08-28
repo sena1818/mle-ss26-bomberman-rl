@@ -155,6 +155,18 @@ class ScaffoldSelectsExactlyWhatWasAskedForTest(unittest.TestCase):
                                                       / "agent" / "checkpoints").glob("*.npz"))
                 self.assertEqual([name.split("_round")[1][:5] for name in copied], ["00500", "01000"])
 
+    def test_a_run_that_addresses_only_rounds_says_which_rounds_it_has(self):
+        """mode "rounds" prepares no latest job, so the finished arm needs a round."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = _source_run(root)
+            for path in (source / "job_parameters").glob("*.json"):
+                if json.loads(path.read_text())["checkpoint_round"] is None:
+                    path.unlink()
+            with self.assertRaises(SystemExit) as raised:
+                self._scaffold(root)
+            self.assertIn("[500, 1000]", str(raised.exception))
+
     def test_a_round_with_no_saved_checkpoint_is_refused(self):
         """Not evaluated is recoverable; not saved is not."""
         with tempfile.TemporaryDirectory() as temporary:
