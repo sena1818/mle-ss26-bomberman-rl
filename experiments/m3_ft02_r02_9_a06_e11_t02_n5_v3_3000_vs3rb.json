@@ -1,0 +1,171 @@
+{
+  "_design_note": "The seam control for M3_FT03. It is the same second training stage on the same scenario as stage 1, so the ONLY declared difference from the fine-tuning arm is which board the second stage plays on. Without it a gain could be the scenario change or could be the seam: warm starting empties the replay buffer and resets Adam's moments and step count (the checkpoint stores parameters only, models/mlp_q.py:save), which is a real perturbation and not obviously a neutral one. runs/m3_lr_budget_10000_20260828 at round 7000 is the same dose with no seam at all, so the pair brackets the seam's cost.",
+  "_predeclared_design_numbers": {
+    "changed_factor": "A second training stage. Each of R02_9's five training seeds continues from its own final weights for 3000 more rounds on loot-crate + 3 rule_based_agent, at the exploration floor (0.05, E11) and the step size (1e-4, L00) stage 1 was already running at, so the scenario of the second stage is the only thing that changes at the seam. This is the declared exception to 'never continue from an old checkpoint' (docs/05 hard rule 4): the continuation IS the treatment, and the control is R02_9 itself.",
+    "control": "runs/m3_lr_decay_5000_vs3rb_20260827/ (R02_9), ten repeats of the holdout classic_versus_opponents suite: score 3.6371, sd 0.1214, coins_share 0.3449. The seam control is the sister arm that continues on loot-crate instead (M3_FT02), identical in every declared field but this scenario. The no-seam control is free: runs/m3_lr_budget_10000_20260828/ at round 7000 already trained 2000 extra loot-crate rounds at the same 1e-4 and the same epsilon 0.05, inside one process, and was repeat-measured (t = +1.50 vs R02_9, indistinguishable). Three points separate 'the seam costs something' from 'the scenario helps'.",
+    "falsification": "If this arm differs from the round-7000 checkpoint of runs/m3_lr_budget_10000_20260828 by more than the resolution, the seam is not neutral and every number from M3_FT03 has to be read against this arm rather than against R02_9.",
+    "prediction": "Indistinguishable from R02_9 and from the 10000-round arm at round 7000. Section 7.29.2 measured that extra loot-crate rounds at this step size buy nothing (t = -0.27 at 10000 rounds), so anything this arm moves is the seam, not the training.",
+    "reporting": "All five training-seed distributions, coins_share and the suicide rate beside every score, the loot-crate primary suite as the forgetting diagnostic, and the whole dose curve rather than the dose that happened to win. Every score names its scenario and whether opponents were present.",
+    "resolution_tournament": "Two arms measured once each need a gap of 0.246 on the tournament suite (section 7.20.2). A single measurement decides nothing: the quoted comparison is ten repeats per arm of the same fifteen holdout jobs, Welch, |t| > 2.3.",
+    "selection_discipline": "The dose is chosen on the validation seeds (2001-2003) by repeated measurement, and the decision is quoted on the holdout seeds (3001-3003), which never select anything (section 8.3). Choosing a dose out of four and then quoting it is a selection, so the quoted number comes from a fresh holdout measurement, and the whole curve is reported.",
+    "the_metric_that_decides_it": "Official score on classic + 3 rule_based_agent, holdout seeds, ten repeats. That is the competition setting and the only promotion metric. coins_share is reported beside it because the kills term carries 35% of the variance and 11% of the signal (section 7.20.4), but it does not decide promotion."
+  },
+  "agent": {
+    "algorithm": "double_dqn",
+    "learning_rate": 0.0001,
+    "model": "mlp_q",
+    "n_step": 5,
+    "name": "research_agent",
+    "replay": {
+      "batch_size": 32,
+      "capacity": 50000,
+      "min_size": 1000,
+      "target_update_every": 500,
+      "train_every": 1
+    },
+    "state_representation": "handcrafted_v3"
+  },
+  "checkpoint_evaluation": {
+    "holdout_seeds": [
+      3001,
+      3002,
+      3003
+    ],
+    "mode": "rounds",
+    "rounds": [
+      500,
+      1000,
+      2000,
+      3000
+    ],
+    "validation_seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "curriculum": {
+    "anneal_mode": "per_segment",
+    "segments": [
+      {
+        "rounds": 3000,
+        "scenario": "loot-crate"
+      }
+    ],
+    "source_run_id": "m3_lr_decay_5000_vs3rb_20260827"
+  },
+  "evaluation": {
+    "budget": {
+      "checkpoint_every": 250,
+      "rounds": 30
+    },
+    "opponents": [
+      "rule_based_agent",
+      "rule_based_agent",
+      "rule_based_agent"
+    ],
+    "scenario": "loot-crate",
+    "seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation_suites": {
+    "classic_solo": {
+      "budget": {
+        "checkpoint_every": 250,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "classic_versus_opponents": {
+      "budget": {
+        "checkpoint_every": 250,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "rounds",
+        "rounds": [
+          500,
+          1000,
+          2000,
+          3000
+        ],
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [
+        "rule_based_agent",
+        "rule_based_agent",
+        "rule_based_agent"
+      ],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    }
+  },
+  "experiment_id": "M3_FT02_R02_9_A06_E11_L00_T02_n5_3000_vs3rb",
+  "exploration_version": "E11",
+  "learning_rate_schedule": "L00",
+  "promotion": {
+    "primary_metric": "score",
+    "selection_suite": "classic_versus_opponents"
+  },
+  "reward_version": "A06",
+  "route": "R02_9",
+  "schema_version": 1,
+  "shaping": {
+    "name": "potential_v1"
+  },
+  "terminal_on_truncation": false,
+  "training": {
+    "budget": {
+      "checkpoint_every": 250,
+      "rounds": 3000
+    },
+    "opponents": [
+      "rule_based_agent",
+      "rule_based_agent",
+      "rule_based_agent"
+    ],
+    "scenario": "loot-crate",
+    "seeds": [
+      1001,
+      1002,
+      1003,
+      1004,
+      1005
+    ]
+  }
+}
