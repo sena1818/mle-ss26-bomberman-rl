@@ -1009,12 +1009,11 @@ def active_config() -> ExperimentConfig:
         ),
         n_step=_integer_environment("BOMBERMAN_N_STEP", route_config.n_step),
         replay=_replay_environment("BOMBERMAN_REPLAY", route_config.replay),
-        # The step size and its schedule cross the process boundary the same
-        # way n_step and replay do.  Without this they reached the agent only
-        # by being baked into a route, so a config that declared a step size
-        # was recorded faithfully in the snapshot and then ignored by the
-        # process that trained -- which is what the M4 smoke caught.
+        # The step size crosses the process boundary the same way n_step and
+        # replay do.  Without this it reached the agent only by being baked
+        # into a route, so a config that declared one was recorded faithfully
+        # in the snapshot and then ignored by the process that trained -- which
+        # is what the M4 smoke caught.  The schedule is handled above, with a
+        # fail-closed check against the declared set.
         learning_rate=_float_environment("BOMBERMAN_LEARNING_RATE", route_config.learning_rate),
-        learning_rate_schedule=os.environ.get(
-            "BOMBERMAN_LEARNING_RATE_SCHEDULE") or route_config.learning_rate_schedule,
     ))

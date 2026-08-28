@@ -340,7 +340,6 @@ def _run_curriculum_segment(
         "BOMBERMAN_N_STEP": str(experiment.n_step),
         "BOMBERMAN_LEARNING_RATE": ("" if experiment.learning_rate is None
                                    else repr(experiment.learning_rate)),
-        "BOMBERMAN_LEARNING_RATE_SCHEDULE": (experiment.learning_rate_schedule or ""),
         "BOMBERMAN_REPLAY": json.dumps(experiment.replay, sort_keys=True) if experiment.replay is not None else "",
         "BOMBERMAN_TRAINING_ROUNDS": str(schedule_rounds),
         "BOMBERMAN_ROUND_OFFSET": str(round_offset),
@@ -507,7 +506,6 @@ def execute_job(job_file: Path, *, retry: bool = False, keep_runtime: bool = Fal
         "BOMBERMAN_N_STEP": str(experiment.n_step),
         "BOMBERMAN_LEARNING_RATE": ("" if experiment.learning_rate is None
                                    else repr(experiment.learning_rate)),
-        "BOMBERMAN_LEARNING_RATE_SCHEDULE": (experiment.learning_rate_schedule or ""),
         "BOMBERMAN_REPLAY": json.dumps(experiment.replay, sort_keys=True) if experiment.replay is not None else "",
         "BOMBERMAN_TRAINING_ROUNDS": str(experiment.training.budget.rounds),
         "BOMBERMAN_ROUND_OFFSET": "0",
