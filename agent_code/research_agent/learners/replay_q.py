@@ -55,6 +55,7 @@ class ReplayQLearner:
             quantisation=quantisation,
             sampling=self.settings.sampling,
             priority_exponent=self.settings.priority_exponent,
+            importance_normalisation=self.settings.importance_normalisation,
         )
         self.rng = np.random.default_rng(seed)
         self.observed_transitions = 0

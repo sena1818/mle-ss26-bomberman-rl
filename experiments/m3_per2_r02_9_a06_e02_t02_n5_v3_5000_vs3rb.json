@@ -1,0 +1,152 @@
+{
+  "_design_note": "Prioritized replay again, with the confound its first arm measured removed. runs/m3_per_5000_vs3rb_20260829 came back distinguishably worse on everything (score -0.194, t = -3.79) and, uniquely in this family, with MORE deaths (+0.046, t = +4.07). Its own diagnostics say why that may not be about sampling at all: the mean importance-sampling weight sat at 0.40 across training (p10 0.20, p90 0.61), so the arm trained at roughly 0.4x the step size it declared.\n\nThat is not a small confound here. Section 7.24 established the step size as the largest single effect ever measured on this line -- the L01 schedule alone is worth +1.10 in the tournament and +6.98 on the solo suite -- so a 0.4x step size is a change of the same order as the thing being tested, pointing the same way as the result.\n\nThe cause is the normalisation. At beta = 1 the raw weight (N * P(i))^-1 already has expectation 1 under the sampling distribution, so Schaul et al.'s division by the batch maximum is a strict shrink whose size depends on how skewed the priorities happen to be. Dividing by the batch mean instead leaves the average scale where uniform sampling would have put it, so this arm changes which transitions are replayed without also changing how big the step is.",
+  "_predeclared_design_numbers": {
+    "changed_factor": "Against R02_9: agent.replay.sampling uniform -> prioritized, with importance_normalisation 'mean'. Against the first PER arm: the normalisation alone, which is the clean single-factor comparison.",
+    "control": "runs/m3_lr_decay_5000_vs3rb_20260827/ (R02_9), ten repeats of the holdout classic_versus_opponents suite: score 3.6371, sd 0.1214, coins_share 0.3449. This arm's config is that config with one field changed.",
+    "falsification": "Still distinguishably worse than R02_9 closes prioritized replay for good: the step-size explanation would then be dead and both normalisations would have failed.",
+    "prediction": "If the first arm's -0.194 was the step size, this one lands back near R02_9. If prioritized sampling is itself harmful on this line, it stays low. The two readings are separated by a single field, which is the point of running it.",
+    "reporting": "All five training-seed distributions, coins_share and suicides beside every score, and the learning curve on the loot-crate primary suite. Every score names its scenario and whether opponents were present.",
+    "resolution_tournament": "Two arms measured once each need a gap of 0.246 on the tournament suite (section 7.20.2). The quoted comparison is ten repeats per arm of the same fifteen holdout jobs, Welch, |t| > 2.3.",
+    "the_ceiling_this_cannot_pass": "Section 7.34: 4.9 of the 8.2 coins a round appear more than six cells away at the moment they are revealed, where our win rate is under 25%. Sample efficiency does not move that horizon, so even a clean win here is a win inside a bounded box.",
+    "the_mechanism_check": "mean_importance_weight is recorded every gradient step. It has to sit near 1.0 in this arm, against 0.40 in the first one. If it does not, the normalisation did not take effect and the arm is void.",
+    "the_metric_that_decides_it": "Official score on classic + 3 rule_based_agent, holdout seeds, ten repeats. That is the competition setting and the only promotion metric."
+  },
+  "agent": {
+    "algorithm": "double_dqn",
+    "model": "mlp_q",
+    "n_step": 5,
+    "name": "research_agent",
+    "replay": {
+      "batch_size": 32,
+      "capacity": 50000,
+      "importance_normalisation": "mean",
+      "importance_sampling_start": 0.4,
+      "importance_sampling_steps": 513000,
+      "min_size": 1000,
+      "priority_exponent": 0.6,
+      "sampling": "prioritized",
+      "target_update_every": 500,
+      "train_every": 1
+    },
+    "state_representation": "handcrafted_v3"
+  },
+  "checkpoint_evaluation": {
+    "holdout_seeds": [
+      3001,
+      3002,
+      3003
+    ],
+    "mode": "all",
+    "validation_seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation": {
+    "budget": {
+      "checkpoint_every": 250,
+      "rounds": 30
+    },
+    "opponents": [
+      "rule_based_agent",
+      "rule_based_agent",
+      "rule_based_agent"
+    ],
+    "scenario": "loot-crate",
+    "seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation_suites": {
+    "classic_solo": {
+      "budget": {
+        "checkpoint_every": 250,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "classic_versus_opponents": {
+      "budget": {
+        "checkpoint_every": 250,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [
+        "rule_based_agent",
+        "rule_based_agent",
+        "rule_based_agent"
+      ],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    }
+  },
+  "experiment_id": "M3_PER2_R02_9_A06_E02_C00_T02_n5_5000_vs3rb",
+  "exploration_version": "E02",
+  "promotion": {
+    "primary_metric": "score"
+  },
+  "reward_version": "A06",
+  "route": "R02_9",
+  "schema_version": 1,
+  "shaping": {
+    "name": "potential_v1"
+  },
+  "terminal_on_truncation": false,
+  "training": {
+    "budget": {
+      "checkpoint_every": 250,
+      "rounds": 5000
+    },
+    "opponents": [
+      "rule_based_agent",
+      "rule_based_agent",
+      "rule_based_agent"
+    ],
+    "scenario": "loot-crate",
+    "seeds": [
+      1001,
+      1002,
+      1003,
+      1004,
+      1005
+    ]
+  }
+}

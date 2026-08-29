@@ -163,11 +163,11 @@ DECLARATIVE_ROUTE_VALUES = {
 
 _REPLAY_SETTINGS = {"capacity", "batch_size", "min_size", "train_every", "target_update_every",
                     "augmentation", "sampling", "priority_exponent", "importance_sampling_start",
-                    "importance_sampling_steps"}
+                    "importance_sampling_steps", "importance_normalisation"}
 # Which of them are not integers.  Everything else is parsed as an int, so a
 # float setting read through the integer branch would silently truncate 0.6 to 0
 # and turn prioritized sampling back into uniform.
-_REPLAY_IDENTIFIER_SETTINGS = {"augmentation", "sampling"}
+_REPLAY_IDENTIFIER_SETTINGS = {"augmentation", "sampling", "importance_normalisation"}
 _REPLAY_FLOAT_SETTINGS = {"priority_exponent", "importance_sampling_start"}
 
 

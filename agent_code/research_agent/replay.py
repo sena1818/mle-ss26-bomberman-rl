@@ -38,11 +38,15 @@ class ReplayBuffer:
         quantisation: int = 0,
         sampling: str = "uniform",
         priority_exponent: float = 0.6,
+        importance_normalisation: str = "max",
     ):
         if capacity < 1 or state_dimension < 1 or action_count < 1:
             raise ValueError("ReplayBuffer needs a positive capacity, state dimension and action count.")
         if sampling not in {"uniform", "prioritized"}:
             raise ValueError(f"sampling must be 'uniform' or 'prioritized', got {sampling!r}")
+        if importance_normalisation not in {"max", "mean"}:
+            raise ValueError(
+                f"importance_normalisation must be 'max' or 'mean', got {importance_normalisation!r}")
         if quantised_board:
             if not 0 < quantised_board <= state_dimension:
                 raise ValueError("quantised_board must be a prefix length of the state vector.")
@@ -76,6 +80,7 @@ class ReplayBuffer:
         self.discounts = np.ones(self.capacity, dtype=np.float32)
         self.sampling = sampling
         self.priority_exponent = float(priority_exponent)
+        self.importance_normalisation = importance_normalisation
         # Priorities are stored already raised to ``priority_exponent`` so that
         # sampling is one normalisation instead of a power over the whole
         # buffer on every gradient step.
@@ -212,7 +217,12 @@ class ReplayBuffer:
         # maximum instead would make the effective step size depend on the single
         # rarest transition present.
         weights = (self._size * probabilities[indices]) ** (-float(beta))
-        weights = weights / weights.max()
+        # At beta = 1 the raw weight already has expectation 1 under this
+        # sampling distribution, so the two normalisations differ by more than a
+        # constant: "max" is a strict shrink of the whole update, "mean" leaves
+        # the batch's average scale where uniform sampling would have put it.
+        weights = weights / (weights.max() if self.importance_normalisation == "max"
+                             else weights.mean())
         return indices, weights.astype(np.float32)
 
     def update_priorities(self, indices: np.ndarray, td_errors: np.ndarray, *, epsilon: float = 1e-3) -> None:

@@ -421,6 +421,48 @@ class PrioritizedReplayTest(unittest.TestCase):
         buffer.update_priorities(np.arange(8), np.array([3.0] + [1.0] * 7))
         np.testing.assert_allclose(self._draw(buffer, 6, beta=0.0)[1], 1.0, atol=1e-6)
 
+    def test_max_normalisation_shrinks_the_whole_update_and_mean_does_not(self):
+        """The confound the first prioritized arm measured.
+
+        At beta = 1 the raw weight (N * P(i))^-1 has expectation 1 under the
+        sampling distribution, so dividing by the batch maximum scales the
+        entire update down by a factor that depends on how skewed the priorities
+        are.  runs/m3_per_5000_vs3rb_20260829 ran at a mean weight of 0.40, which
+        is a 0.4x step size -- and step size is the largest single effect on this
+        line (docs/01 section 7.24).  Mean normalisation keeps the average scale
+        where uniform sampling would have put it.
+        """
+        for normalisation, expected in (("max", 1.0), ("mean", None)):
+            buffer = self._buffer(sampling="prioritized", priority_exponent=1.0,
+                                  importance_normalisation=normalisation)
+            buffer.update_priorities(np.arange(8), np.array([7.0] + [1.0] * 7))
+            _, weights = self._draw(buffer, 60, beta=1.0)
+            with self.subTest(normalisation=normalisation):
+                if expected is None:
+                    self.assertAlmostEqual(float(weights.mean()), 1.0, places=1)
+                else:
+                    self.assertAlmostEqual(float(weights.max()), expected, places=6)
+                    self.assertLess(float(weights.mean()), 0.75,
+                                    "max normalisation must visibly shrink the update")
+
+    def test_the_two_normalisations_differ_only_by_a_positive_scale(self):
+        """Same draw, same relative weighting; only the overall size differs."""
+        weights = {}
+        for normalisation in ("max", "mean"):
+            buffer = self._buffer(sampling="prioritized", priority_exponent=1.0,
+                                  importance_normalisation=normalisation)
+            buffer.update_priorities(np.arange(8), np.array([7.0] + [1.0] * 7))
+            buffer.rng = np.random.default_rng(11)
+            batch = buffer.sample(8, beta=1.0)
+            weights[normalisation] = batch["weights"]
+        ratio = weights["mean"] / weights["max"]
+        np.testing.assert_allclose(ratio, ratio[0], rtol=1e-5)
+        self.assertGreater(ratio[0], 1.0, "mean normalisation must be the larger of the two")
+
+    def test_an_undeclared_normalisation_is_refused(self):
+        with self.assertRaises(ValueError):
+            self._buffer(sampling="prioritized", importance_normalisation="median")
+
     def test_a_new_transition_enters_at_the_largest_priority(self):
         """Otherwise a transition could be evicted before it is ever replayed."""
         buffer = self._buffer(sampling="prioritized", priority_exponent=1.0)

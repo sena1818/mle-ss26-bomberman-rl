@@ -402,6 +402,20 @@ class ReplayConfig:
     # this recipe (513,253 for R02_9 seed 1001), so beta finishes annealing as
     # training finishes rather than at an arbitrary point.
     importance_sampling_steps: int = 513_000
+    # How a batch's importance-sampling weights are rescaled: by the batch
+    # maximum ("max", Schaul et al.'s choice, so the update is only ever scaled
+    # down) or by the batch mean ("mean").
+    #
+    # This is not cosmetic, and the first prioritized arm measured why.  At
+    # beta = 1 the raw weight (N * P(i))^-1 already has expectation 1 under the
+    # sampling distribution, so dividing by the batch maximum is a strict shrink
+    # whose size depends on how skewed the priorities happen to be.  In
+    # runs/m3_per_5000_vs3rb_20260829 the mean weight sat at 0.40 (p10 0.20,
+    # p90 0.61), so that arm trained at roughly 0.4x the step size it declared --
+    # and step size is the largest single effect measured on this line (docs/01
+    # section 7.24).  "mean" keeps the batch's average scale at 1, which
+    # separates "which transitions are replayed" from "how big the step is".
+    importance_normalisation: str = "max"
 
     def __post_init__(self) -> None:
         if min(self.capacity, self.batch_size, self.min_size, self.train_every, self.target_update_every) < 1:
@@ -422,6 +436,10 @@ class ReplayConfig:
             raise ValueError("replay.importance_sampling_start must lie in [0, 1].")
         if self.importance_sampling_steps < 1:
             raise ValueError("replay.importance_sampling_steps must be positive.")
+        if self.importance_normalisation not in {"max", "mean"}:
+            raise ValueError(
+                "replay.importance_normalisation must be 'max' or 'mean', "
+                f"got {self.importance_normalisation!r}")
 
     @classmethod
     def parse(cls, value: dict | None) -> "ReplayConfig | None":
@@ -445,6 +463,8 @@ class ReplayConfig:
                 value.get("importance_sampling_start", cls.importance_sampling_start)),
             importance_sampling_steps=int(
                 value.get("importance_sampling_steps", cls.importance_sampling_steps)),
+            importance_normalisation=str(
+                value.get("importance_normalisation", cls.importance_normalisation)),
         )
 
 
