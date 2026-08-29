@@ -427,10 +427,15 @@ class PrioritizedReplayTest(unittest.TestCase):
         At beta = 1 the raw weight (N * P(i))^-1 has expectation 1 under the
         sampling distribution, so dividing by the batch maximum scales the
         entire update down by a factor that depends on how skewed the priorities
-        are.  runs/m3_per_5000_vs3rb_20260829 ran at a mean weight of 0.40, which
-        is a 0.4x step size -- and step size is the largest single effect on this
-        line (docs/01 section 7.24).  Mean normalisation keeps the average scale
-        where uniform sampling would have put it.
+        are.  runs/m3_per_5000_vs3rb_20260829 ran at a mean weight of 0.40.
+
+        That is a shrink of the loss and NOT a smaller step: Adam divides by the
+        running RMS of the gradient, so a uniform rescaling cancels, and the same
+        arm's parameter norm matched R02_9's at every checkpoint (29.72 / 36.18 /
+        39.16 against 29.19 / 35.79 / 38.63).  What is pinned here is the
+        arithmetic -- the two normalisations differ in scale and agree in
+        direction -- which is what makes a comparison of the two arms a single
+        declared factor.  docs/01 section 7.38 records the withdrawn reading.
         """
         for normalisation, expected in (("max", 1.0), ("mean", None)):
             buffer = self._buffer(sampling="prioritized", priority_exponent=1.0,
