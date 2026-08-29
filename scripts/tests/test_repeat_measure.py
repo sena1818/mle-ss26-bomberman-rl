@@ -295,6 +295,25 @@ class ReportPoolsAndDiscriminatesTest(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 repeat_measure._pool(run_dir)
 
+    def test_a_counter_that_never_fired_reads_as_zero_not_as_a_crash(self):
+        """``Agent.statistics`` is a defaultdict; a zero counter is ABSENT.
+
+        This crashed on exactly the best-behaved jobs -- the ones where the
+        agent never once killed itself -- so treating it as a broken job would
+        have deleted the strongest samples from the pool.  ``rep10k_opponents``
+        had two of them and ``rep10k_anchor`` had none.
+        """
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            run_dir = _finished_repeats(root, "arm", {1: 3.6})
+            stats_path = next((run_dir / "jobs").glob("eval*"))/ "official_stats.json"
+            stats = json.loads(stats_path.read_text(encoding="utf-8"))
+            for agent in stats["by_agent"].values():
+                agent.pop("suicides", None)
+            write_json(stats_path, stats)
+            metrics = repeat_measure._job_metrics(stats_path, "research_agent")
+            self.assertEqual(metrics["suicides"], 0.0)
+
     def test_two_scenarios_are_refused_rather_than_tabulated_side_by_side(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

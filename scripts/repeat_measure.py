@@ -64,16 +64,22 @@ def _job_metrics(stats_path: Path, agent_name: str) -> dict[str, float]:
     rounds = int(mine["rounds"])
     if rounds < 1:
         raise ValueError(f"{stats_path} reports {rounds} rounds")
-    total_coins = sum(agent["coins"] for agent in stats["by_agent"].values())
+    # ``Agent.statistics`` is a defaultdict written only when an event fires
+    # (agents.py EVENT_STAT_MAP), so a counter that stayed at zero is ABSENT
+    # from the file rather than present as 0.  Reading it with [] therefore
+    # crashes on exactly the best-behaved jobs -- a job with no suicides at all
+    # -- which biases whatever survives.  rep10k_opponents had two such jobs.
+    coins = float(mine.get("coins", 0))
+    total_coins = sum(float(a.get("coins", 0)) for a in stats["by_agent"].values())
     # Older stats files predate the explicit kills field; the official score is
     # coins + 5 * kills by definition, so it can always be recovered.
-    kills = mine["kills"] if "kills" in mine else (mine["score"] - mine["coins"]) / 5.0
+    kills = float(mine["kills"]) if "kills" in mine else (mine["score"] - coins) / 5.0
     return {
         "score": mine["score"] / rounds,
-        "coins": mine["coins"] / rounds,
+        "coins": coins / rounds,
         "kills": kills / rounds,
-        "suicides": mine["suicides"] / rounds,
-        "coins_share": (mine["coins"] / total_coins) if total_coins else float("nan"),
+        "suicides": float(mine.get("suicides", 0)) / rounds,
+        "coins_share": (coins / total_coins) if total_coins else float("nan"),
         "rounds": float(rounds),
     }
 
