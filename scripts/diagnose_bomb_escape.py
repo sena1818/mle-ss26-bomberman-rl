@@ -58,7 +58,8 @@ if str(REPOSITORY_ROOT) not in sys.path:
 import settings as s  # noqa: E402
 from agents import AgentBackend  # noqa: E402
 from environment import BombeRLeWorld, WorldArgs  # noqa: E402
-from experiment_lib import write_json  # noqa: E402
+from experiment_lib import write_json
+from framework_log import usable_jobs  # noqa: E402
 
 from agent_code.research_agent.config import shaping_specification  # noqa: E402
 from agent_code.research_agent.shaping import PotentialShaping  # noqa: E402
@@ -506,6 +507,10 @@ def parse_args() -> argparse.Namespace:
                         help="Reward version whose shaping is evaluated at the fatal step; '' to skip.")
     parser.add_argument("--discount", type=float, default=0.95)
     parser.add_argument("--out", type=Path, help="Optional machine-readable copy of the findings.")
+    parser.add_argument("--include-degraded", action="store_true",
+                        help="Replay jobs whose agents were overridden or skipped for slow think "
+                             "time.  They cannot reproduce the official stats and the counts "
+                             "describe a stalled node, not a policy.")
     return parser.parse_args()
 
 
@@ -520,6 +525,7 @@ def main() -> None:
     jobs = sorted(p for p in (args.run_dir / "jobs").iterdir() if p.name.startswith(args.job_prefix))
     if not jobs:
         raise SystemExit(f"No jobs matching {args.job_prefix!r} in {args.run_dir}")
+    jobs = usable_jobs(jobs, args.include_degraded)
 
     results, mismatched = [], []
     for job in jobs:

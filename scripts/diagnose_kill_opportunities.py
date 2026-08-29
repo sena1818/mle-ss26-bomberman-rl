@@ -56,6 +56,7 @@ from agent_code.research_agent.state import _blast_coordinates, escape_search  #
 from diagnose_bomb_escape import (  # noqa: E402
     ReplayWorld, jsonable, official_totals, read_actions,
 )
+from framework_log import usable_jobs  # noqa: E402
 
 
 def manhattan(a: tuple[int, int], b: tuple[int, int]) -> int:
@@ -172,6 +173,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--job-prefix", default="eval_classic_versus_opponents")
     parser.add_argument("--discount", type=float, default=0.95)
     parser.add_argument("--out", type=Path)
+    parser.add_argument("--include-degraded", action="store_true",
+                        help="Replay jobs whose agents were overridden or skipped for slow "
+                             "think time; they cannot reproduce the official stats.")
     return parser.parse_args()
 
 
@@ -180,6 +184,7 @@ def main() -> None:
     jobs = sorted(p for p in (args.run_dir / "jobs").iterdir() if p.name.startswith(args.job_prefix))
     if not jobs:
         raise SystemExit(f"No jobs matching {args.job_prefix!r} in {args.run_dir}")
+    jobs = usable_jobs(jobs, args.include_degraded)
 
     total = collections.Counter()
     nearest = collections.Counter()

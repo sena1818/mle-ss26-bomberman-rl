@@ -31,6 +31,7 @@ import re
 from pathlib import Path
 
 from experiment_lib import write_json
+from framework_log import usable_jobs
 
 OWN_BOMB = re.compile(r"Agent <(?P<victim>[^>]+)> blown up by own bomb")
 OTHER_BOMB = re.compile(r"Agent <(?P<victim>[^>]+)> blown up by agent <(?P<killer>[^>]+)>'s bomb")
@@ -126,6 +127,9 @@ def parse_args() -> argparse.Namespace:
                         help="Which evaluation jobs to attribute, e.g. eval_classic_versus_opponents.")
     parser.add_argument("--agent", default="research_agent")
     parser.add_argument("--out", type=Path)
+    parser.add_argument("--include-degraded", action="store_true",
+                        help="Include jobs whose agents were overridden or skipped "
+                             "for slow think time; they describe a stalled node.")
     return parser.parse_args()
 
 
@@ -134,6 +138,7 @@ def main() -> None:
     jobs = sorted(p for p in (args.run_dir / "jobs").iterdir() if p.name.startswith(args.job_prefix))
     if not jobs:
         raise SystemExit(f"No jobs matching {args.job_prefix!r} in {args.run_dir}")
+    jobs = usable_jobs(jobs, args.include_degraded)
 
     results, mismatched = [], []
     for job in jobs:
