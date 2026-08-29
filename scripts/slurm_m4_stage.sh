@@ -153,6 +153,7 @@ config = {
     "anchor":     "m4_r07_a06_e09_t02_anchor",
     "lr1e4":      "m4_r07_a06_e09_t02_lr1e4",
     "lr5e4":      "m4_r07_a06_e09_t02_lr5e4",
+    "l07":        "m4_r07_a06_e09_t02_l07_cosine",
     "opponents":  "m4_r07_a06_e09_t02opp_opponents",
     "no_shaping": "m4_r07_a03_e09_t02_no_shaping",
     "bc":         "m4_r07_a06_e10_t02_bc",

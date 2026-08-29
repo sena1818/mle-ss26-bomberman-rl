@@ -50,6 +50,7 @@ STAGES=(
   # against a mis-tuned base can invert its own sign.
   "lr1e4:m4_r07_a06_e09_t02_lr1e4:training"
   "lr5e4:m4_r07_a06_e09_t02_lr5e4:training"
+  "l07:m4_r07_a06_e09_t02_l07_cosine:training"
   "STOP_FOR_LR_DECISION::"
   "opponents:m4_r07_a06_e09_t02opp_opponents:training"
   "no_shaping:m4_r07_a03_e09_t02_no_shaping:training"

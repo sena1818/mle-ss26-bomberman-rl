@@ -1,0 +1,184 @@
+{
+  "_design_note": "Learning-rate decay, and nothing else. M4 has run every arm on L00, a constant step size; no decay of any shape has been tested on this line. The handcrafted line measured that comparison as large -- docs/05 section 0.25, L01 against L00 on solo loot-crate: +6.98 against a 4.7 bar, with suicides falling 0.233 to 0.069 -- and read the mechanism as a step too large late in training repeatedly pushing an escape the agent had already learned back out of the weights.\n\nThis line reproduced that mechanism independently, which is what motivates the arm: the lr5e4 arm held suicides at 0.236-0.240 for its whole run while every other arm sat at 0.011-0.049, on a completely different representation and model. Two arms here also turn down between round 8000 and 10000 (no_shaping 46.71 to 45.87 with wait rising 0.122 to 0.201; opponents 40.56 to 37.17), which is the same late-stage signature.\n\nCosine rather than linear because the two are interchangeable here by measurement (L04 against L01, t = -0.02, the closest to zero this project has measured) and because the cosine's flat start suits this line specifically. M4 learns almost nothing before round 4000 -- E09 is still annealing and the buffer still filling -- so a schedule that decays hard early spends itself on rounds that produce nothing. Over the full 10000-round budget the cosine still holds 72 percent of the step at round 4000 against 68 percent for a line of the same length, and 28 percent for a cosine copying L01's half-of-budget proportion.\n\nThe length matches the budget rather than L01's proportion for the same reason. On the handcrafted line L03 -- decay spread across the whole budget -- was distinguishably worse, but that budget had no dead zone: those arms were learning from round 1.",
+  "_predeclared_design_numbers": {
+    "budget_curve": "docs/05 section 0.18 found that on the handcrafted line, training past 2000 rounds made the competition-setting score worse, reproduced across two arms. Whether that holds for a model with three orders of magnitude more parameters is open; report classic_versus_opponents at every evaluated checkpoint rather than only at the end.",
+    "changed_factor": "learning_rate_schedule L00 -> L07. Nothing else moves.",
+    "control": "The M4 anchor arm at the same budget, seeds and step size.",
+    "falsification": "If suicides do not fall and the score is indistinguishable, decay is not the lever on this line and L00 stands. That is a useful negative: it would mean the mechanism the handcrafted line found does not carry over even though its symptom -- lr5e4's flat 0.24 suicide rate -- did.",
+    "gate": "Learning from scratch, judged on VALIDATION seeds only so that holdout stays unselected. All three must hold: (a) the mean loot-crate validation score over the last two evaluated checkpoints exceeds the mean over the first two by more than the 4.7 resolution; (b) the final validation score is above an untrained-CNN control, which the smoke measured at score 0.0 with wait_fraction 0.998 and distinct_cells 1.9; (c) the policy is not degenerate -- distinct_cells > 20, bomb_rate > 0.01, wait_fraction < 0.6. Point-to-point monotonicity is NOT required and must not be used: an RL curve that dips once is not a failed arm.",
+    "known_limitation": "Training is solo, so the opponents plane and the living_opponents scalar are identically zero throughout and the weights reading them keep their initialisation. At tournament evaluation those inputs become non-zero for the first time. This arm therefore cannot answer whether the representation helps against opponents; the opponent-exposure arm exists for that.",
+    "prediction": "suicides at the selected checkpoint fall below the anchor's 0.018, and the curve does not turn down between rounds 8000 and 10000. No prediction on score: the anchor is already at 46.55 of a 50 maximum, so there is little room and the 4.7 bar was calibrated where scores were near 32.",
+    "reporting": "Quote evaluation_summary.json reportable_result, never selected_checkpoint: the latter maximises over train_seed x checkpoint_round and is biased upward. Report all five training-seed distributions, every G2 threshold, and coins_share alongside score for every arm that has opponents.",
+    "resolution_loot_crate": "docs/01 section 7.21: the five-seed spread of the handcrafted control gives sd 3.77, so two arms measured once each need a gap of 4.7. That threshold covers training variance; the tournament one below does not.",
+    "resolution_tournament": "docs/01 section 7.20: pooled 450-round classic-with-opponents score has sd 0.089, so two arms need a gap of 0.246 (coins_share: 0.022). This was measured by re-running ONE fixed set of checkpoints, so it is evaluation noise only and does NOT cover training variance. Use it for a paired same-seed difference, never to bless a maximum taken over seeds.",
+    "selection_protocol": "Pool the five training seeds at each checkpoint round; pick the round on the pooled VALIDATION curve; freeze it; then read the holdout numbers at that round. Holdout is never used to decide whether to continue an arm.",
+    "shape_note": "Reported alongside the result: at rounds 1/2000/4000/6000/8000/10000 the step size is 2.500e-4 / 2.309e-4 / 1.809e-4 / 1.191e-4 / 6.912e-5 / 5.000e-5."
+  },
+  "agent": {
+    "algorithm": "double_dqn",
+    "model": "cnn_mlp_q",
+    "n_step": 3,
+    "name": "research_agent",
+    "replay": {
+      "augmentation": "d4",
+      "batch_size": 32,
+      "capacity": 100000,
+      "min_size": 10000,
+      "target_update_every": 500,
+      "train_every": 4
+    },
+    "state_representation": "board_egocentric_v2"
+  },
+  "checkpoint_evaluation": {
+    "holdout_seeds": [
+      3001,
+      3002,
+      3003
+    ],
+    "mode": "rounds",
+    "rounds": [
+      1000,
+      2000,
+      4000,
+      6000,
+      8000,
+      10000
+    ],
+    "validation_seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation": {
+    "budget": {
+      "checkpoint_every": 500,
+      "rounds": 30
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation_suites": {
+    "classic_solo": {
+      "budget": {
+        "checkpoint_every": 500,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "classic_versus_opponents": {
+      "budget": {
+        "checkpoint_every": 500,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "rounds",
+        "rounds": [
+          2000,
+          6000,
+          10000
+        ],
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [
+        "rule_based_agent",
+        "rule_based_agent",
+        "rule_based_agent"
+      ],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "coin_heaven_diagnostic": {
+      "budget": {
+        "checkpoint_every": 500,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "coin-heaven",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    }
+  },
+  "experiment_id": "M4_R07_A06_E09_C00_T02_n3_10000_L07",
+  "exploration_version": "E09",
+  "learning_rate_schedule": "L07",
+  "promotion": {
+    "primary_metric": "score",
+    "selection_suite": "classic_versus_opponents"
+  },
+  "reward_version": "A06",
+  "route": "R07",
+  "schema_version": 1,
+  "shaping": {
+    "name": "potential_v1"
+  },
+  "terminal_on_truncation": false,
+  "training": {
+    "budget": {
+      "checkpoint_every": 500,
+      "rounds": 10000
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      1001,
+      1002,
+      1003,
+      1004,
+      1005
+    ]
+  }
+}

@@ -30,6 +30,8 @@ class MLPQModel:
         td_loss: str = "mse",
         gradient_clip_norm: float | None = None,
         output_dim: int | None = None,
+        noisy: bool = False,
+        noisy_sigma: float = 0.5,
     ):
         if input_dim < 1 or not hidden_layers or any(width < 1 for width in hidden_layers):
             raise ValueError("MLPQModel requires a positive input dimension and non-empty positive hidden layers.")
@@ -51,11 +53,41 @@ class MLPQModel:
         self.optimizer = optimizer
         self.td_loss = td_loss
         self.gradient_clip_norm = gradient_clip_norm
+        # Noisy networks (Fortunato et al. 2018): every weight gains a learned
+        # noise scale, and the network decides for itself where and how much to
+        # explore.  It replaces epsilon-greedy rather than adding to it.
+        #
+        # One deliberate deviation from the paper: the noise is a *training*
+        # mechanism here and evaluation uses the mean weights alone.  Every
+        # other exploration mechanism on this line is switched off at evaluation
+        # (epsilon is set to 0), the reported numbers are greedy by definition,
+        # and a stochastic evaluation would also cost the bit-exact determinism
+        # the solo suite relies on (docs/01 section 7.14.1).
+        self.noisy = bool(noisy)
+        self.noise_enabled = self.noisy
+        self._noise_generator = np.random.default_rng(seed + 977 if self.noisy else 0)
+        if self.noisy:
+            # sigma_0 / sqrt(fan_in), the factorised initialisation of the paper.
+            self.weight_sigmas = [
+                np.full_like(weight, noisy_sigma / np.sqrt(weight.shape[1]))
+                for weight in self.weights]
+            self.bias_sigmas = [
+                np.full_like(bias, noisy_sigma / np.sqrt(fan_in))
+                for bias, fan_in in zip(self.biases, self.layer_sizes[:-1])]
+        else:
+            self.weight_sigmas, self.bias_sigmas = [], []
+        self._weight_noise: list[np.ndarray] = []
+        self._bias_noise: list[np.ndarray] = []
+        self.noisy_sigma = float(noisy_sigma)
         self._adam_step = 0
         self._weight_momentum = [np.zeros_like(weight) for weight in self.weights]
         self._weight_variance = [np.zeros_like(weight) for weight in self.weights]
         self._bias_momentum = [np.zeros_like(bias) for bias in self.biases]
         self._bias_variance = [np.zeros_like(bias) for bias in self.biases]
+        self._weight_sigma_momentum = [np.zeros_like(one) for one in self.weight_sigmas]
+        self._weight_sigma_variance = [np.zeros_like(one) for one in self.weight_sigmas]
+        self._bias_sigma_momentum = [np.zeros_like(one) for one in self.bias_sigmas]
+        self._bias_sigma_variance = [np.zeros_like(one) for one in self.bias_sigmas]
         self.last_gradient_l2_norm: float | None = None
         self.last_gradient_was_clipped = False
         self.last_hidden_zero_fraction: float | None = None
@@ -152,6 +184,37 @@ class MLPQModel:
         self.weights = [weight.copy() for weight in other.weights]
         self.biases = [bias.copy() for bias in other.biases]
 
+    def _sample_noise(self) -> None:
+        """Draw one factorised noise sample per layer (Fortunato et al., section 3.2).
+
+        Factorised rather than independent: a layer needs ``fan_in * fan_out``
+        noise values, and drawing them as the outer product of two vectors costs
+        ``fan_in + fan_out`` draws instead.  ``f(x) = sign(x) * sqrt(|x|)`` is the
+        transform the paper uses to keep the resulting products well scaled.
+        """
+        def transform(size: int) -> np.ndarray:
+            raw = self._noise_generator.standard_normal(size).astype(np.float32)
+            return np.sign(raw) * np.sqrt(np.abs(raw))
+
+        self._weight_noise, self._bias_noise = [], []
+        for weight in self.weights:
+            outputs, inputs = weight.shape
+            epsilon_in, epsilon_out = transform(inputs), transform(outputs)
+            self._weight_noise.append(np.outer(epsilon_out, epsilon_in))
+            self._bias_noise.append(epsilon_out)
+
+    def _effective_parameters(self):
+        """The weights this forward pass uses, and whether they carry noise."""
+        if not (self.noisy and self.noise_enabled):
+            return self.weights, self.biases, False
+        if not self._weight_noise:
+            self._sample_noise()
+        weights = [mu + sigma * noise for mu, sigma, noise
+                   in zip(self.weights, self.weight_sigmas, self._weight_noise)]
+        biases = [mu + sigma * noise for mu, sigma, noise
+                  in zip(self.biases, self.bias_sigmas, self._bias_noise)]
+        return weights, biases, True
+
     def _forward_batch(self, states: np.ndarray):
         """Batched forward pass returning the per-layer cache used by backprop."""
         if states.ndim != 2 or states.shape[1] != self.layer_sizes[0]:
@@ -159,7 +222,8 @@ class MLPQModel:
         activation = states
         activations = [activation]
         pre_activations: list[np.ndarray] = []
-        for layer, (weight, bias) in enumerate(zip(self.weights, self.biases)):
+        weights, biases, _ = self._effective_parameters()
+        for layer, (weight, bias) in enumerate(zip(weights, biases)):
             linear = activation @ weight.T + bias
             pre_activations.append(linear)
             activation = linear if layer == len(self.weights) - 1 else np.maximum(linear, 0.0)
@@ -242,7 +306,8 @@ class MLPQModel:
             raise ValueError(f"Expected state shape {(self.layer_sizes[0],)}, received {activation.shape}.")
         activations = [activation]
         pre_activations: list[np.ndarray] = []
-        for layer, (weight, bias) in enumerate(zip(self.weights, self.biases)):
+        weights, biases, _ = self._effective_parameters()
+        for layer, (weight, bias) in enumerate(zip(weights, biases)):
             linear = weight @ activation + bias
             pre_activations.append(linear)
             activation = linear if layer == len(self.weights) - 1 else np.maximum(linear, 0.0)

@@ -297,6 +297,32 @@ LEARNING_RATE_SCHEDULES = {
         "final_fraction": 0.2,
         "description": "L01's floor and line, reached over 7000 rounds instead of 2500",
     },
+    # L07 is for the M4 line, whose budget is 10000 rounds and -- unlike every
+    # M3 arm -- whose first 4000 rounds learn almost nothing: E09 is still
+    # annealing and the buffer is still filling, so the score is 0.5 at round
+    # 2000 and 14.7 at 4000 before reaching 44 by 6000.
+    #
+    # That dead zone is why the length matches the whole budget rather than
+    # copying L01's half-of-budget proportion.  A cosine is flat early, so at
+    # round 4000 it still holds 72% of the step size, against 68% for a line of
+    # the same length and 28% for a cosine over 5000 rounds -- which would have
+    # spent three quarters of its decay before anything was being learned.
+    # Most of the decay then falls in rounds 4000-10000, which is where the
+    # curve actually climbs and where lr5e4 showed the late-stage instability
+    # this arm exists to test.
+    #
+    # Cosine rather than linear on the measured grounds that in this project
+    # they are interchangeable: docs/05 section 0.25 put L04 against L01 at
+    # t = -0.02, the closest to zero any effect here has come.  What has never
+    # been measured on M4 is decay against no decay at all.
+    "L07": {
+        "kind": "cosine_absolute",
+        "decay_rounds": 10_000,
+        "final_fraction": 0.2,
+        "description": "L01's floor on a cosine spread across the M4 line's whole 10000-round"
+                       " budget, so the step size is still near full through the rounds that"
+                       " learn nothing and decays over the rounds that do",
+    },
     "L06": {
         "kind": "cosine_absolute",
         "decay_rounds": 7000,
