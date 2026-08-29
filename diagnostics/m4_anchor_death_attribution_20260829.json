@@ -1,0 +1,451 @@
+{
+  "agent": "research_agent",
+  "caught_in_overlapping_blasts": 23,
+  "died_to_own_bomb_only": 449,
+  "job_prefix": "eval_classic_versus_opponents_round10000",
+  "jobs": [
+    {
+      "by_killer": {
+        "rule_based_agent_0": 1.0,
+        "rule_based_agent_1": 1.0,
+        "rule_based_agent_2": 3.0
+      },
+      "caught_in_overlapping_blasts": 0,
+      "died_to_own_bomb_only": 14,
+      "job_id": "eval_classic_versus_opponents_round10000_train1001_seed2001",
+      "killed_by_others_only": 5,
+      "official_suicides": null,
+      "own_bomb_deaths": 14,
+      "rounds": 30,
+      "survived": 11
+    },
+    {
+      "by_killer": {
+        "rule_based_agent_0": 1.0,
+        "rule_based_agent_1": 3.5,
+        "rule_based_agent_2": 4.5
+      },
+      "caught_in_overlapping_blasts": 2,
+      "died_to_own_bomb_only": 9,
+      "job_id": "eval_classic_versus_opponents_round10000_train1001_seed2002",
+      "killed_by_others_only": 9,
+      "official_suicides": 11,
+      "own_bomb_deaths": 11,
+      "rounds": 30,
+      "survived": 10
+    },
+    {
+      "by_killer": {
+        "rule_based_agent_0": 2.0,
+        "rule_based_agent_1": 3.0,
+        "rule_based_agent_2": 2.0
+      },
+      "caught_in_overlapping_blasts": 1,
+      "died_to_own_bomb_only": 8,
+      "job_id": "eval_classic_versus_opponents_round10000_train1001_seed2003",
+      "killed_by_others_only": 7,
+      "official_suicides": null,
+      "own_bomb_deaths": 9,
+      "rounds": 30,
+      "survived": 14
+    },
+    {
+      "by_killer": {
+        "rule_based_agent_0": 1.0,
+        "rule_based_agent_1": 3.0
+      },
+      "caught_in_overlapping_blasts": 0,
+      "died_to_own_bomb_only": 10,
+      "job_id": "eval_classic_versus_opponents_round10000_train1001_seed3001",
+      "killed_by_others_only": 4,
+      "official_suicides": 10,
+      "own_bomb_deaths": 10,
+      "rounds": 30,
+      "survived": 16
+    },
+    {
+      "by_killer": {
+        "rule_based_agent_0": 3.5,
+        "rule_based_agent_1": 3.0,
+        "rule_based_agent_2": 0.5
+      },
+      "caught_in_overlapping_blasts": 1,
+      "died_to_own_bomb_only": 10,
+      "job_id": "eval_classic_versus_opponents_round10000_train1001_seed3002",
+      "killed_by_others_only": 7,
+      "official_suicides": null,
+      "own_bomb_deaths": 11,
+      "rounds": 30,
+      "survived": 12
+    },
+    {
+      "by_killer": {
+        "rule_based_agent_0": 3.0,
+        "rule_based_agent_1": 3.5,
+        "rule_based_agent_2": 3.5
+      },
+      "caught_in_overlapping_blasts": 0,
+      "died_to_own_bomb_only": 12,
+      "job_id": "eval_classic_versus_opponents_round10000_train1001_seed3003",
+      "killed_by_others_only": 10,
+      "official_suicides": 12,
+      "own_bomb_deaths": 12,
+      "rounds": 30,
+      "survived": 8
+    },
+    {
+      "by_killer": {
+        "rule_based_agent_0": 3.0,
+        "rule_based_agent_1": 4.0,
+        "rule_based_agent_2": 3.0
+      },
+      "caught_in_overlapping_blasts": 2,
+      "died_to_own_bomb_only": 16,
+      "job_id": "eval_classic_versus_opponents_round10000_train1002_seed2001",
+      "killed_by_others_only": 10,
+      "official_suicides": null,
+      "own_bomb_deaths": 18,
+      "rounds": 30,
+      "survived": 2
+    },
+    {
+      "by_killer": {
+        "rule_based_agent_0": 4.0,
+        "rule_based_agent_1": 4.0,
+        "rule_based_agent_2": 4.0
+      },
+      "caught_in_overlapping_blasts": 0,
+      "died_to_own_bomb_only": 14,
+      "job_id": "eval_classic_versus_opponents_round10000_train1002_seed2002",
+      "killed_by_others_only": 12,
+      "official_suicides": 14,
+      "own_bomb_deaths": 14,
+      "rounds": 30,
+      "survived": 4
+    },
+    {
+      "by_killer": {
+        "rule_based_agent_0": 4.0,
+        "rule_based_agent_1": 3.0
+      },
+      "caught_in_overlapping_blasts": 1,
+      "died_to_own_bomb_only": 15,
+      "job_id": "eval_classic_versus_opponents_round10000_train1002_seed2003",
+      "killed_by_others_only": 7,
+      "official_suicides": null,
+      "own_bomb_deaths": 16,
+      "rounds": 30,
+      "survived": 7
+    },
+    {
+      "by_killer": {
+        "rule_based_agent_0": 1.0,
+        "rule_based_agent_1": 2.5,
+        "rule_based_agent_2": 1.5
+      },
+      "caught_in_overlapping_blasts": 0,
+      "died_to_own_bomb_only": 17,
+      "job_id": "eval_classic_versus_opponents_round10000_train1002_seed3001",
+      "killed_by_others_only": 5,
+      "official_suicides": 17,
+      "own_bomb_deaths": 17,
+      "rounds": 30,
+      "survived": 8
+    },
+    {
+      "by_killer": {
+        "rule_based_agent_0": 3.0,
+        "rule_based_agent_1": 2.0,
+        "rule_based_agent_2": 3.0
+      },
+      "caught_in_overlapping_blasts": 0,
+      "died_to_own_bomb_only": 17,
+      "job_id": "eval_classic_versus_opponents_round10000_train1002_seed3002",
+      "killed_by_others_only": 8,
+      "official_suicides": null,
+      "own_bomb_deaths": 17,
+      "rounds": 30,
+      "survived": 5
+    },
+    {
+      "by_killer": {
+        "rule_based_agent_0": 2.0,
+        "rule_based_agent_1": 5.0,
+        "rule_based_agent_2": 2.0
+      },
+      "caught_in_overlapping_blasts": 0,
+      "died_to_own_bomb_only": 16,
+      "job_id": "eval_classic_versus_opponents_round10000_train1002_seed3003",
+      "killed_by_others_only": 9,
+      "official_suicides": 16,
+      "own_bomb_deaths": 16,
+      "rounds": 30,
+      "survived": 5
+    },
+    {
+      "by_killer": {
+        "rule_based_agent_1": 1.0,
+        "rule_based_agent_2": 1.0
+      },
+      "caught_in_overlapping_blasts": 1,
+      "died_to_own_bomb_only": 17,
+      "job_id": "eval_classic_versus_opponents_round10000_train1003_seed2001",
+      "killed_by_others_only": 2,
+      "official_suicides": null,
+      "own_bomb_deaths": 18,
+      "rounds": 30,
+      "survived": 10
+    },
+    {
+      "by_killer": {
+        "rule_based_agent_0": 2.0,
+        "rule_based_agent_1": 3.0,
+        "rule_based_agent_2": 2.0
+      },
+      "caught_in_overlapping_blasts": 1,
+      "died_to_own_bomb_only": 10,
+      "job_id": "eval_classic_versus_opponents_round10000_train1003_seed2002",
+      "killed_by_others_only": 7,
+      "official_suicides": 11,
+      "own_bomb_deaths": 11,
+      "rounds": 30,
+      "survived": 12
+    },
+    {
+      "by_killer": {
+        "rule_based_agent_0": 2.0,
+        "rule_based_agent_1": 3.0
+      },
+      "caught_in_overlapping_blasts": 1,
+      "died_to_own_bomb_only": 15,
+      "job_id": "eval_classic_versus_opponents_round10000_train1003_seed2003",
+      "killed_by_others_only": 5,
+      "official_suicides": null,
+      "own_bomb_deaths": 16,
+      "rounds": 30,
+      "survived": 9
+    },
+    {
+      "by_killer": {
+        "rule_based_agent_0": 3.0,
+        "rule_based_agent_1": 1.0
+      },
+      "caught_in_overlapping_blasts": 0,
+      "died_to_own_bomb_only": 12,
+      "job_id": "eval_classic_versus_opponents_round10000_train1003_seed3001",
+      "killed_by_others_only": 4,
+      "official_suicides": 12,
+      "own_bomb_deaths": 12,
+      "rounds": 30,
+      "survived": 14
+    },
+    {
+      "by_killer": {
+        "rule_based_agent_0": 1.0,
+        "rule_based_agent_2": 6.0
+      },
+      "caught_in_overlapping_blasts": 0,
+      "died_to_own_bomb_only": 12,
+      "job_id": "eval_classic_versus_opponents_round10000_train1003_seed3002",
+      "killed_by_others_only": 7,
+      "official_suicides": null,
+      "own_bomb_deaths": 12,
+      "rounds": 30,
+      "survived": 11
+    },
+    {
+      "by_killer": {
+        "rule_based_agent_1": 1.0
+      },
+      "caught_in_overlapping_blasts": 1,
+      "died_to_own_bomb_only": 11,
+      "job_id": "eval_classic_versus_opponents_round10000_train1003_seed3003",
+      "killed_by_others_only": 1,
+      "official_suicides": 12,
+      "own_bomb_deaths": 12,
+      "rounds": 30,
+      "survived": 17
+    },
+    {
+      "by_killer": {
+        "rule_based_agent_0": 2.0,
+        "rule_based_agent_1": 4.0,
+        "rule_based_agent_2": 1.0
+      },
+      "caught_in_overlapping_blasts": 2,
+      "died_to_own_bomb_only": 16,
+      "job_id": "eval_classic_versus_opponents_round10000_train1004_seed2001",
+      "killed_by_others_only": 7,
+      "official_suicides": null,
+      "own_bomb_deaths": 18,
+      "rounds": 30,
+      "survived": 5
+    },
+    {
+      "by_killer": {
+        "rule_based_agent_0": 4.5,
+        "rule_based_agent_2": 2.5
+      },
+      "caught_in_overlapping_blasts": 0,
+      "died_to_own_bomb_only": 17,
+      "job_id": "eval_classic_versus_opponents_round10000_train1004_seed2002",
+      "killed_by_others_only": 7,
+      "official_suicides": 17,
+      "own_bomb_deaths": 17,
+      "rounds": 30,
+      "survived": 6
+    },
+    {
+      "by_killer": {
+        "rule_based_agent_0": 3.0,
+        "rule_based_agent_1": 2.0,
+        "rule_based_agent_2": 2.0
+      },
+      "caught_in_overlapping_blasts": 1,
+      "died_to_own_bomb_only": 15,
+      "job_id": "eval_classic_versus_opponents_round10000_train1004_seed2003",
+      "killed_by_others_only": 7,
+      "official_suicides": null,
+      "own_bomb_deaths": 16,
+      "rounds": 30,
+      "survived": 7
+    },
+    {
+      "by_killer": {
+        "rule_based_agent_1": 3.0,
+        "rule_based_agent_2": 3.0
+      },
+      "caught_in_overlapping_blasts": 0,
+      "died_to_own_bomb_only": 16,
+      "job_id": "eval_classic_versus_opponents_round10000_train1004_seed3001",
+      "killed_by_others_only": 6,
+      "official_suicides": 16,
+      "own_bomb_deaths": 16,
+      "rounds": 30,
+      "survived": 8
+    },
+    {
+      "by_killer": {
+        "rule_based_agent_0": 2.5,
+        "rule_based_agent_1": 5.5,
+        "rule_based_agent_2": 3.0
+      },
+      "caught_in_overlapping_blasts": 1,
+      "died_to_own_bomb_only": 11,
+      "job_id": "eval_classic_versus_opponents_round10000_train1004_seed3002",
+      "killed_by_others_only": 11,
+      "official_suicides": null,
+      "own_bomb_deaths": 12,
+      "rounds": 30,
+      "survived": 7
+    },
+    {
+      "by_killer": {
+        "rule_based_agent_0": 6.0,
+        "rule_based_agent_1": 3.0
+      },
+      "caught_in_overlapping_blasts": 1,
+      "died_to_own_bomb_only": 13,
+      "job_id": "eval_classic_versus_opponents_round10000_train1004_seed3003",
+      "killed_by_others_only": 9,
+      "official_suicides": 14,
+      "own_bomb_deaths": 14,
+      "rounds": 30,
+      "survived": 7
+    },
+    {
+      "by_killer": {
+        "rule_based_agent_0": 4.0,
+        "rule_based_agent_1": 2.0
+      },
+      "caught_in_overlapping_blasts": 0,
+      "died_to_own_bomb_only": 19,
+      "job_id": "eval_classic_versus_opponents_round10000_train1005_seed2001",
+      "killed_by_others_only": 6,
+      "official_suicides": null,
+      "own_bomb_deaths": 19,
+      "rounds": 30,
+      "survived": 5
+    },
+    {
+      "by_killer": {
+        "rule_based_agent_0": 2.0,
+        "rule_based_agent_2": 1.0
+      },
+      "caught_in_overlapping_blasts": 3,
+      "died_to_own_bomb_only": 24,
+      "job_id": "eval_classic_versus_opponents_round10000_train1005_seed2002",
+      "killed_by_others_only": 3,
+      "official_suicides": 27,
+      "own_bomb_deaths": 27,
+      "rounds": 30,
+      "survived": 0
+    },
+    {
+      "by_killer": {
+        "rule_based_agent_0": 1.0,
+        "rule_based_agent_1": 3.0,
+        "rule_based_agent_2": 2.0
+      },
+      "caught_in_overlapping_blasts": 2,
+      "died_to_own_bomb_only": 19,
+      "job_id": "eval_classic_versus_opponents_round10000_train1005_seed2003",
+      "killed_by_others_only": 6,
+      "official_suicides": null,
+      "own_bomb_deaths": 21,
+      "rounds": 30,
+      "survived": 3
+    },
+    {
+      "by_killer": {},
+      "caught_in_overlapping_blasts": 1,
+      "died_to_own_bomb_only": 22,
+      "job_id": "eval_classic_versus_opponents_round10000_train1005_seed3001",
+      "killed_by_others_only": 0,
+      "official_suicides": 23,
+      "own_bomb_deaths": 23,
+      "rounds": 30,
+      "survived": 7
+    },
+    {
+      "by_killer": {
+        "rule_based_agent_0": 2.0,
+        "rule_based_agent_1": 2.0,
+        "rule_based_agent_2": 2.0
+      },
+      "caught_in_overlapping_blasts": 0,
+      "died_to_own_bomb_only": 19,
+      "job_id": "eval_classic_versus_opponents_round10000_train1005_seed3002",
+      "killed_by_others_only": 6,
+      "official_suicides": null,
+      "own_bomb_deaths": 19,
+      "rounds": 30,
+      "survived": 5
+    },
+    {
+      "by_killer": {
+        "rule_based_agent_0": 1.0,
+        "rule_based_agent_1": 1.0,
+        "rule_based_agent_2": 1.0
+      },
+      "caught_in_overlapping_blasts": 1,
+      "died_to_own_bomb_only": 23,
+      "job_id": "eval_classic_versus_opponents_round10000_train1005_seed3003",
+      "killed_by_others_only": 3,
+      "official_suicides": 24,
+      "own_bomb_deaths": 24,
+      "rounds": 30,
+      "survived": 3
+    }
+  ],
+  "killed_by_others_only": 190,
+  "killers": {
+    "rule_based_agent_0": 64.5,
+    "rule_based_agent_1": 72.0,
+    "rule_based_agent_2": 53.5
+  },
+  "mismatched_jobs": [],
+  "rounds": 900,
+  "run_dir": "../run_archives/m4_anchor_20260828b",
+  "survived": 238
+}
