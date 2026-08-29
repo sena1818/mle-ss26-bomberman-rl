@@ -116,6 +116,15 @@ IMPLEMENTED_ROUTES = {
         "reward_versions": _VECTOR_REWARD_VERSIONS,
         "exploration_versions": {"E00", "E01", "E02", "E03", "E04", "E05", "E06", "E11"},
     },
+    # R02_11 is Rainbow's route half: categorical head + dueling + noisy.  Its
+    # exploration set is E12 alone, because a noisy network explores through its
+    # own weights and an epsilon on top would be a second undeclared mechanism.
+    "R02_11": {
+        "lines": ("M3",),
+        "declaration": ("categorical_mlp_q", "double_dqn", "handcrafted_v3"),
+        "reward_versions": _VECTOR_REWARD_VERSIONS,
+        "exploration_versions": {"E12"},
+    },
     "R07": {
         "lines": ("M4",),
         "declaration": ("cnn_mlp_q", "double_dqn", "board_egocentric_v2"),

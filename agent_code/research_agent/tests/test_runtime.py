@@ -521,7 +521,7 @@ class ExperimentRuntimeTest(unittest.TestCase):
         self.assertEqual(
             EXPLORATION_VERSIONS,
             frozenset({"E00", "E01", "E02", "E03", "E04", "E05", "E06", "E07", "E08",
-                       "E09", "E10", "E11"}),
+                       "E09", "E10", "E11", "E12"}),
         )
         self.assertEqual(exploration_specification("E01")["hold_fraction"], 0.20)
         # 500 rounds: 1--100 at 0.30, then decay to exactly 0.05 at round 500.
@@ -654,13 +654,13 @@ class ColdAndWarmStartScheduleTest(unittest.TestCase):
 
     def test_every_earlier_schedule_starts_at_the_same_epsilon(self):
         """The fact that makes E07 necessary rather than a preference."""
-        # E00 and E11 are constants and have no start to compare; E07--E10 are
-        # the deep line's own cold and warm starts, which is what this test is
-        # about.  Everything else is a first-stage schedule for a shallow model.
+        # E00, E11 and E12 are constants and have no start to compare; E07--E10
+        # are the deep line's own cold and warm starts, which is what this test
+        # is about.  Everything else is a first-stage schedule for a shallow model.
         starts = {
             name: schedule.get("initial_epsilon")
             for name, schedule in EXPLORATION_SCHEDULES.items()
-            if name not in {"E00", "E07", "E08", "E09", "E10", "E11"}
+            if name not in {"E00", "E07", "E08", "E09", "E10", "E11", "E12"}
         }
         self.assertEqual(set(starts.values()), {0.30})
 

@@ -160,20 +160,42 @@ class MLPQModel:
         delta = np.zeros_like(predictions)
         delta[rows, action_indices] = gradient / len(action_indices)
         self.last_hidden_zero_fraction = self._hidden_zero_fraction(pre_activations)
+        self._backpropagate(delta, activations, pre_activations)
+        return td_errors
+
+    def _backpropagate(self, delta: np.ndarray, activations, pre_activations) -> None:
+        """One backward pass and one optimizer step, noisy or not.
+
+        With noise on, the layer's Jacobian is the *effective* weight
+        ``mu + sigma * epsilon``, not ``mu`` -- using ``mu`` would send the wrong
+        signal to every layer below.  The gradient with respect to a noise scale
+        is the gradient with respect to that effective weight times the noise
+        that was drawn, which is why the sample has to survive from the forward
+        pass to here rather than being redrawn.
+        """
+        weights, _, noisy = self._effective_parameters()
         weight_gradients: list[np.ndarray] = [np.empty_like(weight) for weight in self.weights]
         bias_gradients: list[np.ndarray] = [np.empty_like(bias) for bias in self.biases]
         for layer in range(len(self.weights) - 1, -1, -1):
             weight_gradients[layer] = delta.T @ activations[layer]
             bias_gradients[layer] = delta.sum(axis=0)
             if layer:
-                delta = (delta @ self.weights[layer]) * (pre_activations[layer - 1] > 0.0)
-        self._apply_gradients(weight_gradients, bias_gradients, self.learning_rate)
-        return td_errors
+                delta = (delta @ weights[layer]) * (pre_activations[layer - 1] > 0.0)
+        if noisy:
+            sigma_weight_gradients = [gradient * noise for gradient, noise
+                                      in zip(weight_gradients, self._weight_noise)]
+            sigma_bias_gradients = [gradient * noise for gradient, noise
+                                    in zip(bias_gradients, self._bias_noise)]
+        else:
+            sigma_weight_gradients, sigma_bias_gradients = [], []
+        self._apply_gradients(weight_gradients, bias_gradients, self.learning_rate,
+                              sigma_weight_gradients, sigma_bias_gradients)
 
     def clone(self) -> "MLPQModel":
         copy = MLPQModel(
             self.layer_sizes[0], self.layer_sizes[1:-1], learning_rate=self.learning_rate,
             optimizer=self.optimizer, td_loss=self.td_loss, gradient_clip_norm=self.gradient_clip_norm,
+            noisy=self.noisy, noisy_sigma=self.noisy_sigma,
         )
         copy.copy_parameters_from(self)
         return copy
@@ -181,8 +203,12 @@ class MLPQModel:
     def copy_parameters_from(self, other: "MLPQModel") -> None:
         if other.layer_sizes != self.layer_sizes:
             raise ValueError(f"Cannot copy parameters between MLP shapes {other.layer_sizes} and {self.layer_sizes}.")
+        if other.noisy != self.noisy:
+            raise ValueError("Cannot copy parameters between a noisy and a plain MLP.")
         self.weights = [weight.copy() for weight in other.weights]
         self.biases = [bias.copy() for bias in other.biases]
+        self.weight_sigmas = [one.copy() for one in other.weight_sigmas]
+        self.bias_sigmas = [one.copy() for one in other.bias_sigmas]
 
     def _sample_noise(self) -> None:
         """Draw one factorised noise sample per layer (Fortunato et al., section 3.2).
@@ -204,7 +230,13 @@ class MLPQModel:
             self._bias_noise.append(epsilon_out)
 
     def _effective_parameters(self):
-        """The weights this forward pass uses, and whether they carry noise."""
+        """The weights of the most recent forward pass, and whether they are noisy.
+
+        This never draws: the backward pass has to use exactly the noise the
+        forward pass used, so sampling belongs at the entry to a forward and
+        nowhere else.  Drawing here would give backprop a different network from
+        the one whose output it is correcting.
+        """
         if not (self.noisy and self.noise_enabled):
             return self.weights, self.biases, False
         if not self._weight_noise:
@@ -222,6 +254,11 @@ class MLPQModel:
         activation = states
         activations = [activation]
         pre_activations: list[np.ndarray] = []
+        # A fresh draw per forward pass: the noise IS the exploration, so reusing
+        # one sample would make the policy deterministic between gradient steps
+        # and noisy nets would explore nothing at all.
+        if self.noisy and self.noise_enabled:
+            self._sample_noise()
         weights, biases, _ = self._effective_parameters()
         for layer, (weight, bias) in enumerate(zip(weights, biases)):
             linear = activation @ weight.T + bias
@@ -242,12 +279,24 @@ class MLPQModel:
         for layer, (weight, bias) in enumerate(zip(self.weights, self.biases)):
             payload[f"weights_{layer}"] = weight
             payload[f"biases_{layer}"] = bias
+        if self.noisy:
+            payload["noisy"] = np.asarray(True)
+            for layer, (weight, bias) in enumerate(zip(self.weight_sigmas, self.bias_sigmas)):
+                payload[f"weight_sigmas_{layer}"] = weight
+                payload[f"bias_sigmas_{layer}"] = bias
         np.savez(path, **payload)
 
     def training_diagnostics(self) -> dict[str, float | bool | int | None]:
         """Return small, JSON-safe signals for diagnosing fitted-Q stability."""
         parameter_sq = sum(float(np.sum(parameter.astype(np.float64) ** 2)) for parameter in self.weights + self.biases)
+        noise_scale = None
+        if self.noisy:
+            # The one number that says whether the network still explores: sigma
+            # collapsing to zero is noisy nets turning itself off, and the arm
+            # would then be greedy training with no exploration at all.
+            noise_scale = float(np.mean([np.mean(np.abs(one)) for one in self.weight_sigmas]))
         return {
+            "mean_noise_scale": noise_scale,
             "optimizer_steps": self._adam_step if self.optimizer == "adam" else 0,
             "parameter_l2_norm": float(np.sqrt(parameter_sq)),
             "last_gradient_l2_norm": self.last_gradient_l2_norm,
@@ -276,6 +325,7 @@ class MLPQModel:
             model = cls(
                 layer_sizes[0], layer_sizes[1:-1], learning_rate=learning_rate,
                 optimizer=optimizer, td_loss=td_loss, gradient_clip_norm=gradient_clip_norm,
+                noisy=bool(data["noisy"].item()) if "noisy" in data.files else False,
             )
             weights: list[np.ndarray] = []
             biases: list[np.ndarray] = []
@@ -289,6 +339,15 @@ class MLPQModel:
                     raise ValueError(f"Checkpoint {path} has invalid parameters for MLP layer {layer}.")
                 weights.append(weight)
                 biases.append(bias)
+            if model.noisy:
+                model.weight_sigmas = [data[f"weight_sigmas_{layer}"].astype(np.float32)
+                                       for layer in range(len(weights))]
+                model.bias_sigmas = [data[f"bias_sigmas_{layer}"].astype(np.float32)
+                                     for layer in range(len(biases))]
+                model._weight_sigma_momentum = [np.zeros_like(one) for one in model.weight_sigmas]
+                model._weight_sigma_variance = [np.zeros_like(one) for one in model.weight_sigmas]
+                model._bias_sigma_momentum = [np.zeros_like(one) for one in model.bias_sigmas]
+                model._bias_sigma_variance = [np.zeros_like(one) for one in model.bias_sigmas]
             try:
                 metadata = json.loads(str(data["metadata"].item()))
             except (TypeError, json.JSONDecodeError) as exc:
@@ -306,6 +365,8 @@ class MLPQModel:
             raise ValueError(f"Expected state shape {(self.layer_sizes[0],)}, received {activation.shape}.")
         activations = [activation]
         pre_activations: list[np.ndarray] = []
+        if self.noisy and self.noise_enabled:
+            self._sample_noise()
         weights, biases, _ = self._effective_parameters()
         for layer, (weight, bias) in enumerate(zip(weights, biases)):
             linear = weight @ activation + bias
@@ -335,8 +396,15 @@ class MLPQModel:
         weight_gradients: list[np.ndarray],
         bias_gradients: list[np.ndarray],
         learning_rate: float,
+        sigma_weight_gradients: list[np.ndarray] | None = None,
+        sigma_bias_gradients: list[np.ndarray] | None = None,
     ) -> None:
-        gradients = weight_gradients + bias_gradients
+        sigma_weight_gradients = sigma_weight_gradients or []
+        sigma_bias_gradients = sigma_bias_gradients or []
+        # The noise scales are parameters like any other, so they join the clip
+        # norm and the optimizer state rather than getting their own rules.
+        gradients = (weight_gradients + bias_gradients
+                     + sigma_weight_gradients + sigma_bias_gradients)
         squared_norm = sum(float(np.sum(gradient.astype(np.float64) ** 2)) for gradient in gradients)
         gradient_norm = float(np.sqrt(squared_norm))
         self.last_gradient_l2_norm = gradient_norm
@@ -345,12 +413,18 @@ class MLPQModel:
             scale = self.gradient_clip_norm / gradient_norm
             weight_gradients = [gradient * scale for gradient in weight_gradients]
             bias_gradients = [gradient * scale for gradient in bias_gradients]
+            sigma_weight_gradients = [gradient * scale for gradient in sigma_weight_gradients]
+            sigma_bias_gradients = [gradient * scale for gradient in sigma_bias_gradients]
             self.last_gradient_was_clipped = True
 
         if self.optimizer == "sgd":
             for layer, (weight_gradient, bias_gradient) in enumerate(zip(weight_gradients, bias_gradients)):
                 self.weights[layer] += (learning_rate * weight_gradient).astype(np.float32)
                 self.biases[layer] += (learning_rate * bias_gradient).astype(np.float32)
+            for layer, (weight_gradient, bias_gradient) in enumerate(
+                    zip(sigma_weight_gradients, sigma_bias_gradients)):
+                self.weight_sigmas[layer] += (learning_rate * weight_gradient).astype(np.float32)
+                self.bias_sigmas[layer] += (learning_rate * bias_gradient).astype(np.float32)
             return
 
         self._adam_step += 1
@@ -360,6 +434,10 @@ class MLPQModel:
         for parameters, gradients_for_parameters, momentum, variance in (
             (self.weights, weight_gradients, self._weight_momentum, self._weight_variance),
             (self.biases, bias_gradients, self._bias_momentum, self._bias_variance),
+            (self.weight_sigmas, sigma_weight_gradients,
+             self._weight_sigma_momentum, self._weight_sigma_variance),
+            (self.bias_sigmas, sigma_bias_gradients,
+             self._bias_sigma_momentum, self._bias_sigma_variance),
         ):
             for parameter, gradient, first, second in zip(parameters, gradients_for_parameters, momentum, variance):
                 first *= beta1

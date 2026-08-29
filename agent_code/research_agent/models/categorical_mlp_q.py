@@ -48,6 +48,8 @@ class CategoricalMLPQModel(MLPQModel):
         value_min: float = -2.0,
         value_max: float = 12.0,
         dueling: bool = False,
+        noisy: bool = False,
+        noisy_sigma: float = 0.5,
         optimizer: str = "adam",
         td_loss: str = "cross_entropy",
         gradient_clip_norm: float | None = None,
@@ -70,6 +72,7 @@ class CategoricalMLPQModel(MLPQModel):
             input_dim, hidden_layers, seed=seed, learning_rate=learning_rate,
             optimizer=optimizer, td_loss=td_loss, gradient_clip_norm=gradient_clip_norm,
             output_dim=(len(ACTIONS) + (1 if dueling else 0)) * int(atoms),
+            noisy=noisy, noisy_sigma=noisy_sigma,
         )
         self.dueling = bool(dueling)
         self.atoms = int(atoms)
@@ -174,14 +177,12 @@ class CategoricalMLPQModel(MLPQModel):
         delta = self._split_gradient(head) / len(action_indices)
 
         self.last_hidden_zero_fraction = self._hidden_zero_fraction(pre_activations)
-        weight_gradients: list[np.ndarray] = [np.empty_like(weight) for weight in self.weights]
-        bias_gradients: list[np.ndarray] = [np.empty_like(bias) for bias in self.biases]
-        for layer in range(len(self.weights) - 1, -1, -1):
-            weight_gradients[layer] = delta.T @ activations[layer]
-            bias_gradients[layer] = delta.sum(axis=0)
-            if layer:
-                delta = (delta @ self.weights[layer]) * (pre_activations[layer - 1] > 0.0)
-        self._apply_gradients(weight_gradients, bias_gradients, self.learning_rate)
+        # The shared backward pass, not a copy of it.  A copy is how the noise
+        # scales came to receive no gradient at all: this head had its own loop,
+        # it descended through the mean weights rather than the noisy ones, and
+        # it called the optimizer without the sigma terms -- so sigma stayed at
+        # its initialisation to six decimal places while everything else trained.
+        self._backpropagate(delta, activations, pre_activations)
         return losses.astype(np.float32)
 
     def project_targets(self, rewards: np.ndarray, discounts: np.ndarray, terminals: np.ndarray,
@@ -228,7 +229,8 @@ class CategoricalMLPQModel(MLPQModel):
         copy = CategoricalMLPQModel(
             self.layer_sizes[0], self.layer_sizes[1:-1], learning_rate=self.learning_rate,
             atoms=self.atoms, value_min=self.value_min, value_max=self.value_max,
-            dueling=self.dueling, optimizer=self.optimizer, td_loss=self.td_loss,
+            dueling=self.dueling, noisy=self.noisy, noisy_sigma=self.noisy_sigma,
+            optimizer=self.optimizer, td_loss=self.td_loss,
             gradient_clip_norm=self.gradient_clip_norm)
         copy.copy_parameters_from(self)
         return copy
@@ -241,6 +243,7 @@ class CategoricalMLPQModel(MLPQModel):
             "layer_sizes": np.asarray(self.layer_sizes, dtype=np.int64),
             "atoms": np.asarray(self.atoms, dtype=np.int64),
             "dueling": np.asarray(self.dueling),
+            "noisy": np.asarray(self.noisy),
             "value_min": np.asarray(self.value_min, dtype=np.float64),
             "value_max": np.asarray(self.value_max, dtype=np.float64),
             "metadata": np.asarray(json.dumps(self.metadata, sort_keys=True)),
@@ -248,6 +251,9 @@ class CategoricalMLPQModel(MLPQModel):
         for layer, (weight, bias) in enumerate(zip(self.weights, self.biases)):
             payload[f"weights_{layer}"] = weight
             payload[f"biases_{layer}"] = bias
+        for layer, (weight, bias) in enumerate(zip(self.weight_sigmas, self.bias_sigmas)):
+            payload[f"weight_sigmas_{layer}"] = weight
+            payload[f"bias_sigmas_{layer}"] = bias
         np.savez(path, **payload)
 
     @classmethod
@@ -267,9 +273,10 @@ class CategoricalMLPQModel(MLPQModel):
                 raise ValueError(
                     f"Checkpoint {path} has a head of {layer_sizes[-1]} for {atoms} atoms "
                     f"{'with' if dueling else 'without'} dueling; expected {expected}.")
+            noisy = bool(data["noisy"].item()) if "noisy" in data.files else False
             model = cls(layer_sizes[0], layer_sizes[1:-1], learning_rate=learning_rate,
                         atoms=atoms, value_min=value_min, value_max=value_max,
-                        dueling=dueling, optimizer=optimizer, td_loss=td_loss,
+                        dueling=dueling, noisy=noisy, optimizer=optimizer, td_loss=td_loss,
                         gradient_clip_norm=gradient_clip_norm)
             weights, biases = [], []
             for layer, (fan_in, fan_out) in enumerate(zip(layer_sizes, layer_sizes[1:])):
@@ -282,5 +289,15 @@ class CategoricalMLPQModel(MLPQModel):
             metadata = json.loads(str(data["metadata"].item()))
         model.weights = weights
         model.biases = biases
+        if model.noisy:
+            with np.load(path, allow_pickle=False) as data:
+                model.weight_sigmas = [data[f"weight_sigmas_{layer}"].astype(np.float32)
+                                       for layer in range(len(weights))]
+                model.bias_sigmas = [data[f"bias_sigmas_{layer}"].astype(np.float32)
+                                     for layer in range(len(biases))]
+            model._weight_sigma_momentum = [np.zeros_like(one) for one in model.weight_sigmas]
+            model._weight_sigma_variance = [np.zeros_like(one) for one in model.weight_sigmas]
+            model._bias_sigma_momentum = [np.zeros_like(one) for one in model.bias_sigmas]
+            model._bias_sigma_variance = [np.zeros_like(one) for one in model.bias_sigmas]
         model.metadata = metadata if isinstance(metadata, dict) else {}
         return model

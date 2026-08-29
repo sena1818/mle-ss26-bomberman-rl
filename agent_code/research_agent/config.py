@@ -42,7 +42,7 @@ REWARD_VERSIONS = frozenset({"A00", "A01", "A02", "A03", "A05", "A06", "A07"})
 # parameter, so a finished run's snapshot names the exact schedule it saw --
 # the same discipline as A00--A06 and R02_1--R02_3.
 EXPLORATION_VERSIONS = frozenset({"E00", "E01", "E02", "E03", "E04", "E05", "E06", "E07", "E08",
-                                  "E09", "E10", "E11"})
+                                  "E09", "E10", "E11", "E12"})
 # How a curriculum indexes its exploration schedule.  A curriculum segment is a
 # separate game process whose round counter restarts at 1, so the schedule needs
 # an explicit choice instead of an accidental one.
@@ -214,6 +214,15 @@ EXPLORATION_SCHEDULES = {
     # It is a schedule rather than E00 because E00 returns the *route's* epsilon
     # field (0.15 on every M3 route) and there is no environment variable for
     # that field, so E00 cannot express 0.05 without a new route.
+    # E12 is not "no exploration": it is exploration moved inside the network.
+    # A noisy route explores by sampling its own weights, so an epsilon on top
+    # would be a second, undeclared mechanism doing the same job.
+    "E12": {
+        "kind": "constant",
+        "epsilon": 0.0,
+        "description": "epsilon is 0: a noisy network explores through its own weight noise"
+                       " (Fortunato et al. 2018) rather than through random actions",
+    },
     "E11": {
         "kind": "constant",
         "epsilon": 0.05,
@@ -535,6 +544,13 @@ class ExperimentConfig:
     atoms: int = 51
     value_min: float = -2.0
     value_max: float = 12.0
+    # Rainbow's remaining two components.  Dueling splits the head into a shared
+    # state value and per-action advantages; noisy replaces epsilon-greedy with
+    # learned per-weight noise, so a noisy route must declare E12 (epsilon 0)
+    # and nothing else -- two exploration mechanisms at once is not a factor
+    # anybody could interpret.
+    dueling: bool = False
+    noisy: bool = False
 
 
 EXPERIMENTS = {
@@ -840,6 +856,37 @@ EXPERIMENTS = {
         value_min=-2.0,
         value_max=12.0,
     ),
+    # R02_11 is Rainbow as far as this codebase goes: Double DQN and n-step come
+    # from the experiment, and the route adds the categorical head, the dueling
+    # split and noisy exploration.  Four of Rainbow's six components; the other
+    # two -- prioritized replay and n-step -- are declared per experiment, so a
+    # Rainbow arm is this route plus agent.replay.sampling and agent.n_step.
+    "R02_11": ExperimentConfig(
+        name="R02_11",
+        lines=("M3",),
+        state_encoder="handcrafted_v3",
+        network="categorical_mlp_q",
+        algorithm="double_dqn",
+        learning_rate=5e-4,
+        discount=0.95,
+        epsilon=0.15,
+        safety_filter="legality_only",
+        feature_version="handcrafted_v3",
+        reward_version=REWARD_VERSION,
+        exploration_version="E12",
+        terminal_on_truncation=TERMINAL_ON_TRUNCATION,
+        hidden_layers=(128, 64),
+        replay=ReplayConfig(),
+        learning_rate_schedule="L01",
+        optimizer="adam",
+        td_loss="cross_entropy",
+        gradient_clip_norm=10.0,
+        atoms=51,
+        value_min=-2.0,
+        value_max=12.0,
+        dueling=True,
+        noisy=True,
+    ),
     "R07": ExperimentConfig(
         name="R07",
         lines=("M4",),
@@ -1124,6 +1171,14 @@ def validate_config(config: ExperimentConfig) -> ExperimentConfig:
         raise ValueError(
             f"td_loss 'cross_entropy' is the distributional head's loss, but "
             f"{config.name} declares network {config.network!r}.")
+    if config.dueling and not distributional:
+        raise ValueError("dueling is implemented for the categorical head only.")
+    if config.noisy != (config.exploration_version == "E12"):
+        raise ValueError(
+            "A noisy network explores through its own weights and must declare E12 "
+            f"(epsilon 0); {config.name} declares noisy={config.noisy} with "
+            f"{config.exploration_version}. Two exploration mechanisms at once is not a "
+            "factor anybody could interpret.")
     if config.optimizer not in {"sgd", "adam"}:
         raise ValueError(f"optimizer must be 'sgd' or 'adam', got {config.optimizer!r}.")
     # The set of losses lives in models.base so the adapters and this validator

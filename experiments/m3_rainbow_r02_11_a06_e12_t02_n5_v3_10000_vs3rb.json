@@ -1,15 +1,16 @@
 {
-  "_design_note": "Rainbow, as far as this codebase implements it: Double DQN + n-step(5) + prioritized replay + a C51 distributional head, at a 10000-round budget. Four of Rainbow's six components; dueling and noisy nets are not implemented for a handcrafted-feature MLP and would each be new code.\n\nThe budget is the part with evidence behind it. The PER arm's learning curve on the loot-crate primary suite is behind R02_9 at every checkpoint and still climbing at 5000 rounds -- 15.52 at 4000 and 16.42 at 5000, where R02_9 had already flattened at 16.38 and 16.60 -- so prioritized sampling on this recipe learns roughly 1.7x slower per round rather than faster. A Rainbow arm at 5000 rounds would measure an undertrained agent. 10000 rounds is where the curve has room to finish.\n\nAn explanation this arm does NOT rest on: the first PER arm was read as training at 0.4x its declared step size, because its mean importance weight sat at 0.40 and its gradient norm at 0.486 against R02_9's 1.120. That reading is wrong and the measurement that kills it is the parameter norm -- PER reached 29.72 / 36.18 / 39.16 at rounds 1000 / 2500 / 5000 against R02_9's 29.19 / 35.79 / 38.63. The weights moved just as far. Adam divides by the running RMS of the gradient, so a uniform rescaling of the loss leaves the update almost unchanged, and it did. Sixth time on this line that an unmeasured mechanism has been wrong.",
+  "_design_note": "Rainbow on the handcrafted line, all six components this time: Double DQN, n-step(5), prioritized replay, a C51 distributional head, the dueling split, and noisy networks in place of epsilon-greedy. Route R02_11 carries the three that are agent design (categorical, dueling, noisy); the experiment carries the three that are not (double_dqn, n_step, replay.sampling).\n\nTwo implementation choices worth stating, because neither is forced.\n\nThe noise is a training mechanism and evaluation uses the mean weights alone. Every other exploration mechanism on this line is switched off for evaluation -- epsilon is set to 0 -- the reported numbers are greedy by that definition, and a stochastic evaluation would also cost the bit-exact reproducibility the solo suite depends on (section 7.14.1). This is a deliberate deviation from the paper, which keeps the noise at evaluation time.\n\nThe budget is 10000 rounds rather than 5000, and that is the one part with evidence behind it: the prioritized arm's learning curve was below R02_9 at every checkpoint and still climbing at 5000 (15.14 / 15.52 / 16.42 at rounds 3000 / 4000 / 5000 against R02_9's 16.49 / 16.38 / 16.60). A 5000-round Rainbow arm would measure an unfinished agent.",
   "_predeclared_design_numbers": {
-    "changed_factor": "Three against R02_9: distributional head, prioritized sampling, and 10000 rounds instead of 5000. A submission candidate, not an ablation; if it wins, the credit is not divisible.",
+    "changed_factor": "Six against R02_9. A submission candidate, not an ablation; the credit is not divisible and this arm does not claim otherwise. The single-factor arms are runs/rep_c51 (categorical), runs/rep_per (prioritized), runs/rep_budget (10000 rounds); dueling and noisy have none, so a win cannot be attributed to them either.",
     "control": "runs/rep_lr/ (R02_9, ten repeats, score 3.6371). The component arms are runs/rep_c51 (C51 alone), runs/rep_per (PER alone), runs/rep_budget (10000 rounds with the scalar head, t = -0.27).",
     "cost": "Measured: C51 is 482 us per gradient step against the scalar head's 259, and a 10000-round arm takes about 1.2 million of them. Training about 3.5 hours, evaluation about 35 minutes at checkpoint_every 500, repeats about 10 minutes.",
     "falsification": "Indistinguishable from R02_9 over ten repeats closes the Rainbow direction on the handcrafted line, and with it every algorithmic lever this codebase has.",
-    "prediction": "Low. Every pairwise stack tried on this line so far has failed to compose: C51 at 7000 rounds lost both parents' best numbers (section 7.36), and the budget's effect on coins reverses sign under the distributional head. The one honest reason to run it is that PER has never been given the rounds its own curve says it needs, and Rainbow is the configuration that combination is named after.",
+    "prediction": "Low, and for a reason the data already gives. Every stack tried on this line has failed to compose: C51 at 7000 rounds lost both parents' best numbers, and the budget's effect on coins reverses sign under the distributional head (section 7.36). The reason to run it anyway is that Rainbow is the configuration these components were tuned together as, and that prioritized replay has never been given the rounds its own curve asks for.",
     "reporting": "All five training-seed distributions, coins_share and suicides beside every score, the learning curve, and the per-seed holdout numbers -- the submission is one model, not the pooled mean (section 7.37).",
     "resolution_tournament": "Ten repeats per arm of the same fifteen holdout jobs, Welch, |t| > 2.3 (section 7.20.6).",
     "the_ceiling_this_cannot_pass": "Section 7.34: 4.9 of the 8.2 coins a round appear more than six cells away when they are revealed, where the win rate is under 25%. No algorithmic component moves that horizon; only a representation that sees further does.",
-    "the_mechanism_check": "Two, both recorded per gradient step. mean_importance_weight must be below 1.0, or the prioritization did not engage. mean_target must stay inside [-2, 12], or the atom grid is clipping and the arm measures the grid. The loot-crate learning curve must also have flattened by 10000, or the arm is still undertrained and says nothing."
+    "the_mechanism_check": "Four, all recorded per gradient step, any of which voids the arm. mean_importance_weight below 1.0, or the prioritization never engaged. mean_target inside [-2, 12], or the atom grid is clipping. mean_noise_scale away from zero at the end, or the noisy layers collapsed and the arm trained greedily with no exploration at all. The loot-crate curve flat by 10000, or it is still undertrained.",
+    "the_parameter_count": "The head is now (6 + 1) x 51 = 357 wide against R02_9's 6, and every weight carries a sigma, so the model holds roughly 5x R02_9's parameters. No version of Rainbow avoids that, and section 7.24.1 found width interacts with step size here, so a win is 'Rainbow' and not 'these six ideas'."
   },
   "agent": {
     "algorithm": "double_dqn",
@@ -117,13 +118,13 @@
       ]
     }
   },
-  "experiment_id": "M3_RAINBOW_R02_10_A06_E02_C00_T02_n5_10000_vs3rb",
-  "exploration_version": "E02",
+  "experiment_id": "M3_RAINBOW_R02_11_A06_E12_C00_T02_n5_10000_vs3rb",
+  "exploration_version": "E12",
   "promotion": {
     "primary_metric": "score"
   },
   "reward_version": "A06",
-  "route": "R02_10",
+  "route": "R02_11",
   "schema_version": 1,
   "shaping": {
     "name": "potential_v1"

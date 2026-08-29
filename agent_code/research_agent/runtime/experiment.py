@@ -600,6 +600,12 @@ class ExperimentRuntime:
         else:
             self.logger.info("Creating a fresh %s QModel adapter", self.config.network)
             self.model = build_model(self.config, input_dim, seed=self.agent_seed)
+        if getattr(self.model, "noisy", False):
+            # Exploration is switched off for evaluation here exactly as epsilon
+            # is (see _epsilon_for_game_state), so a reported number is greedy by
+            # the same definition it has always had -- and the solo suite stays
+            # bit-exactly reproducible (docs/01 section 7.14.1).
+            self.model.noise_enabled = bool(self.train)
         self.learner = build_learner(self.config, self.model, seed=self.agent_seed, training=self.train)
 
     def _start_round(self) -> None:

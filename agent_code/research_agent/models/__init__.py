@@ -36,6 +36,7 @@ def build_model(config: ExperimentConfig, input_dim: int, *, seed: int) -> QMode
         return CategoricalMLPQModel(
             input_dim, config.hidden_layers, seed=seed, learning_rate=config.learning_rate,
             atoms=config.atoms, value_min=config.value_min, value_max=config.value_max,
+            dueling=config.dueling, noisy=config.noisy,
             optimizer=config.optimizer, td_loss=config.td_loss,
             gradient_clip_norm=config.gradient_clip_norm,
         )
@@ -84,6 +85,10 @@ def load_model(config: ExperimentConfig, path: Path) -> QModel:
             raise ValueError(
                 f"Checkpoint {path} has hidden layers {model.layer_sizes[1:-1]}, "
                 f"but {config.name} declares {tuple(config.hidden_layers)}.")
+        if (model.dueling, model.noisy) != (config.dueling, config.noisy):
+            raise ValueError(
+                f"Checkpoint {path} is dueling={model.dueling} noisy={model.noisy}, but "
+                f"{config.name} declares dueling={config.dueling} noisy={config.noisy}.")
         if (model.atoms, model.value_min, model.value_max) != (
                 config.atoms, config.value_min, config.value_max):
             raise ValueError(
