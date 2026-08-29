@@ -125,6 +125,15 @@ IMPLEMENTED_ROUTES = {
         "reward_versions": _VECTOR_REWARD_VERSIONS,
         "exploration_versions": {"E12"},
     },
+    # R02_12 is R02_9's declaration with noisy exploration substituted for
+    # epsilon-greedy -- the add-one-in ablation of R02_11.  E12 alone, for the
+    # same reason R02_11 takes E12 alone.
+    "R02_12": {
+        "lines": ("M3",),
+        "declaration": ("mlp_q", "double_dqn", "handcrafted_v3"),
+        "reward_versions": _VECTOR_REWARD_VERSIONS,
+        "exploration_versions": {"E12"},
+    },
     "R07": {
         "lines": ("M4",),
         "declaration": ("cnn_mlp_q", "double_dqn", "board_egocentric_v2"),

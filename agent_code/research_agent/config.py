@@ -887,6 +887,39 @@ EXPERIMENTS = {
         dueling=True,
         noisy=True,
     ),
+    # R02_12 is R02_9 with noisy layers and nothing else: the scalar head,
+    # uniform replay, the same trunk and the same schedule.  It exists to
+    # attribute R02_11's result.  Rainbow's other three components each have a
+    # single-factor arm already and none of them won -- the categorical head is
+    # indistinguishable (section 7.35), prioritized replay is distinguishably
+    # worse (section 7.37), and the budget alone is t = -0.27 (section 7.29) --
+    # so the add-one-in test on the remaining component is the informative one.
+    # Dueling has no arm of its own and cannot get one here: this codebase's
+    # dueling split writes into the categorical logits, so it does not exist
+    # apart from the head.  A win for this route therefore reads as "noisy
+    # exploration", and a loss reads as "dueling, or the interaction".
+    "R02_12": ExperimentConfig(
+        name="R02_12",
+        lines=("M3",),
+        state_encoder="handcrafted_v3",
+        network="mlp_q",
+        algorithm="double_dqn",
+        learning_rate=5e-4,
+        discount=0.95,
+        epsilon=0.15,
+        safety_filter="legality_only",
+        feature_version="handcrafted_v3",
+        reward_version=REWARD_VERSION,
+        exploration_version="E12",
+        terminal_on_truncation=TERMINAL_ON_TRUNCATION,
+        hidden_layers=(128, 64),
+        replay=ReplayConfig(),
+        learning_rate_schedule="L01",
+        optimizer="adam",
+        td_loss="huber",
+        gradient_clip_norm=10.0,
+        noisy=True,
+    ),
     "R07": ExperimentConfig(
         name="R07",
         lines=("M4",),

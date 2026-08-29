@@ -1,0 +1,147 @@
+{
+  "_design_note": "Add-one-in ablation of the Rainbow arm. R02_9's recipe exactly -- scalar Huber head, uniform replay, the same trunk, the same decayed step size, the same 5-step returns -- with noisy layers replacing epsilon-greedy, at the Rainbow arm's 10000-round budget.\n\nWhy add-one-in rather than leave-one-out. Rainbow won by +2.1778 (t = +32.59) and the entire margin is kills: +0.4227 a round against R02_9's 0.1080, with coins, suicides and coins_share all indistinguishable. Credit has to be assigned among four components, and three of them already have single-factor arms that did not win -- the categorical head is indistinguishable from R02_9 (section 7.35), prioritized replay is distinguishably worse (section 7.37), and 10000 rounds with the scalar head is t = -0.27 (section 7.29). That leaves noisy exploration and dueling, and dueling cannot be separated here because this codebase's dueling split writes into the categorical logits.\n\nThe budget is 10000 to match the Rainbow arm, not because this recipe needs it: R02_9's own curve is flat after 5000 (16.38 / 16.60 at 4000 / 5000). Matching it keeps the single factor single.",
+  "_predeclared_design_numbers": {
+    "changed_factor": "One against R02_9 at a matched budget: E02 epsilon-greedy becomes E12 noisy layers. Everything else is R02_9's.",
+    "control": "runs/rep_budget (R02_9 at 10000 rounds, t = -0.27 against R02_9 at 5000) is the matched-budget baseline; runs/rep_lr (R02_9, ten repeats, 3.6371) is the line baseline. The arm being attributed is runs/rep_rainbow (5.8149).",
+    "cost": "The scalar head is 259 us a gradient step against C51's 482, so this should train in roughly half the Rainbow arm's 6h43m. About 35 minutes of evaluation, about 10 minutes of repeats.",
+    "falsification": "Kills indistinguishable from R02_9 refutes the noisy-exploration reading of section 7.39 and leaves dueling or the interaction as the explanation. Kills near the Rainbow arm's 0.53 attributes it to noisy exploration alone, and makes this the cheaper submission candidate.",
+    "prediction": "Kills between 0.25 and 0.53 a round. The reasoning is mechanistic rather than empirical: trapping a rule_based opponent takes a specific multi-step sequence, and independent per-step epsilon at 0.02 essentially never emits one, whereas noisy layers perturb the weights so the deviation is consistent along a whole trajectory. If instead kills land near R02_9's 0.108, the credit belongs to dueling or to an interaction, and this arm says so.",
+    "reporting": "All five training-seed distributions, kills and suicides beside every score, the learning curve, and the per-seed holdout numbers.",
+    "resolution_tournament": "Ten repeats of the same fifteen holdout jobs, Welch, |t| > 2.3 (section 7.20.6).",
+    "the_mechanism_check": "mean_noise_scale away from zero at the end, or the noisy layers collapsed and this trained greedily with no exploration at all -- which for E12 means no exploration whatsoever, since epsilon is 0.",
+    "what_this_cannot_show": "Nothing about dueling. It has no single-factor arm and cannot have one in this codebase."
+  },
+  "agent": {
+    "algorithm": "double_dqn",
+    "model": "mlp_q",
+    "n_step": 5,
+    "name": "research_agent",
+    "replay": {
+      "batch_size": 32,
+      "capacity": 50000,
+      "min_size": 1000,
+      "target_update_every": 500,
+      "train_every": 1
+    },
+    "state_representation": "handcrafted_v3"
+  },
+  "checkpoint_evaluation": {
+    "holdout_seeds": [
+      3001,
+      3002,
+      3003
+    ],
+    "mode": "all",
+    "validation_seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation": {
+    "budget": {
+      "checkpoint_every": 500,
+      "rounds": 30
+    },
+    "opponents": [
+      "rule_based_agent",
+      "rule_based_agent",
+      "rule_based_agent"
+    ],
+    "scenario": "loot-crate",
+    "seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation_suites": {
+    "classic_solo": {
+      "budget": {
+        "checkpoint_every": 500,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "classic_versus_opponents": {
+      "budget": {
+        "checkpoint_every": 500,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [
+        "rule_based_agent",
+        "rule_based_agent",
+        "rule_based_agent"
+      ],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    }
+  },
+  "experiment_id": "M3_NOISY_R02_12_A06_E12_T02_n5_10000_vs3rb",
+  "exploration_version": "E12",
+  "promotion": {
+    "primary_metric": "score"
+  },
+  "reward_version": "A06",
+  "route": "R02_12",
+  "schema_version": 1,
+  "shaping": {
+    "name": "potential_v1"
+  },
+  "terminal_on_truncation": false,
+  "training": {
+    "budget": {
+      "checkpoint_every": 500,
+      "rounds": 10000
+    },
+    "opponents": [
+      "rule_based_agent",
+      "rule_based_agent",
+      "rule_based_agent"
+    ],
+    "scenario": "loot-crate",
+    "seeds": [
+      1001,
+      1002,
+      1003,
+      1004,
+      1005
+    ]
+  }
+}
