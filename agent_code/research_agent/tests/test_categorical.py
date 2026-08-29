@@ -223,6 +223,76 @@ class DistributionalLearnerTest(unittest.TestCase):
         self.assertAlmostEqual(diagnostics["mean_target"], 2.0, delta=0.05)
 
 
+class DuelingCategoricalHeadTest(unittest.TestCase):
+    """Rainbow's dueling split, on the logits, before the softmax.
+
+    ``_split_gradient`` has to be the exact transpose of ``_combine``.  A
+    plausible-but-wrong transpose trains something, converges to something, and
+    is invisible from outside -- which is precisely how the first version of
+    this head shipped with an inverted sign.  The adjoint identity below is
+    exact rather than approximate, so it cannot be satisfied by accident.
+    """
+
+    def _head(self, dueling: bool) -> CategoricalMLPQModel:
+        return CategoricalMLPQModel(4, (16,), atoms=7, value_min=-1.0, value_max=5.0,
+                                    dueling=dueling, seed=0, learning_rate=0.01, optimizer="adam")
+
+    def test_the_head_carries_one_extra_action_worth_of_atoms(self):
+        self.assertEqual(self._head(False).layer_sizes[-1], len(ACTIONS) * 7)
+        self.assertEqual(self._head(True).layer_sizes[-1], (len(ACTIONS) + 1) * 7)
+
+    def test_the_gradient_is_the_exact_adjoint_of_the_combination(self):
+        """<C(r), g> == <r, C^T(g)> for every r and g, since C is linear."""
+        head = self._head(True)
+        rng = np.random.default_rng(0)
+        raw = rng.normal(size=(5, (len(ACTIONS) + 1) * 7))
+        cotangent = rng.normal(size=(5, len(ACTIONS), 7))
+        forward = float(np.sum(head._combine(raw) * cotangent))
+        backward = float(np.sum(raw * head._split_gradient(cotangent)))
+        self.assertAlmostEqual(forward, backward, places=9)
+
+    def test_the_same_identity_holds_without_dueling(self):
+        head = self._head(False)
+        rng = np.random.default_rng(1)
+        raw = rng.normal(size=(5, len(ACTIONS) * 7))
+        cotangent = rng.normal(size=(5, len(ACTIONS), 7))
+        self.assertAlmostEqual(float(np.sum(head._combine(raw) * cotangent)),
+                               float(np.sum(raw * head._split_gradient(cotangent))), places=9)
+
+    def test_a_constant_shifted_between_the_two_streams_changes_nothing(self):
+        """Mean subtraction is what makes V and A identifiable."""
+        head = self._head(True)
+        rng = np.random.default_rng(2)
+        raw = rng.normal(size=(3, (len(ACTIONS) + 1) * 7))
+        shifted = raw.reshape(3, len(ACTIONS) + 1, 7).copy()
+        shifted[:, 0] += 1.5          # move a constant into V
+        shifted[:, 1:] -= 1.5         # and out of every A
+        combined = head._combine(raw)
+        moved = head._combine(shifted.reshape(3, -1))
+        np.testing.assert_allclose(moved - combined, 1.5, atol=1e-9)
+
+    def test_a_dueling_head_learns_a_delta_target(self):
+        head = self._head(True)
+        states = np.tile(np.array([0.5, -0.2, 0.1, 0.0], dtype=np.float32), (8, 1))
+        actions = np.zeros(8, dtype=np.intp)
+        target = np.zeros((8, 7), dtype=np.float32)
+        target[:, 2] = 1.0            # -1 + 2 * 1.0 = 1.0
+        first = head.fit_batch_distribution(states, actions, target).mean()
+        for _ in range(400):
+            head.fit_batch_distribution(states, actions, target)
+        self.assertLess(head.fit_batch_distribution(states, actions, target).mean(), first / 100.0)
+        self.assertEqual(int(np.argmax(head.distribution_batch(states[:1])[0, 0])), 2)
+        self.assertAlmostEqual(float(head.q_values(states[0])[0]), 1.0, places=1)
+
+    def test_a_dueling_checkpoint_will_not_load_as_a_plain_one(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "head.npz"
+            self._head(True).save(path)
+            reloaded = CategoricalMLPQModel.load(path)
+            self.assertTrue(reloaded.dueling)
+            self.assertEqual(reloaded.layer_sizes[-1], (len(ACTIONS) + 1) * 7)
+
+
 class DistributionalWithPrioritizedReplayTest(unittest.TestCase):
     """The two arms combine, and the combination is its own code path.
 

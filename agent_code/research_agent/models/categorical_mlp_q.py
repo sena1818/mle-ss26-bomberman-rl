@@ -47,6 +47,7 @@ class CategoricalMLPQModel(MLPQModel):
         atoms: int = 51,
         value_min: float = -2.0,
         value_max: float = 12.0,
+        dueling: bool = False,
         optimizer: str = "adam",
         td_loss: str = "cross_entropy",
         gradient_clip_norm: float | None = None,
@@ -59,11 +60,18 @@ class CategoricalMLPQModel(MLPQModel):
             raise ValueError(
                 f"A categorical head is trained by cross-entropy, not {td_loss!r}; "
                 "declaring anything else would make the run snapshot say the wrong thing.")
+        # A dueling head emits one extra action's worth of atoms: the state
+        # value V(s), which every action shares.  Rainbow's formulation, and the
+        # reason it is spelled here rather than as a separate model, is that on
+        # a distributional head the split happens in the *logits* -- V and A are
+        # combined before the softmax, so the whole thing stays one distribution
+        # per action.
         super().__init__(
             input_dim, hidden_layers, seed=seed, learning_rate=learning_rate,
             optimizer=optimizer, td_loss=td_loss, gradient_clip_norm=gradient_clip_norm,
-            output_dim=len(ACTIONS) * int(atoms),
+            output_dim=(len(ACTIONS) + (1 if dueling else 0)) * int(atoms),
         )
+        self.dueling = bool(dueling)
         self.atoms = int(atoms)
         self.value_min = float(value_min)
         self.value_max = float(value_max)
@@ -75,7 +83,34 @@ class CategoricalMLPQModel(MLPQModel):
     def distribution_batch(self, states: np.ndarray) -> np.ndarray:
         """Return ``(batch, actions, atoms)`` probabilities."""
         logits, _, _ = self._forward_batch(np.asarray(states, dtype=np.float32))
-        return self._softmax(logits.reshape(-1, len(ACTIONS), self.atoms))
+        return self._softmax(self._combine(logits))
+
+    def _combine(self, raw: np.ndarray) -> np.ndarray:
+        """Turn the raw head into ``(batch, actions, atoms)`` logits.
+
+        Without dueling this is a reshape.  With it, the first atom block is the
+        shared state value and the rest are advantages, combined as
+        ``V + (A - mean_a A)``.  Subtracting the mean is what makes the split
+        identifiable: without it V could absorb any constant out of A.
+        """
+        if not self.dueling:
+            return raw.reshape(-1, len(ACTIONS), self.atoms)
+        blocks = raw.reshape(-1, len(ACTIONS) + 1, self.atoms)
+        value, advantage = blocks[:, :1], blocks[:, 1:]
+        return value + advantage - advantage.mean(axis=1, keepdims=True)
+
+    def _split_gradient(self, head: np.ndarray) -> np.ndarray:
+        """Push a gradient on the combined logits back onto the raw head.
+
+        The combination is linear, so this is its transpose: the value block
+        collects the sum over actions, and each advantage keeps its own term
+        minus the average that the mean-subtraction spread over all of them.
+        """
+        if not self.dueling:
+            return head.reshape(len(head), -1)
+        centred = head - head.mean(axis=1, keepdims=True)
+        value = head.sum(axis=1, keepdims=True)
+        return np.concatenate([value, centred], axis=1).reshape(len(head), -1)
 
     def q_values_batch(self, states: np.ndarray) -> np.ndarray:
         """The expectation of each action's distribution: one row of six."""
@@ -118,7 +153,7 @@ class CategoricalMLPQModel(MLPQModel):
                 f"Expected target probabilities of shape {(len(action_indices), self.atoms)}, "
                 f"received {target_probabilities.shape}.")
         logits, activations, pre_activations = self._forward_batch(states)
-        probabilities = self._softmax(logits.reshape(-1, len(ACTIONS), self.atoms))
+        probabilities = self._softmax(self._combine(logits))
         rows = np.arange(len(action_indices))
         selected = probabilities[rows, action_indices]
         losses = -np.sum(target_probabilities * np.log(np.clip(selected, 1e-8, None)), axis=1)
@@ -136,7 +171,7 @@ class CategoricalMLPQModel(MLPQModel):
         head[rows, action_indices] = target_probabilities - selected
         if weights is not None:
             head *= np.asarray(weights, dtype=np.float32)[:, None, None]
-        delta = head.reshape(len(action_indices), -1) / len(action_indices)
+        delta = self._split_gradient(head) / len(action_indices)
 
         self.last_hidden_zero_fraction = self._hidden_zero_fraction(pre_activations)
         weight_gradients: list[np.ndarray] = [np.empty_like(weight) for weight in self.weights]
@@ -193,7 +228,7 @@ class CategoricalMLPQModel(MLPQModel):
         copy = CategoricalMLPQModel(
             self.layer_sizes[0], self.layer_sizes[1:-1], learning_rate=self.learning_rate,
             atoms=self.atoms, value_min=self.value_min, value_max=self.value_max,
-            optimizer=self.optimizer, td_loss=self.td_loss,
+            dueling=self.dueling, optimizer=self.optimizer, td_loss=self.td_loss,
             gradient_clip_norm=self.gradient_clip_norm)
         copy.copy_parameters_from(self)
         return copy
@@ -205,6 +240,7 @@ class CategoricalMLPQModel(MLPQModel):
             "model_type": np.asarray("categorical_mlp_q"),
             "layer_sizes": np.asarray(self.layer_sizes, dtype=np.int64),
             "atoms": np.asarray(self.atoms, dtype=np.int64),
+            "dueling": np.asarray(self.dueling),
             "value_min": np.asarray(self.value_min, dtype=np.float64),
             "value_max": np.asarray(self.value_max, dtype=np.float64),
             "metadata": np.asarray(json.dumps(self.metadata, sort_keys=True)),
@@ -225,13 +261,15 @@ class CategoricalMLPQModel(MLPQModel):
             atoms = int(data["atoms"].item())
             value_min = float(data["value_min"].item())
             value_max = float(data["value_max"].item())
-            if layer_sizes[-1] != len(ACTIONS) * atoms:
+            dueling = bool(data["dueling"].item()) if "dueling" in data.files else False
+            expected = (len(ACTIONS) + (1 if dueling else 0)) * atoms
+            if layer_sizes[-1] != expected:
                 raise ValueError(
-                    f"Checkpoint {path} has a head of {layer_sizes[-1]} for {atoms} atoms; "
-                    f"expected {len(ACTIONS) * atoms}.")
+                    f"Checkpoint {path} has a head of {layer_sizes[-1]} for {atoms} atoms "
+                    f"{'with' if dueling else 'without'} dueling; expected {expected}.")
             model = cls(layer_sizes[0], layer_sizes[1:-1], learning_rate=learning_rate,
                         atoms=atoms, value_min=value_min, value_max=value_max,
-                        optimizer=optimizer, td_loss=td_loss,
+                        dueling=dueling, optimizer=optimizer, td_loss=td_loss,
                         gradient_clip_norm=gradient_clip_norm)
             weights, biases = [], []
             for layer, (fan_in, fan_out) in enumerate(zip(layer_sizes, layer_sizes[1:])):
