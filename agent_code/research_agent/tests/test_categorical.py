@@ -223,5 +223,60 @@ class DistributionalLearnerTest(unittest.TestCase):
         self.assertAlmostEqual(diagnostics["mean_target"], 2.0, delta=0.05)
 
 
+class DistributionalWithPrioritizedReplayTest(unittest.TestCase):
+    """The two arms combine, and the combination is its own code path.
+
+    Prioritized replay ranks by the error the learner returns, and for a
+    distributional head that error is the cross-entropy rather than a TD
+    residual.  Nothing else in the buffer knows the difference, but the pair had
+    never run together, and a combined arm costs three hours before it would
+    have shown up.
+    """
+
+    def _learner(self) -> ReplayQLearner:
+        config = validate_config(replace(
+            EXPERIMENTS["R02_10"], learning_rate=0.005,
+            replay=ReplayConfig(capacity=256, batch_size=16, min_size=16, train_every=1,
+                                target_update_every=25, sampling="prioritized",
+                                importance_sampling_start=0.4, importance_sampling_steps=200)))
+        return ReplayQLearner(config, build_model(config, STATE_WIDTH, seed=1), seed=0)
+
+    def test_the_pair_trains_and_both_mechanisms_stay_live(self):
+        learner = self._learner()
+        rng = np.random.default_rng(0)
+        for index in range(300):
+            state = rng.normal(size=STATE_WIDTH).astype(np.float32) * 0.3
+            terminal = index % 7 == 0
+            learner.observe(Transition(
+                state=state, action_index=index % len(ACTIONS), reward=float(index % 4),
+                next_state=None if terminal else state + 0.01,
+                next_legal_mask=None if terminal else np.ones(len(ACTIONS), bool),
+                terminal=terminal, n_step=5))
+        diagnostics = learner.step_diagnostics()
+        self.assertTrue(learner.distributional)
+        self.assertTrue(diagnostics["gradient_applied"])
+        # The distributional side: mean_target is an expectation on the support.
+        self.assertGreater(diagnostics["mean_target"], learner.model.value_min)
+        self.assertLess(diagnostics["mean_target"], learner.model.value_max)
+        # The prioritized side: weights below one mean the draw was not uniform.
+        self.assertLess(diagnostics["mean_importance_weight"], 1.0)
+        self.assertGreater(diagnostics["min_importance_weight"], 0.0)
+
+    def test_priorities_come_from_the_cross_entropy_and_spread_out(self):
+        learner = self._learner()
+        rng = np.random.default_rng(1)
+        for index in range(300):
+            state = rng.normal(size=STATE_WIDTH).astype(np.float32) * 0.3
+            learner.observe(Transition(state=state, action_index=index % len(ACTIONS),
+                                       reward=8.0 if index == 5 else 0.0,
+                                       next_state=state + 0.01,
+                                       next_legal_mask=np.ones(len(ACTIONS), bool),
+                                       terminal=False, n_step=5))
+        priorities = learner.buffer.priorities[:len(learner.buffer)]
+        self.assertGreater(len(set(np.round(priorities, 6).tolist())), 1,
+                           "no error was written back; the buffer is still at its entry value")
+        self.assertTrue((priorities > 0).all())
+
+
 if __name__ == "__main__":
     unittest.main()
