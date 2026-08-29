@@ -1,0 +1,149 @@
+{
+  "_design_note": "The submission candidate: the distributional head at the 7000-round budget. Two changes against R02_9, both of which moved a component in the right direction on their own, and it is not a single-factor arm.\n\nIt replaces an arm that also stacked prioritized replay. That arm was queued before the PER result was in; PER came back distinguishably worse on everything that matters -- score -0.194 (t = -3.79), coins -0.180 (t = -5.22), coins_share -0.019 (t = -5.11) and, against the whole pattern of this family, MORE deaths (+0.046, t = +4.07). Stacking a measured regression with two neutral changes is not a submission candidate, so it was dropped four minutes into training rather than after three hours.\n\nWhat is left is the pair with a reason. The 7000-round budget is the only intervention on this line that converted lower deaths into more coins (suicides t = -10.15 AND coins t = +4.00, section 7.33). C51 lowered deaths by more (t = -5.25) and converted none of it. Section 7.34 measured why that can happen: a quarter of rounds end with our death before step 103, while 90% of the coins are gone by step 135, so whether fewer deaths buy coins depends entirely on which rounds they are. The open question this arm asks is whether the budget's conversion and the head's larger safety margin compose.",
+  "_predeclared_design_numbers": {
+    "changed_factor": "Two: budget 5000 -> 7000 and scalar head -> C51. Not single-factor, and the credit is not divisible if it wins. Attribution lives in runs/rep_b7000_n35 and runs/rep_c51.",
+    "control": "runs/m3_lr_decay_5000_vs3rb_20260827/ (R02_9), ten repeats of the holdout classic_versus_opponents suite: score 3.6371, sd 0.1214, coins_share 0.3449. This arm's config is that config with one field changed.",
+    "cost": "Measured: 482 us per gradient step against the scalar head's 259, so 4.1 minutes against 2.2 over a 5000-round arm's 513,000 gradient steps. The game simulation dominates either way.",
+    "falsification": "Indistinguishable from R02_9 over ten repeats submits R02_9 and closes this family: four interventions, every one of them lowering deaths, not one buying a point.",
+    "prediction": "Suicides below both parents (C51 alone reaches 0.2538, 7000 rounds alone 0.2672, R02_9 0.3156). On score the prediction is weak: neither parent moved it, and the arm wins only if the budget's coin conversion survives the change of head.",
+    "reporting": "All five training-seed distributions, coins_share and suicides beside every score, and the learning curve on the loot-crate primary suite. Every score names its scenario and whether opponents were present.",
+    "resolution_tournament": "Two arms measured once each need a gap of 0.246 on the tournament suite (section 7.20.2). The quoted comparison is ten repeats per arm of the same fifteen holdout jobs, Welch, |t| > 2.3.",
+    "the_ceiling_this_cannot_pass": "Section 7.34: our win rate for a coin falls from 72.4% at Manhattan distance 6 to 24.1% at distance 7 the moment it is revealed, and 4.9 of the 8.2 coins a round appear at 7 or more. Perfect play inside that six-cell horizon is about 3.6 coins against the 3.12 we take. Nothing in this family moves the horizon, because it is 7 steps of coin lifetime times one cell per step.",
+    "the_confound_this_arm_cannot_remove": "A categorical head has more parameters than a scalar one, and no version of C51 does not. The trunk is identical -- 62 -> 128 -> 64 is R02_9's, unchanged -- but the output layer is 64 x 306 instead of 64 x 6, so the model holds 35,712 parameters against 16,512. Section 7.24.1 found width interacts with step size on this line, so a difference here is 'the distributional head', not 'distributional learning as such', and must be reported that way. The cheap follow-up if this arm wins is a scalar R02_9 with a wider final layer, which separates the two; there is no point running that control unless it wins.",
+    "the_mechanism_check": "Two ways this head fails quietly, both checked rather than assumed. First, the support: if the projected targets pile up on the first or last atom, the grid is clipping and the arm measures the grid rather than C51. Second, mean_target is reported as the expectation of the projected distribution, so it is comparable with every scalar arm's mean_target and a divergence shows up in the same number it always did.",
+    "the_metric_that_decides_it": "Official score on classic + 3 rule_based_agent, holdout seeds, ten repeats. That is the competition setting and the only promotion metric."
+  },
+  "agent": {
+    "algorithm": "double_dqn",
+    "model": "categorical_mlp_q",
+    "n_step": 5,
+    "name": "research_agent",
+    "replay": {
+      "batch_size": 32,
+      "capacity": 50000,
+      "min_size": 1000,
+      "target_update_every": 500,
+      "train_every": 1
+    },
+    "state_representation": "handcrafted_v3"
+  },
+  "checkpoint_evaluation": {
+    "holdout_seeds": [
+      3001,
+      3002,
+      3003
+    ],
+    "mode": "all",
+    "validation_seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation": {
+    "budget": {
+      "checkpoint_every": 250,
+      "rounds": 30
+    },
+    "opponents": [
+      "rule_based_agent",
+      "rule_based_agent",
+      "rule_based_agent"
+    ],
+    "scenario": "loot-crate",
+    "seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation_suites": {
+    "classic_solo": {
+      "budget": {
+        "checkpoint_every": 250,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "classic_versus_opponents": {
+      "budget": {
+        "checkpoint_every": 250,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [
+        "rule_based_agent",
+        "rule_based_agent",
+        "rule_based_agent"
+      ],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    }
+  },
+  "experiment_id": "M3_C51B_R02_10_A06_E02_C00_T02_n5_7000_vs3rb",
+  "exploration_version": "E02",
+  "promotion": {
+    "primary_metric": "score"
+  },
+  "reward_version": "A06",
+  "route": "R02_10",
+  "schema_version": 1,
+  "shaping": {
+    "name": "potential_v1"
+  },
+  "terminal_on_truncation": false,
+  "training": {
+    "budget": {
+      "checkpoint_every": 250,
+      "rounds": 7000
+    },
+    "opponents": [
+      "rule_based_agent",
+      "rule_based_agent",
+      "rule_based_agent"
+    ],
+    "scenario": "loot-crate",
+    "seeds": [
+      1001,
+      1002,
+      1003,
+      1004,
+      1005
+    ]
+  }
+}
