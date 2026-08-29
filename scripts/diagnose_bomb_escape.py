@@ -154,6 +154,29 @@ def read_actions(job_dir: Path) -> dict[tuple[int, int, str], str]:
     return actions
 
 
+def job_summary(result: dict) -> dict:
+    """One job as counts, not as its raw per-tick record.
+
+    ``--out`` is meant to be the archived, machine-readable form of the report.
+    Writing ``results`` verbatim made it 82 MB for 24 jobs -- one entry per
+    audited step, times 116,000 steps -- against 1.9 KB for the same script's
+    R02_9 output, which predates the raw dump.  Nothing reads the raw record,
+    and the per-seed split is the only part of it the report cannot already
+    show, so that is what is kept.
+    """
+    bombs = result["bombs"]
+    return {
+        "job_id": result["job_id"],
+        "official": result["official"], "observed": result["observed"],
+        "bombs": len(bombs),
+        "bombs_with_escape": sum(1 for bomb in bombs if bomb["escape_existed"]),
+        "fatal": sum(1 for bomb in bombs if bomb["died"]),
+        "fatal_with_escape": sum(1 for bomb in bombs if bomb["died"] and bomb["escape_existed"]),
+        "deaths": len(result["deaths"]),
+        "bearings_audited": len(result["bearings"]),
+    }
+
+
 def survivable(state: dict, horizon: int) -> tuple[bool, int | None]:
     """Was there a plan that walks out of every current blast in time?
 
@@ -720,7 +743,7 @@ def main() -> None:
             "escape_ticks_wait_chosen": len(chose_wait), "escape_ticks_safer_chosen": len(chose_safer),
             "escape_ticks_shaping_prefers_wait": len(wait_wins),
             "shortest_escape_steps": {str(k): v for k, v in lengths.items()},
-            "jobs": results,
+            "jobs": [job_summary(result) for result in results],
         }))
         print(f"\nwrote {args.out}")
 
