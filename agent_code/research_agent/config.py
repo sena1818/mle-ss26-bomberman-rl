@@ -406,15 +406,18 @@ class ReplayConfig:
     # maximum ("max", Schaul et al.'s choice, so the update is only ever scaled
     # down) or by the batch mean ("mean").
     #
-    # This is not cosmetic, and the first prioritized arm measured why.  At
-    # beta = 1 the raw weight (N * P(i))^-1 already has expectation 1 under the
-    # sampling distribution, so dividing by the batch maximum is a strict shrink
-    # whose size depends on how skewed the priorities happen to be.  In
-    # runs/m3_per_5000_vs3rb_20260829 the mean weight sat at 0.40 (p10 0.20,
-    # p90 0.61), so that arm trained at roughly 0.4x the step size it declared --
-    # and step size is the largest single effect measured on this line (docs/01
-    # section 7.24).  "mean" keeps the batch's average scale at 1, which
-    # separates "which transitions are replayed" from "how big the step is".
+    # At beta = 1 the raw weight (N * P(i))^-1 already has expectation 1 under
+    # the sampling distribution, so dividing by the batch maximum shrinks the
+    # whole update by a factor that depends on how skewed the priorities are.
+    # In runs/m3_per_5000_vs3rb_20260829 the mean weight sat at 0.40.
+    #
+    # That looked like a 0.4x step size and it is NOT one.  Adam divides by the
+    # running RMS of the gradient, so a uniform rescaling of the loss cancels:
+    # the same arm reached parameter_l2_norm 29.72 / 36.18 / 39.16 at rounds
+    # 1000 / 2500 / 5000 against R02_9's 29.19 / 35.79 / 38.63.  The weights
+    # moved just as far.  The option is kept because the two normalisations are
+    # a real declared choice and one arm measures whether it matters, but the
+    # step-size reading it was added for is dead (docs/01 section 7.38).
     importance_normalisation: str = "max"
 
     def __post_init__(self) -> None:
