@@ -125,8 +125,26 @@ def replay_job(job_dir: Path, discount: float) -> dict:
                         # -- so the two are not interchangeable and the gate is
                         # kept exactly where it was.
                         own = set(_blast_coordinates(drop["origin"], np.asarray(state["field"])))
-                        if any(tuple(o[3]) in own for o in state["others"]):
+                        covered = [tuple(o[3]) for o in state["others"] if tuple(o[3]) in own]
+                        if covered:
                             counts["still_threatened_by_that_bomb_tick_%d" % drop["age"]] += 1
+                            # Cornered *now*, which is the question that decides
+                            # a kill.  Asking it at the moment of the drop --
+                            # what this diagnostic did first -- turned out to
+                            # measure almost nothing: cornered targets are 0.7
+                            # to 2.3 percent of chances in every arm, far too
+                            # few to explain a 4.8x difference in kills.  The
+                            # arms' coverage curves are also near-identical
+                            # through tick 4 (32.8 / 31.6 / 36.6 percent), so
+                            # whatever separates them happens on the last step
+                            # before detonation, and that is what this counts.
+                            #
+                            # The horizon shrinks as the fuse burns: at tick 4
+                            # of a BOMB_TIMER 4 bomb an opponent has one step.
+                            remaining = max(s.BOMB_TIMER + 1 - drop["age"], 1)
+                            if any(not escape_search(state, origin=cell, horizon=remaining)[0]
+                                   for cell in covered):
+                                counts["covered_and_cornered_tick_%d" % drop["age"]] += 1
                         if current > 0:
                             counts["still_threatening_tick_%d" % drop["age"]] += 1
                 open_drops = [d for d in open_drops if d["age"] < s.BOMB_TIMER + 1]
@@ -262,11 +280,16 @@ def main() -> None:
     line("of those, the agent dropped", total["rule_based_trigger_took_it"], trigger)
     print("-" * 70)
     print("  after a drop that covered an opponent, is the potential still raised?")
+    print("  (tick BOMB_TIMER+1 is the detonation: an opponent the bomb killed is")
+    print("   already out of game_state['others'], so that row reads 0 by construction)")
     print("  (an n-step window ending on a zero delta contributes nothing, whatever n)")
     for tick in range(1, s.BOMB_TIMER + 2):
         base = total["followed_tick_%d" % tick]
         line(f"tick {tick}: any opponent still in some blast", total[f"still_threatening_tick_{tick}"], base)
         line(f"tick {tick}:   ... in THAT bomb's blast", total[f"still_threatened_by_that_bomb_tick_{tick}"], base)
+        line(f"tick {tick}:   ... and out of time to leave it",
+             total[f"covered_and_cornered_tick_{tick}"],
+             total[f"still_threatened_by_that_bomb_tick_{tick}"])
     print("-" * 70)
     print("  distance to the nearest opponent, over every step alive")
     shown = sum(nearest.values())
