@@ -246,7 +246,10 @@ def scaffold(args: argparse.Namespace) -> None:
             written += 1
     print(f"{destination}: {written} jobs "
           f"({len(selected)} source jobs x {args.repeats} repeats), {len(copied)} checkpoints")
-    print(f"suite {args.suite} ({_suite_label(source, args.suite)}), {args.seed_role} seeds")
+    # The destination's label, not the source's: with an opponent override they
+    # differ, and printing the source's here would announce the opponents this
+    # scaffold is specifically not going to play.
+    print(f"suite {args.suite} ({_suite_label(destination, args.suite)}), {args.seed_role} seeds")
 
 
 def _pool(run_dir: Path) -> tuple[str, dict[str | None, dict[int, dict[str, float]]]]:
