@@ -30,12 +30,19 @@ SELF_PLAY_CONFIG = ROOT / "experiments" / "m3_selfplay_r02_9_a06_e02_t02_n5_v3_5
 
 
 class NoisyAndEpsilonMustBeDeclaredTest(unittest.TestCase):
-    def test_e12_without_noisy_is_refused(self):
-        """E12 is epsilon 0, so a non-noisy route on it would not explore at all."""
+    def test_e12_without_noisy_is_allowed(self):
+        """It used to be refused; section 7.42 measured it and it is the baseline.
+
+        The rule said a route holding epsilon at 0 with nothing in its place
+        "would explore not at all". That configuration then got trained by
+        accident and beat every arm on this line except rainbow, with the
+        tightest seed spread of any of them. Refusing it would refuse the
+        current baseline.
+        """
         route = replace(EXPERIMENTS["R02_9"], exploration_version="E12")
-        with self.assertRaises(ValueError) as caught:
-            validate_config(route)
-        self.assertIn("explore not at all", str(caught.exception))
+        self.assertIs(validate_config(route), route)
+        self.assertEqual(EXPERIMENTS["R02_14"].exploration_version, "E12")
+        self.assertFalse(EXPERIMENTS["R02_14"].noisy)
 
     def test_noisy_plus_epsilon_is_refused_unless_declared(self):
         route = replace(EXPERIMENTS["R02_9"], noisy=True, exploration_version="E02")
@@ -279,6 +286,72 @@ class FrozenModelPathResolvesAgainstTheRepositoryTest(unittest.TestCase):
         declared = Path(raw["frozen_opponent"]["model_path"])
         self.assertFalse(declared.is_absolute())
         self.assertTrue((ROOT / declared).is_file())
+
+
+class WeightDecayHasToSurviveFloat32Test(unittest.TestCase):
+    """The naive form of this was a no-op and would have run for 3.5 hours.
+
+    learning_rate * weight_decay is 5e-8 for this recipe. A float32 weight of
+    magnitude 0.1 has an ulp of 7.5e-9, so multiplying by 1 - 5e-8 moves it by
+    less than half an ulp and rounds back. Declared, validated, snapshotted,
+    and exactly zero effect -- the failure mode of section 7.42.
+    """
+
+    def _model(self, decay):
+        from agent_code.research_agent.models import build_model
+        route = replace(EXPERIMENTS["R02_14"], weight_decay=decay)
+        return build_model(route, 62, seed=0)
+
+    def _zero_step(self, model, steps, learning_rate=5e-4):
+        import numpy as np
+        for _ in range(steps):
+            model._apply_gradients([np.zeros_like(w) for w in model.weights],
+                                   [np.zeros_like(b) for b in model.biases],
+                                   learning_rate)
+
+    def test_decay_actually_shrinks_the_weights(self):
+        import numpy as np
+        model = self._model(1e-4)
+        before = float(np.abs(model.weights[0]).sum())
+        self._zero_step(model, 2000)
+        after = float(np.abs(model.weights[0]).sum())
+        self.assertLess(after, before, "weight decay had no effect at all")
+        # 2000 steps at 1 - 5e-8 compounds to about 1 - 1e-4.  The bursts mean
+        # up to one threshold's worth (1e-5) can still be pending, so the
+        # realised shrinkage is between the ideal and one burst short of it.
+        ideal = (1 - 5e-8) ** 2000
+        self.assertLessEqual(after / before, 1.0)
+        self.assertGreaterEqual(after / before, ideal)
+        self.assertLessEqual(after / before - ideal, 1.1e-5)
+
+    def test_zero_decay_changes_nothing(self):
+        import numpy as np
+        model = self._model(0.0)
+        before = model.weights[0].copy()
+        self._zero_step(model, 2000)
+        np.testing.assert_array_equal(model.weights[0], before)
+
+    def test_biases_are_not_decayed(self):
+        import numpy as np
+        model = self._model(1e-4)
+        before = model.biases[0].copy()
+        self._zero_step(model, 2000)
+        np.testing.assert_array_equal(model.biases[0], before)
+
+    def test_it_survives_a_checkpoint(self):
+        import numpy as np, tempfile
+        from agent_code.research_agent.models import load_model
+        model = self._model(1e-4)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "model.npz"
+            model.save(path)
+            reloaded = load_model(EXPERIMENTS["R02_14"], path)
+        self.assertEqual(reloaded.weight_decay, EXPERIMENTS["R02_14"].weight_decay)
+
+    def test_sgd_is_refused(self):
+        route = replace(EXPERIMENTS["R02_14"], optimizer="sgd")
+        with self.assertRaises(ValueError):
+            validate_config(route)
 
 
 if __name__ == "__main__":

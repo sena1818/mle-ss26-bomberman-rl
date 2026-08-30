@@ -32,6 +32,7 @@ class MLPQModel:
         output_dim: int | None = None,
         noisy: bool = False,
         noisy_sigma: float = 0.5,
+        weight_decay: float = 0.0,
     ):
         if input_dim < 1 or not hidden_layers or any(width < 1 for width in hidden_layers):
             raise ValueError("MLPQModel requires a positive input dimension and non-empty positive hidden layers.")
@@ -79,6 +80,32 @@ class MLPQModel:
         self._weight_noise: list[np.ndarray] = []
         self._bias_noise: list[np.ndarray] = []
         self.noisy_sigma = float(noisy_sigma)
+        # Decoupled, in the sense of Loshchilov & Hutter 2019 (AdamW): the decay
+        # is applied to the parameter, not added to the gradient.  With Adam the
+        # two are not the same thing -- an L2 term added to the gradient is
+        # divided by the same running RMS as everything else, so the effective
+        # decay ends up inversely proportional to the gradient magnitude of each
+        # weight, which is not the penalty anybody intended.  This line of work
+        # already learned that lesson once, in section 7.38.1, where a loss
+        # rescaling was read as a step-size change and Adam's scale invariance
+        # made it nothing at all.
+        #
+        # Biases and the noise scales are excluded.  Decaying a bias shifts the
+        # function without constraining its complexity, and decaying sigma is a
+        # second, undeclared annealing of the exploration schedule.
+        self.weight_decay = float(weight_decay)
+        # Applied in accumulated bursts, not every step, and that is a
+        # correctness requirement rather than an optimisation.  The per-step
+        # factor is ``1 - learning_rate * weight_decay`` = 1 - 5e-8 for this
+        # recipe; the weights are float32 with a magnitude around 0.1, so one
+        # step moves a weight by 5e-9 against an ulp of 7.5e-9 and rounds
+        # straight back to where it started.  Multiplying every step would have
+        # been exactly a no-op -- a declared factor that never reaches the
+        # model, which is what section 7.42 is about.  The factor is therefore
+        # compounded here and applied once it is far enough from 1 to survive
+        # the rounding, which is first-order identical and, unlike the naive
+        # version, actually happens.
+        self._pending_decay = 1.0
         self._adam_step = 0
         self._weight_momentum = [np.zeros_like(weight) for weight in self.weights]
         self._weight_variance = [np.zeros_like(weight) for weight in self.weights]
@@ -195,7 +222,7 @@ class MLPQModel:
         copy = MLPQModel(
             self.layer_sizes[0], self.layer_sizes[1:-1], learning_rate=self.learning_rate,
             optimizer=self.optimizer, td_loss=self.td_loss, gradient_clip_norm=self.gradient_clip_norm,
-            noisy=self.noisy, noisy_sigma=self.noisy_sigma,
+            noisy=self.noisy, noisy_sigma=self.noisy_sigma, weight_decay=self.weight_decay,
         )
         copy.copy_parameters_from(self)
         return copy
@@ -313,6 +340,7 @@ class MLPQModel:
         optimizer: str = "sgd",
         td_loss: str = "mse",
         gradient_clip_norm: float | None = None,
+        weight_decay: float = 0.0,
     ) -> "MLPQModel":
         """Load and validate a self-describing R02 checkpoint."""
         with np.load(path, allow_pickle=False) as data:
@@ -325,6 +353,7 @@ class MLPQModel:
             model = cls(
                 layer_sizes[0], layer_sizes[1:-1], learning_rate=learning_rate,
                 optimizer=optimizer, td_loss=td_loss, gradient_clip_norm=gradient_clip_norm,
+                weight_decay=weight_decay,
                 noisy=bool(data["noisy"].item()) if "noisy" in data.files else False,
             )
             weights: list[np.ndarray] = []
@@ -427,6 +456,12 @@ class MLPQModel:
                 self.bias_sigmas[layer] += (learning_rate * bias_gradient).astype(np.float32)
             return
 
+        if self.weight_decay:
+            self._pending_decay *= 1.0 - learning_rate * self.weight_decay
+            if self._pending_decay < 1.0 - 1e-5:
+                for layer, weight in enumerate(self.weights):
+                    self.weights[layer] = (weight * self._pending_decay).astype(np.float32)
+                self._pending_decay = 1.0
         self._adam_step += 1
         beta1, beta2, epsilon = 0.9, 0.999, 1e-8
         correction1 = 1.0 - beta1 ** self._adam_step

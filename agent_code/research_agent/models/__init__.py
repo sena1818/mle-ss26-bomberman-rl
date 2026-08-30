@@ -56,7 +56,7 @@ def build_model(config: ExperimentConfig, input_dim: int, *, seed: int) -> QMode
         model = MLPQModel(
             input_dim, config.hidden_layers, seed=seed, learning_rate=config.learning_rate,
             optimizer=config.optimizer, td_loss=config.td_loss, gradient_clip_norm=config.gradient_clip_norm,
-            noisy=config.noisy,
+            noisy=config.noisy, weight_decay=config.weight_decay,
         )
         return _as_declared(config, model)
     if config.network == "categorical_mlp_q":
@@ -98,6 +98,7 @@ def load_model(config: ExperimentConfig, path: Path) -> QModel:
             optimizer=config.optimizer,
             td_loss=config.td_loss,
             gradient_clip_norm=config.gradient_clip_norm,
+            weight_decay=config.weight_decay,
         )
         if model.layer_sizes[1:-1] != tuple(config.hidden_layers):
             raise ValueError(

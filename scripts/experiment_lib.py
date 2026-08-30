@@ -143,6 +143,14 @@ IMPLEMENTED_ROUTES = {
         "reward_versions": _VECTOR_REWARD_VERSIONS,
         "exploration_versions": {"E00", "E01", "E02", "E03", "E04", "E05", "E06", "E11"},
     },
+    # R02_14 is the epsilon-0 baseline plus decoupled weight decay.  E12 only,
+    # for the same reason R02_12 is: it is that baseline and not another.
+    "R02_14": {
+        "lines": ("M3",),
+        "declaration": ("mlp_q", "double_dqn", "handcrafted_v3"),
+        "reward_versions": _VECTOR_REWARD_VERSIONS,
+        "exploration_versions": {"E12"},
+    },
     "R07": {
         "lines": ("M4",),
         "declaration": ("cnn_mlp_q", "double_dqn", "board_egocentric_v2"),

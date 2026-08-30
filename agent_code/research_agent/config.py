@@ -559,6 +559,11 @@ class ExperimentConfig:
     # curve peaked near round 3000 and then fell.  Whether the two compose is a
     # separate question from whether either works.
     noisy_with_epsilon: bool = False
+    # Decoupled weight decay (AdamW), applied to weight matrices only.  0.0 is
+    # every arm before 2026-08-30: this line has never had any explicit
+    # regularisation at all -- gradient clipping is the only thing resembling
+    # it, and section 7.38.2 measured it firing zero times in all eight arms.
+    weight_decay: float = 0.0
 
 
 EXPERIMENTS = {
@@ -969,6 +974,44 @@ EXPERIMENTS = {
         noisy=True,
         noisy_with_epsilon=True,
     ),
+    # R02_14 is the epsilon-0 baseline plus decoupled weight decay, and nothing
+    # else.  It is the first explicit regularisation this line has ever carried:
+    # section 7.38.2 measured gradient clipping firing zero times in all eight
+    # arms, so until now "regularisation" here has meant nothing at all.
+    #
+    # The reason to try it is measured rather than assumed.  Section 7.43 shows
+    # the rainbow arm's advantage is specific to the opponent it trained
+    # against -- 4.91x the kills against rule_based_agent, 0.96x against a
+    # different neural agent -- which is an overfitting result, and the two
+    # papers that studied exactly this for DQN (Farebrother, Machado & Bowling
+    # 2018; Cobbe et al. 2019) both found L2 among the things that helped a
+    # value network generalise beyond its training conditions.
+    #
+    # 1e-4 is the middle of the range those papers sweep.  It is one point, not
+    # a sweep: a sweep would need its own selection protocol and this line has
+    # already been bitten once by quoting a selected number (section 7.39.5).
+    "R02_14": ExperimentConfig(
+        name="R02_14",
+        lines=("M3",),
+        state_encoder="handcrafted_v3",
+        network="mlp_q",
+        algorithm="double_dqn",
+        learning_rate=5e-4,
+        discount=0.95,
+        epsilon=0.15,
+        safety_filter="legality_only",
+        feature_version="handcrafted_v3",
+        reward_version=REWARD_VERSION,
+        exploration_version="E12",
+        terminal_on_truncation=TERMINAL_ON_TRUNCATION,
+        hidden_layers=(128, 64),
+        replay=ReplayConfig(),
+        learning_rate_schedule="L01",
+        optimizer="adam",
+        td_loss="huber",
+        gradient_clip_norm=10.0,
+        weight_decay=1e-4,
+    ),
     "R07": ExperimentConfig(
         name="R07",
         lines=("M4",),
@@ -1255,10 +1298,13 @@ def validate_config(config: ExperimentConfig) -> ExperimentConfig:
             f"{config.name} declares network {config.network!r}.")
     if config.dueling and not distributional:
         raise ValueError("dueling is implemented for the categorical head only.")
-    if config.exploration_version == "E12" and not config.noisy:
-        raise ValueError(
-            f"E12 holds epsilon at 0, so {config.name} declaring it without noisy "
-            "layers would explore not at all.")
+    # E12 without noisy layers used to be refused here, on the reasoning that a
+    # route holding epsilon at 0 with nothing in its place "would explore not at
+    # all".  Section 7.42 measured that configuration by accident and it is the
+    # best arm on this line outside rainbow: +0.1703 over the 7000-round arm at
+    # 35 repeats, t = +7.21, with the tightest seed spread of any arm.  So it is
+    # a declared strategy, not a misconfiguration, and the rule is gone rather
+    # than weakened -- keeping it would have refused the current baseline.
     if config.noisy and config.exploration_version != "E12" and not config.noisy_with_epsilon:
         raise ValueError(
             f"{config.name} declares noisy={config.noisy} with {config.exploration_version}, "
@@ -1268,6 +1314,12 @@ def validate_config(config: ExperimentConfig) -> ExperimentConfig:
     if config.noisy_with_epsilon and not config.noisy:
         raise ValueError(
             f"{config.name} sets noisy_with_epsilon without noisy layers to combine.")
+    if config.weight_decay < 0.0:
+        raise ValueError(f"weight_decay must not be negative, got {config.weight_decay}.")
+    if config.weight_decay and config.optimizer != "adam":
+        raise ValueError(
+            "decoupled weight decay is implemented for adam only; sgd would need the "
+            "coupled form and they are not the same penalty.")
     if config.optimizer not in {"sgd", "adam"}:
         raise ValueError(f"optimizer must be 'sgd' or 'adam', got {config.optimizer!r}.")
     # The set of losses lives in models.base so the adapters and this validator
