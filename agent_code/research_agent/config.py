@@ -551,6 +551,14 @@ class ExperimentConfig:
     # anybody could interpret.
     dueling: bool = False
     noisy: bool = False
+    # Noisy layers and an epsilon schedule at the same time.  Refused unless a
+    # route says this word, because two exploration mechanisms at once is not a
+    # factor anybody could interpret by accident -- but it is interpretable when
+    # it is the declared question, and section 7.41 asks it: noisy exploration
+    # took the kills from 0.108 to 0.520 while every epsilon-greedy arm's kill
+    # curve peaked near round 3000 and then fell.  Whether the two compose is a
+    # separate question from whether either works.
+    noisy_with_epsilon: bool = False
 
 
 EXPERIMENTS = {
@@ -920,6 +928,47 @@ EXPERIMENTS = {
         gradient_clip_norm=10.0,
         noisy=True,
     ),
+    # R02_13 is R02_12 with R02_9's epsilon schedule left switched on: noisy
+    # layers AND epsilon-greedy, the combination R02_11 and R02_12 both refuse.
+    #
+    # The reason to ask is in the kill curves.  Every epsilon-greedy arm on this
+    # line peaks near round 3000 and then falls -- R02_9 0.149 -> 0.111, C51
+    # 0.169 -> 0.122, PER 0.113 -> 0.107 at the same 10000 rounds the noisy arm
+    # got -- while the noisy arm climbs monotonically to 0.393.  The reading is
+    # that epsilon's per-step independent noise cannot emit the multi-step
+    # sequence a kill needs, and that a greedy policy then prunes an action
+    # whose immediate value is negative.  If that is right, the two mechanisms
+    # are not redundant: epsilon still covers single-step alternatives the
+    # weight noise may not, and the route's exploration_version stays whatever
+    # the experiment declares.
+    #
+    # It is not free.  Epsilon on top of noise is off-policy exploration layered
+    # on a policy that is already stochastic, so the behaviour distribution is
+    # wider than either alone, and section 7.24 found this recipe sensitive to
+    # anything that widens it.  A loss is as informative as a win here.
+    "R02_13": ExperimentConfig(
+        name="R02_13",
+        lines=("M3",),
+        state_encoder="handcrafted_v3",
+        network="mlp_q",
+        algorithm="double_dqn",
+        learning_rate=5e-4,
+        discount=0.95,
+        epsilon=0.15,
+        safety_filter="legality_only",
+        feature_version="handcrafted_v3",
+        reward_version=REWARD_VERSION,
+        exploration_version=EXPLORATION_VERSION,
+        terminal_on_truncation=TERMINAL_ON_TRUNCATION,
+        hidden_layers=(128, 64),
+        replay=ReplayConfig(),
+        learning_rate_schedule="L01",
+        optimizer="adam",
+        td_loss="huber",
+        gradient_clip_norm=10.0,
+        noisy=True,
+        noisy_with_epsilon=True,
+    ),
     "R07": ExperimentConfig(
         name="R07",
         lines=("M4",),
@@ -1206,12 +1255,19 @@ def validate_config(config: ExperimentConfig) -> ExperimentConfig:
             f"{config.name} declares network {config.network!r}.")
     if config.dueling and not distributional:
         raise ValueError("dueling is implemented for the categorical head only.")
-    if config.noisy != (config.exploration_version == "E12"):
+    if config.exploration_version == "E12" and not config.noisy:
         raise ValueError(
-            "A noisy network explores through its own weights and must declare E12 "
-            f"(epsilon 0); {config.name} declares noisy={config.noisy} with "
-            f"{config.exploration_version}. Two exploration mechanisms at once is not a "
-            "factor anybody could interpret.")
+            f"E12 holds epsilon at 0, so {config.name} declaring it without noisy "
+            "layers would explore not at all.")
+    if config.noisy and config.exploration_version != "E12" and not config.noisy_with_epsilon:
+        raise ValueError(
+            f"{config.name} declares noisy={config.noisy} with {config.exploration_version}, "
+            "which is two exploration mechanisms at once. That is a legitimate "
+            "question (section 7.41) but never an accident: set "
+            "noisy_with_epsilon=True on the route to declare it on purpose.")
+    if config.noisy_with_epsilon and not config.noisy:
+        raise ValueError(
+            f"{config.name} sets noisy_with_epsilon without noisy layers to combine.")
     if config.optimizer not in {"sgd", "adam"}:
         raise ValueError(f"optimizer must be 'sgd' or 'adam', got {config.optimizer!r}.")
     # The set of losses lives in models.base so the adapters and this validator

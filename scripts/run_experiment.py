@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from experiment_lib import (
+    FROZEN_OPPONENT_AGENT,
     ConfigError,
     Experiment,
     ROOT,
@@ -73,6 +74,8 @@ def build_jobs(experiment: Experiment, run_dir: Path) -> list[dict]:
             "job_id": job_id, "mode": "train", "seed": seed,
             "phase": "training", "scenario": experiment.training.scenario,
             "opponents": list(experiment.training.opponents), "budget": experiment.training.budget.__dict__,
+            **({"frozen_opponent": experiment.frozen_opponent.__dict__}
+               if experiment.frozen_opponent is not None else {}),
             "artifact_relpath": str(Path("jobs") / job_id), "model_relpath": None,
         }
         if experiment.curriculum is not None:
@@ -116,6 +119,8 @@ def build_jobs(experiment: Experiment, run_dir: Path) -> list[dict]:
                             "job_id": job_id, "mode": "eval", "seed": seed, "train_seed": train_seed,
                             "phase": "evaluation", "suite": suite, "scenario": phase.scenario,
                             "opponents": list(phase.opponents), "budget": phase.budget.__dict__,
+                            **({"frozen_opponent": experiment.frozen_opponent.__dict__}
+                               if experiment.frozen_opponent is not None else {}),
                             "artifact_relpath": str(Path("jobs") / job_id),
                             "model_relpath": model_relpath,
                             "checkpoint_round": checkpoint_round,
@@ -567,6 +572,25 @@ def execute_job(job_file: Path, *, retry: bool = False, keep_runtime: bool = Fal
         "BOMBERMAN_CHECKPOINT_EVERY": str(job["budget"]["checkpoint_every"]),
         "BOMBERMAN_CONTINUE": "0",
     })
+    # frozen_agent plays a fixed checkpoint and reads its own variables, so a
+    # self-play job can name it as an opponent without the three copies
+    # inheriting the trainer's route or writing into the trainer's action log.
+    # The path is required and must be absolute: the framework chdir's into
+    # each agent's own directory before setup (agents.py line 305), so a
+    # relative path would resolve somewhere nobody intended.
+    if FROZEN_OPPONENT_AGENT in job["opponents"]:
+        frozen = job.get("frozen_opponent")
+        if not frozen:
+            raise ConfigError(
+                f"{job['job_id']} lists {FROZEN_OPPONENT_AGENT} as an opponent but the "
+                "experiment declares no frozen_opponent block.")
+        model = Path(frozen["model_path"])
+        if not model.is_absolute():
+            model = (run_dir / model).resolve()
+        if not model.is_file():
+            raise FileNotFoundError(f"Frozen opponent checkpoint is unavailable: {model}")
+        environment["BOMBERMAN_FROZEN_EXPERIMENT"] = frozen["route"]
+        environment["BOMBERMAN_FROZEN_MODEL_PATH"] = str(model)
     command = [sys.executable, "main.py", "play", "--agents", experiment.agent_name, *job["opponents"],
                "--scenario", job["scenario"], "--seed", str(job["seed"]), "--n-rounds", str(job["budget"]["rounds"]),
                "--no-gui", "--save-stats", str(stats_path), "--match-name", f"{run_dir.name}_{job['job_id']}"]

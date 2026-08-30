@@ -1,0 +1,146 @@
+{
+  "_design_note": "Noisy layers and R02_9's epsilon schedule at the same time. One factor against R02_12 (m3_noisy_10000_vs3rb_20260830): E12's constant zero epsilon becomes E02's 0.30-hold-400-then-linear-to-0.05-over-1600. Everything else -- scalar Huber head, uniform replay, the same trunk, L01, n_step 5, 10000 rounds -- is identical, so this is also one factor against R02_9 if R02_12 turns out to be.\n\nThe question comes out of the kill curves, which are the first thing on this line that separates the arms cleanly. Every epsilon-greedy arm peaks near round 3000 and then falls: R02_9 0.149 -> 0.111, C51 0.169 -> 0.122, and prioritized replay 0.113 -> 0.107 at the same 10000 rounds the rainbow arm got. The rainbow arm climbs monotonically to 0.393 and is already past every other arm's lifetime peak by round 3000. Two mechanisms could produce that, and they make different predictions here. If weight noise supplies the multi-step sequence epsilon's per-step independent noise cannot, then epsilon on top is a cheap extra source of single-step variation and this arm should be at least as good as R02_12. If instead a greedy policy prunes the kill because its immediate value is negative, epsilon does not help with that at all and may hurt by widening an already stochastic behaviour distribution.\n\nThis combination is refused by default (config.validate_config); R02_13 sets noisy_with_epsilon to declare it deliberately.",
+  "_predeclared_design_numbers": {
+    "changed_factor": "One against R02_12: exploration_version E12 -> E02. Two exploration mechanisms run at once and that is the declared question, not an accident.",
+    "control": "runs/rep_noisy (R02_12, noisy alone, 10000 rounds) is the matched control. runs/rep_lr (R02_9) and runs/rep_rainbow (full rainbow, 5.8149) bracket it.",
+    "cost": "Scalar head, uniform replay, 10000 rounds: about 3.5 hours training, 35 minutes evaluation, 10 minutes repeats. The noise draw is per forward pass and the epsilon test is one comparison, so throughput matches R02_12 within noise.",
+    "falsification": "Distinguishably worse than R02_12 says the two do not compose and the combination is closed. Indistinguishable says epsilon adds nothing once weight noise is present, which is itself worth knowing: it makes E12 the simpler default. Distinguishably better would be the first evidence on this line that the two kinds of exploration cover different things.",
+    "prediction": "Between R02_12 and R02_9, closer to R02_12. Epsilon is unlikely to add anything weight noise does not already supply, and section 7.24 found this recipe sensitive to anything that widens the behaviour distribution -- but the honest answer is that no arm on this line has ever combined two exploration mechanisms, so there is no precedent to reason from.",
+    "reporting": "All five training-seed distributions, kills beside every score, and the kill curve by checkpoint round -- that curve, not the final number, is what motivated the arm.",
+    "resolution_tournament": "Ten repeats of the same fifteen holdout jobs, Welch, |t| > 2.3 (section 7.20.6).",
+    "the_mechanism_check": "mean_noise_scale away from zero at the end AND epsilon following E02's schedule. If either is flat this arm ran one mechanism, not two, and says nothing."
+  },
+  "agent": {
+    "algorithm": "double_dqn",
+    "model": "mlp_q",
+    "n_step": 5,
+    "name": "research_agent",
+    "replay": {
+      "batch_size": 32,
+      "capacity": 50000,
+      "min_size": 1000,
+      "target_update_every": 500,
+      "train_every": 1
+    },
+    "state_representation": "handcrafted_v3"
+  },
+  "checkpoint_evaluation": {
+    "holdout_seeds": [
+      3001,
+      3002,
+      3003
+    ],
+    "mode": "all",
+    "validation_seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation": {
+    "budget": {
+      "checkpoint_every": 500,
+      "rounds": 30
+    },
+    "opponents": [
+      "rule_based_agent",
+      "rule_based_agent",
+      "rule_based_agent"
+    ],
+    "scenario": "loot-crate",
+    "seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation_suites": {
+    "classic_solo": {
+      "budget": {
+        "checkpoint_every": 500,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "classic_versus_opponents": {
+      "budget": {
+        "checkpoint_every": 500,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [
+        "rule_based_agent",
+        "rule_based_agent",
+        "rule_based_agent"
+      ],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    }
+  },
+  "experiment_id": "M3_NOISYEPS_R02_13_A06_E02_T02_n5_10000_vs3rb",
+  "exploration_version": "E02",
+  "promotion": {
+    "primary_metric": "score"
+  },
+  "reward_version": "A06",
+  "route": "R02_13",
+  "schema_version": 1,
+  "shaping": {
+    "name": "potential_v1"
+  },
+  "terminal_on_truncation": false,
+  "training": {
+    "budget": {
+      "checkpoint_every": 500,
+      "rounds": 10000
+    },
+    "opponents": [
+      "rule_based_agent",
+      "rule_based_agent",
+      "rule_based_agent"
+    ],
+    "scenario": "loot-crate",
+    "seeds": [
+      1001,
+      1002,
+      1003,
+      1004,
+      1005
+    ]
+  }
+}
