@@ -27,6 +27,7 @@ that report it is not a measurement.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import re
@@ -35,7 +36,7 @@ import statistics
 import sys
 from pathlib import Path
 
-from experiment_lib import RUNS_ROOT, git_provenance, write_json
+from experiment_lib import FROZEN_OPPONENT_AGENT, ROOT, RUNS_ROOT, git_provenance, write_json
 
 # Job ids are built by run_experiment.build_jobs; this is the same shape read
 # back.  The suite is absent for the primary suite, and the round is absent for
@@ -87,7 +88,22 @@ def _suite_label(run_dir: Path, suite: str) -> str:
     snapshot = json.loads((run_dir / "experiment_config.snapshot.json").read_text(encoding="utf-8"))
     phase = snapshot["evaluation"] if suite == "primary" else snapshot["evaluation_suites"][suite]
     opponents = phase.get("opponents") or []
-    return f"{phase['scenario']} + {len(opponents)} opponents" if opponents else f"{phase['scenario']} solo"
+    # An opponent override replaces the snapshot's list for every job, so the
+    # label has to come from the override when there is one -- otherwise a
+    # transfer measurement would be labelled with the opponents it did not play.
+    provenance_path = run_dir / "provenance.json"
+    if provenance_path.is_file():
+        provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+        override = (provenance.get("repeat_measurement") or {}).get("opponents")
+        if override:
+            opponents = list(override)
+    if not opponents:
+        return f"{phase['scenario']} solo"
+    # Which opponents, not how many.  Three rule_based and three frozen copies
+    # of a trained agent are both "3 opponents" and the scores are not
+    # comparable -- that is the whole point of a transfer measurement.
+    kinds = ", ".join(f"{opponents.count(name)}x{name}" for name in sorted(set(opponents)))
+    return f"{phase['scenario']} + {kinds}"
 
 
 def scaffold(args: argparse.Namespace) -> None:
@@ -97,6 +113,22 @@ def scaffold(args: argparse.Namespace) -> None:
         raise SystemExit(f"source run is unavailable: {source}")
     if destination.exists():
         raise SystemExit(f"refusing to overwrite {destination}")
+
+    frozen = None
+    if args.opponents and FROZEN_OPPONENT_AGENT in args.opponents:
+        if not args.frozen_model:
+            raise SystemExit(
+                f"--opponents includes {FROZEN_OPPONENT_AGENT}; pass --frozen-model with the "
+                "repository-relative checkpoint it should play. There is no default: a "
+                "frozen opponent that silently fell back to something else would read as a "
+                "weaker opponent rather than as a mistake.")
+        model = ROOT / args.frozen_model
+        if not model.is_file():
+            raise SystemExit(f"frozen opponent checkpoint is unavailable: {model}")
+        frozen = {"route": args.frozen_route, "model_path": args.frozen_model,
+                  "sha256": hashlib.sha256(model.read_bytes()).hexdigest()}
+    elif args.frozen_model:
+        raise SystemExit(f"--frozen-model given but {FROZEN_OPPONENT_AGENT} is not among --opponents")
 
     wanted_rounds = set(args.checkpoint_round) if args.checkpoint_round else None
     candidates: list[dict] = []
@@ -169,6 +201,10 @@ def scaffold(args: argparse.Namespace) -> None:
         "suite": args.suite, "seed_role": args.seed_role, "repeats": args.repeats,
         "checkpoint_rounds": sorted(wanted_rounds) if wanted_rounds else "latest",
     }
+    if args.opponents:
+        provenance["repeat_measurement"]["opponents"] = list(args.opponents)
+        if frozen is not None:
+            provenance["repeat_measurement"]["frozen_opponent"] = dict(frozen)
     write_json(destination / "provenance.json", provenance)
 
     # Copy in exactly the weights the selected jobs address, so a repeat run is
@@ -202,6 +238,10 @@ def scaffold(args: argparse.Namespace) -> None:
         for repeat in range(1, args.repeats + 1):
             job_id = f"{job['job_id']}_rep{repeat:02d}"
             payload = dict(job, job_id=job_id, artifact_relpath=str(Path("jobs") / job_id))
+            if args.opponents:
+                payload["opponents"] = list(args.opponents)
+                if frozen is not None:
+                    payload["frozen_opponent"] = dict(frozen)
             write_json(destination / "job_parameters" / f"{job_id}.json", payload)
             written += 1
     print(f"{destination}: {written} jobs "
@@ -304,6 +344,15 @@ def main() -> None:
     build.add_argument("--repeats", type=int, required=True)
     build.add_argument("--suite", default="classic_versus_opponents")
     build.add_argument("--seed-role", default="holdout", choices=("validation", "holdout"))
+    build.add_argument("--opponents", nargs="+", metavar="AGENT",
+                       help="Replace every job's opponent list. Same weights, different "
+                            "opponents -- the transfer question. Recorded in provenance and "
+                            "in the suite label, so an overridden run can never be compared "
+                            "against a differently-opposed one by accident.")
+    build.add_argument("--frozen-route", default="R02_9",
+                       help="Route whose encoder and network frozen_agent opponents build.")
+    build.add_argument("--frozen-model",
+                       help="Repository-relative checkpoint the frozen_agent opponents play.")
     build.add_argument("--checkpoint-round", type=int, action="append",
                        help="Repeatable. Omit to replay the latest checkpoint.")
     build.set_defaults(handler=scaffold)
