@@ -116,7 +116,22 @@ def replay_job(job_dir: Path, discount: float) -> dict:
                 for drop in open_drops:
                     drop["age"] += 1
                     if drop["age"] <= s.BOMB_TIMER + 1:
-                        counts["followed_tick_%d" % drop["age"]] += 1
+                        # Every bomb is followed now, split by whether an
+                        # opponent was already in its blast when it was
+                        # dropped.  The "aimed" family is the original one and
+                        # its numbers are unchanged; the "blind" family is the
+                        # pathway the earlier version could not see at all.
+                        #
+                        # It is the pathway that matters.  Cornered-at-tick-4
+                        # accounts for 86 of R02_9's 97 kills but only 213 of
+                        # the rainbow arm's 466, so the arm that won gets most
+                        # of its kills from bombs that had no target when it
+                        # dropped them -- laid ahead of an opponent rather than
+                        # onto one.
+                        family = "aimed" if drop["had_target"] else "blind"
+                        counts["%s_followed_tick_%d" % (family, drop["age"])] += 1
+                        if drop["had_target"]:
+                            counts["followed_tick_%d" % drop["age"]] += 1
                         # ``still_threatened_by_that_bomb`` is the per-drop
                         # question and is asked unconditionally.  The older
                         # ``still_threatening`` counter is gated on the A07
@@ -127,7 +142,9 @@ def replay_job(job_dir: Path, discount: float) -> dict:
                         own = set(_blast_coordinates(drop["origin"], np.asarray(state["field"])))
                         covered = [tuple(o[3]) for o in state["others"] if tuple(o[3]) in own]
                         if covered:
-                            counts["still_threatened_by_that_bomb_tick_%d" % drop["age"]] += 1
+                            counts["%s_covered_tick_%d" % (family, drop["age"])] += 1
+                            if drop["had_target"]:
+                                counts["still_threatened_by_that_bomb_tick_%d" % drop["age"]] += 1
                             # Cornered *now*, which is the question that decides
                             # a kill.  Asking it at the moment of the drop --
                             # what this diagnostic did first -- turned out to
@@ -144,7 +161,9 @@ def replay_job(job_dir: Path, discount: float) -> dict:
                             remaining = max(s.BOMB_TIMER + 1 - drop["age"], 1)
                             if any(not escape_search(state, origin=cell, horizon=remaining)[0]
                                    for cell in covered):
-                                counts["covered_and_cornered_tick_%d" % drop["age"]] += 1
+                                counts["%s_cornered_tick_%d" % (family, drop["age"])] += 1
+                                if drop["had_target"]:
+                                    counts["covered_and_cornered_tick_%d" % drop["age"]] += 1
                         if current > 0:
                             counts["still_threatening_tick_%d" % drop["age"]] += 1
                 open_drops = [d for d in open_drops if d["age"] < s.BOMB_TIMER + 1]
@@ -197,8 +216,10 @@ def replay_job(job_dir: Path, discount: float) -> dict:
                     if adjacent:
                         counts["rule_based_trigger_adjacent"] += 1
                         counts["rule_based_trigger_took_it"] += chosen == "BOMB"
-                    if caught and chosen == "BOMB":
-                        open_drops.append({"origin": own, "age": 0})
+                    if chosen == "BOMB":
+                        counts["drops_aimed" if caught else "drops_blind"] += 1
+                        open_drops.append({"origin": own, "age": 0,
+                                           "had_target": bool(caught)})
             world.do_step()
         # A round always ends inside do_step: the last agent dying and the step
         # limit both make time_to_stop() true, so there is nothing to close here.
@@ -290,6 +311,20 @@ def main() -> None:
         line(f"tick {tick}:   ... and out of time to leave it",
              total[f"covered_and_cornered_tick_{tick}"],
              total[f"still_threatened_by_that_bomb_tick_{tick}"])
+    print("-" * 70)
+    print("-" * 70)
+    print("  every bomb, split by whether it had a target when it was dropped")
+    aimed, blind = total["drops_aimed"], total["drops_blind"]
+    line("dropped onto an opponent already in range", aimed, aimed + blind)
+    line("dropped with no opponent in range", blind, aimed + blind)
+    for family in ("aimed", "blind"):
+        base = total[f"drops_{family}"]
+        print(f"  {family}:")
+        for tick in range(1, s.BOMB_TIMER + 1):
+            line(f"    tick {tick}: covering an opponent",
+                 total[f"{family}_covered_tick_{tick}"], base)
+            line(f"    tick {tick}:   ... and cornered",
+                 total[f"{family}_cornered_tick_{tick}"], base)
     print("-" * 70)
     print("  distance to the nearest opponent, over every step alive")
     shown = sum(nearest.values())
