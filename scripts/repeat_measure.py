@@ -65,16 +65,23 @@ def _job_metrics(stats_path: Path, agent_name: str) -> dict[str, float]:
     rounds = int(mine["rounds"])
     if rounds < 1:
         raise ValueError(f"{stats_path} reports {rounds} rounds")
-    total_coins = sum(agent["coins"] for agent in stats["by_agent"].values())
+    # ``Agent.statistics`` is a defaultdict(int) and agents.py writes a key only
+    # when the event actually fired (EVENT_STAT_MAP), so coins, kills and
+    # suicides are all absent from a job where that never happened.  Indexing
+    # them directly fails *preferentially on the best jobs*: a run with no
+    # suicides at all is exactly the one worth keeping, and it was the one that
+    # raised KeyError.  aggregate_results.py:237 has always used .get here.
+    total_coins = sum(agent.get("coins", 0) for agent in stats["by_agent"].values())
+    coins = mine.get("coins", 0)
     # Older stats files predate the explicit kills field; the official score is
     # coins + 5 * kills by definition, so it can always be recovered.
-    kills = mine["kills"] if "kills" in mine else (mine["score"] - mine["coins"]) / 5.0
+    kills = mine["kills"] if "kills" in mine else (mine["score"] - coins) / 5.0
     return {
         "score": mine["score"] / rounds,
-        "coins": mine["coins"] / rounds,
+        "coins": coins / rounds,
         "kills": kills / rounds,
-        "suicides": mine["suicides"] / rounds,
-        "coins_share": (mine["coins"] / total_coins) if total_coins else float("nan"),
+        "suicides": mine.get("suicides", 0) / rounds,
+        "coins_share": (coins / total_coins) if total_coins else float("nan"),
         "rounds": float(rounds),
     }
 

@@ -108,6 +108,40 @@ def _finished_repeats(root: Path, name: str, scores: dict[int, float],
     return run_dir
 
 
+class AJobWithNothingBadInItStillParsesTest(unittest.TestCase):
+    """The missing key fails on the best jobs, not on random ones.
+
+    Agent.statistics is a defaultdict(int) and agents.py only writes a key when
+    the event fired, so a job with no suicides has no 'suicides' key -- and a
+    job with no suicides is the one worth keeping. Reading it by index crashed
+    the report for two whole transfer arms.
+    """
+
+    def test_missing_event_keys_read_as_zero(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "official_stats.json"
+            path.write_text(json.dumps({
+                "by_agent": {
+                    "research_agent": {"score": 12, "rounds": 3},
+                    "rule_based_agent_0": {"score": 4, "rounds": 3},
+                }
+            }), encoding="utf-8")
+            metrics = repeat_measure._job_metrics(path, "research_agent")
+        self.assertEqual(metrics["suicides"], 0.0)
+        self.assertEqual(metrics["coins"], 0.0)
+        # score = coins + 5*kills, so 12 points with no coins is 2.4 kills.
+        self.assertAlmostEqual(metrics["kills"], 12 / 5.0 / 3)
+
+    def test_a_board_where_nobody_took_a_coin_is_not_a_crash(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "official_stats.json"
+            path.write_text(json.dumps({
+                "by_agent": {"research_agent": {"score": 0, "rounds": 2}}
+            }), encoding="utf-8")
+            metrics = repeat_measure._job_metrics(path, "research_agent")
+        self.assertTrue(metrics["coins_share"] != metrics["coins_share"])  # nan
+
+
 class TheOpponentIsPartOfTheMeasurementTest(unittest.TestCase):
     """Same weights, different opponents: the transfer question.
 
