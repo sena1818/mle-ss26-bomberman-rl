@@ -115,14 +115,21 @@ def replay_job(job_dir: Path, discount: float) -> dict:
                 current = delta(state)
                 for drop in open_drops:
                     drop["age"] += 1
-                    if drop["age"] <= 4:
+                    if drop["age"] <= s.BOMB_TIMER + 1:
                         counts["followed_tick_%d" % drop["age"]] += 1
+                        # ``still_threatened_by_that_bomb`` is the per-drop
+                        # question and is asked unconditionally.  The older
+                        # ``still_threatening`` counter is gated on the A07
+                        # potential being positive and answers a different,
+                        # looser question -- any bomb threatening any opponent
+                        # -- so the two are not interchangeable and the gate is
+                        # kept exactly where it was.
+                        own = set(_blast_coordinates(drop["origin"], np.asarray(state["field"])))
+                        if any(tuple(o[3]) in own for o in state["others"]):
+                            counts["still_threatened_by_that_bomb_tick_%d" % drop["age"]] += 1
                         if current > 0:
                             counts["still_threatening_tick_%d" % drop["age"]] += 1
-                            own = set(_blast_coordinates(drop["origin"], np.asarray(state["field"])))
-                            if any(tuple(o[3]) in own for o in state["others"]):
-                                counts["still_threatened_by_that_bomb_tick_%d" % drop["age"]] += 1
-                open_drops = [d for d in open_drops if d["age"] < 4]
+                open_drops = [d for d in open_drops if d["age"] < s.BOMB_TIMER + 1]
                 others = [tuple(o[3]) for o in state["others"]]
                 own = tuple(state["self"][3])
                 has_bomb = bool(state["self"][2])
@@ -144,6 +151,31 @@ def replay_job(job_dir: Path, discount: float) -> dict:
                         counts["opportunity_survivable"] += bool(reachable)
                         if reachable:
                             counts["opportunity_survivable_took_it"] += chosen == "BOMB"
+                        # Could the caught opponent get out?  Same search, run
+                        # from its cell instead of ours.  This separates "an
+                        # opponent is in range" from "an opponent is in range
+                        # and cornered", which section 7.41 needs because the
+                        # A07 arm raised the take rate to within a few points
+                        # of the rainbow arm and gained no kills at all.
+                        #
+                        # One asymmetry worth stating: escape_search blocks
+                        # every cell in ``others``, which from an opponent's
+                        # point of view wrongly blocks itself and does not
+                        # block us.  Blocking its own start cell only matters
+                        # for a path that returns to it, so the count is a
+                        # slight over-estimate of trapping.  It is the same
+                        # over-estimate for every arm.
+                        trapped = [
+                            o for o in caught
+                            if not escape_search(hypothetical, origin=o,
+                                                 horizon=s.BOMB_TIMER + 1)[0]
+                        ]
+                        if trapped:
+                            counts["opportunity_opponent_trapped"] += 1
+                            counts["opportunity_opponent_trapped_took_it"] += chosen == "BOMB"
+                        else:
+                            counts["opportunity_opponent_free"] += 1
+                            counts["opportunity_opponent_free_took_it"] += chosen == "BOMB"
                     if adjacent:
                         counts["rule_based_trigger_adjacent"] += 1
                         counts["rule_based_trigger_took_it"] += chosen == "BOMB"
@@ -216,6 +248,14 @@ def main() -> None:
     line("survivable AND the agent dropped", total["opportunity_survivable_took_it"],
          total["opportunity_survivable"])
     print("-" * 70)
+    print("  could the caught opponent get out of the way?")
+    trapped = total["opportunity_opponent_trapped"]
+    free = total["opportunity_opponent_free"]
+    line("it was cornered", trapped, trapped + free)
+    line("of those, the agent dropped", total["opportunity_opponent_trapped_took_it"], trapped)
+    line("it had an escape", free, trapped + free)
+    line("of those, the agent dropped", total["opportunity_opponent_free_took_it"], free)
+    print("-" * 70)
     print("  rule_based_agent's own trigger: an opponent within one step")
     trigger = total["rule_based_trigger_adjacent"]
     line("such steps", trigger, armed)
@@ -223,7 +263,7 @@ def main() -> None:
     print("-" * 70)
     print("  after a drop that covered an opponent, is the potential still raised?")
     print("  (an n-step window ending on a zero delta contributes nothing, whatever n)")
-    for tick in (1, 2, 3, 4):
+    for tick in range(1, s.BOMB_TIMER + 2):
         base = total["followed_tick_%d" % tick]
         line(f"tick {tick}: any opponent still in some blast", total[f"still_threatening_tick_{tick}"], base)
         line(f"tick {tick}:   ... in THAT bomb's blast", total[f"still_threatened_by_that_bomb_tick_{tick}"], base)
