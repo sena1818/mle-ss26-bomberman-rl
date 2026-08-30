@@ -208,6 +208,8 @@ def scaffold(args: argparse.Namespace) -> None:
         "suite": args.suite, "seed_role": args.seed_role, "repeats": args.repeats,
         "checkpoint_rounds": sorted(wanted_rounds) if wanted_rounds else "latest",
     }
+    if args.eval_seeds:
+        provenance["repeat_measurement"]["eval_seeds"] = list(args.eval_seeds)
     if args.opponents:
         provenance["repeat_measurement"]["opponents"] = list(args.opponents)
         if frozen is not None:
@@ -240,19 +242,39 @@ def scaffold(args: argparse.Namespace) -> None:
         shutil.copy2(origin, target)
         copied.add(target)
 
+    # One job per (source job, evaluation seed, repeat).  Overriding the seed
+    # keeps the checkpoint and the opponents fixed and varies only the board,
+    # which is the sole remaining source of variation once the opponents are
+    # deterministic.
+    seed_variants = list(args.eval_seeds) if args.eval_seeds else [None]
+    if args.eval_seeds:
+        # Collapse the source's own evaluation seeds first: with an explicit
+        # seed list, replaying fifteen source jobs would otherwise multiply
+        # every board seed by three identical copies of it.
+        by_train: dict[int, dict] = {}
+        for job in selected:
+            by_train.setdefault((job["train_seed"], job.get("checkpoint_round")), job)
+        selected = list(by_train.values())
     written = 0
     for job in selected:
-        for repeat in range(1, args.repeats + 1):
-            job_id = f"{job['job_id']}_rep{repeat:02d}"
-            payload = dict(job, job_id=job_id, artifact_relpath=str(Path("jobs") / job_id))
-            if args.opponents:
-                payload["opponents"] = list(args.opponents)
-                if frozen is not None:
-                    payload["frozen_opponent"] = dict(frozen)
-            write_json(destination / "job_parameters" / f"{job_id}.json", payload)
-            written += 1
+        for eval_seed in seed_variants:
+            for repeat in range(1, args.repeats + 1):
+                base = job["job_id"]
+                if eval_seed is not None:
+                    base = re.sub(r"_seed\d+", f"_seed{eval_seed}", base)
+                job_id = f"{base}_rep{repeat:02d}"
+                payload = dict(job, job_id=job_id, artifact_relpath=str(Path("jobs") / job_id))
+                if eval_seed is not None:
+                    payload["seed"] = int(eval_seed)
+                if args.opponents:
+                    payload["opponents"] = list(args.opponents)
+                    if frozen is not None:
+                        payload["frozen_opponent"] = dict(frozen)
+                write_json(destination / "job_parameters" / f"{job_id}.json", payload)
+                written += 1
     print(f"{destination}: {written} jobs "
-          f"({len(selected)} source jobs x {args.repeats} repeats), {len(copied)} checkpoints")
+          f"({len(selected)} source jobs x {len(seed_variants)} eval seeds "
+          f"x {args.repeats} repeats), {len(copied)} checkpoints")
     # The destination's label, not the source's: with an opponent override they
     # differ, and printing the source's here would announce the opponents this
     # scaffold is specifically not going to play.
@@ -354,6 +376,11 @@ def main() -> None:
     build.add_argument("--repeats", type=int, required=True)
     build.add_argument("--suite", default="classic_versus_opponents")
     build.add_argument("--seed-role", default="holdout", choices=("validation", "holdout"))
+    build.add_argument("--eval-seeds", nargs="+", type=int, metavar="SEED",
+                       help="Replace every job's evaluation seed, one job per seed. Against a "
+                            "deterministic opponent a repeat is bit-identical and carries no "
+                            "information, so board seeds are what 'more samples' has to mean "
+                            "there. Recorded in provenance.")
     build.add_argument("--opponents", nargs="+", metavar="AGENT",
                        help="Replace every job's opponent list. Same weights, different "
                             "opponents -- the transfer question. Recorded in provenance and "
