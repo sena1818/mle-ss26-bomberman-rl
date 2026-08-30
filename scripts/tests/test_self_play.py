@@ -210,5 +210,76 @@ class FrozenAgentHasNoSideEffectsTest(unittest.TestCase):
             self.assertEqual(callbacks.act(agent, state), first)
 
 
+class ADeclaredFactorMustReachTheModelTest(unittest.TestCase):
+    """The check that R02_12 and R02_13 needed and did not have.
+
+    Both were trained for 10000 rounds with noisy layers declared, validated
+    and snapshotted, and neither model held a single sigma parameter: the
+    factory's mlp_q branch did not forward config.noisy and MLPQModel defaults
+    it to False. The runs finished, the diagnostics for everything else looked
+    healthy, and the arms measured a factor that was never switched on.
+    """
+
+    def test_every_noisy_route_builds_a_noisy_model(self):
+        from agent_code.research_agent.models import build_model
+        noisy_routes = [name for name, route in EXPERIMENTS.items() if route.noisy]
+        self.assertTrue(noisy_routes, "no noisy route to check")
+        for name in noisy_routes:
+            with self.subTest(route=name):
+                route = EXPERIMENTS[name]
+                if route.network.startswith("cnn") or route.network.startswith("dueling_cnn"):
+                    continue
+                model = build_model(route, 62, seed=0)
+                self.assertTrue(getattr(model, "noisy", False))
+                self.assertTrue(getattr(model, "weight_sigmas", None))
+
+    def test_no_route_builds_noise_it_did_not_declare(self):
+        from agent_code.research_agent.models import build_model
+        for name in ("R02_9", "R02_10"):
+            with self.subTest(route=name):
+                model = build_model(EXPERIMENTS[name], 62, seed=0)
+                self.assertFalse(getattr(model, "noisy", False))
+                self.assertFalse(getattr(model, "weight_sigmas", None))
+
+    def test_a_factory_that_drops_the_flag_is_refused(self):
+        """The guard itself, exercised without waiting for a real regression."""
+        from agent_code.research_agent import models
+        from agent_code.research_agent.models.mlp_q import MLPQModel
+        route = replace(EXPERIMENTS["R02_9"], noisy=True, noisy_with_epsilon=True)
+        plain = MLPQModel(62, route.hidden_layers, seed=0)
+        with self.assertRaises(ValueError) as caught:
+            models._as_declared(route, plain)
+        self.assertIn("measures nothing", str(caught.exception))
+
+    def test_a_noisy_model_survives_a_save_and_load(self):
+        """Sigma has to reach the checkpoint too, or evaluation silently differs."""
+        import numpy as np
+        from agent_code.research_agent.models import build_model, load_model
+        route = EXPERIMENTS["R02_12"]
+        model = build_model(route, 62, seed=0)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "model.npz"
+            model.save(path)
+            stored = np.load(path, allow_pickle=True)
+            self.assertTrue([k for k in stored.files if "sigma" in k])
+            reloaded = load_model(route, path)
+        self.assertTrue(getattr(reloaded, "noisy", False))
+        self.assertTrue(getattr(reloaded, "weight_sigmas", None))
+
+
+class FrozenModelPathResolvesAgainstTheRepositoryTest(unittest.TestCase):
+    def test_the_declared_path_exists_where_the_runner_will_look(self):
+        """The parser and the runner must resolve against the same base.
+
+        They did not: the runner joined the repository-relative path onto the
+        run directory, so every self-play training job died on its first second
+        looking for the checkpoint inside runs/<id>/frozen_opponents/.
+        """
+        raw = json.loads(SELF_PLAY_CONFIG.read_text(encoding="utf-8"))
+        declared = Path(raw["frozen_opponent"]["model_path"])
+        self.assertFalse(declared.is_absolute())
+        self.assertTrue((ROOT / declared).is_file())
+
+
 if __name__ == "__main__":
     unittest.main()

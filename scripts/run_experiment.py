@@ -584,9 +584,15 @@ def execute_job(job_file: Path, *, retry: bool = False, keep_runtime: bool = Fal
             raise ConfigError(
                 f"{job['job_id']} lists {FROZEN_OPPONENT_AGENT} as an opponent but the "
                 "experiment declares no frozen_opponent block.")
+        # Repository-relative, resolved against the repository root -- the same
+        # base FrozenOpponent.parse validates against.  Resolving it against the
+        # run directory instead made every self-play training job fail on its
+        # first second, which is the behaviour the missing-checkpoint error was
+        # written for: a frozen opponent has no fallback, so a wrong path is
+        # loud rather than a silently weaker opponent.
         model = Path(frozen["model_path"])
         if not model.is_absolute():
-            model = (run_dir / model).resolve()
+            model = (ROOT / model).resolve()
         if not model.is_file():
             raise FileNotFoundError(f"Frozen opponent checkpoint is unavailable: {model}")
         environment["BOMBERMAN_FROZEN_EXPERIMENT"] = frozen["route"]
