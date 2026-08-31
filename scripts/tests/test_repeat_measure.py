@@ -108,11 +108,181 @@ def _finished_repeats(root: Path, name: str, scores: dict[int, float],
     return run_dir
 
 
+class BoardSeedsAreWhatMoreSamplesMeansTest(unittest.TestCase):
+    """Against a deterministic opponent a repeat carries no information.
+
+    frozen_agent and coin_collector_agent play the same game every time for a
+    given board seed, so ten repeats are bit-identical and the between-seed
+    spread they appear to show is the spread of three board seeds. More board
+    seeds is the only way to add samples there.
+    """
+
+    def _scaffold(self, root, **overrides):
+        arguments = Namespace(source_run="source", run_id="repeat", repeats=1,
+                              suite="classic_versus_opponents", seed_role="holdout",
+                              checkpoint_round=None, opponents=None, eval_seeds=None,
+                              frozen_route="R02_9", frozen_model=None)
+        for key, value in overrides.items():
+            setattr(arguments, key, value)
+        with patch.object(repeat_measure, "RUNS_ROOT", root):
+            repeat_measure.scaffold(arguments)
+        return root / arguments.run_id
+
+    def test_each_declared_seed_becomes_its_own_job(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            _source_run(root)
+            destination = self._scaffold(root, eval_seeds=[7001, 7002, 7003, 7004])
+            seeds = set()
+            for job_file in (destination / "job_parameters").glob("*.json"):
+                seeds.add(json.loads(job_file.read_text(encoding="utf-8"))["seed"])
+            self.assertEqual(seeds, {7001, 7002, 7003, 7004})
+
+    def test_the_source_seeds_are_not_multiplied_in(self):
+        """One job per (training seed, board seed), not per source job as well.
+
+        The source's own evaluation seeds are collapsed first: replaying them
+        under an explicit seed list would write one identical copy of each
+        board seed per source evaluation seed.
+        """
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            _source_run(root)
+            destination = self._scaffold(root, eval_seeds=[7001, 7002])
+            pairs = []
+            for job_file in (destination / "job_parameters").glob("*.json"):
+                job = json.loads(job_file.read_text(encoding="utf-8"))
+                pairs.append((job["train_seed"], job["seed"], job.get("checkpoint_round")))
+            self.assertEqual(len(pairs), len(set(pairs)), "a (train seed, board seed) pair was written twice")
+            train_seeds = {train for train, _, _ in pairs}
+            self.assertEqual(len(pairs), len(train_seeds) * 2)
+
+    def test_job_ids_stay_distinct(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            _source_run(root)
+            destination = self._scaffold(root, eval_seeds=[7001, 7002])
+            names = [p.name for p in (destination / "job_parameters").glob("*.json")]
+            self.assertEqual(len(names), len(set(names)))
+
+    def test_the_seeds_are_recorded_in_provenance(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            _source_run(root)
+            destination = self._scaffold(root, eval_seeds=[7001, 7002])
+            provenance = json.loads((destination / "provenance.json").read_text(encoding="utf-8"))
+            self.assertEqual(provenance["repeat_measurement"]["eval_seeds"], [7001, 7002])
+
+
+class AJobWithNothingBadInItStillParsesTest(unittest.TestCase):
+    """The missing key fails on the best jobs, not on random ones.
+
+    Agent.statistics is a defaultdict(int) and agents.py only writes a key when
+    the event fired, so a job with no suicides has no 'suicides' key -- and a
+    job with no suicides is the one worth keeping. Reading it by index crashed
+    the report for two whole transfer arms.
+    """
+
+    def test_missing_event_keys_read_as_zero(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "official_stats.json"
+            path.write_text(json.dumps({
+                "by_agent": {
+                    "research_agent": {"score": 12, "rounds": 3},
+                    "rule_based_agent_0": {"score": 4, "rounds": 3},
+                }
+            }), encoding="utf-8")
+            metrics = repeat_measure._job_metrics(path, "research_agent")
+        self.assertEqual(metrics["suicides"], 0.0)
+        self.assertEqual(metrics["coins"], 0.0)
+        # score = coins + 5*kills, so 12 points with no coins is 2.4 kills.
+        self.assertAlmostEqual(metrics["kills"], 12 / 5.0 / 3)
+
+    def test_a_board_where_nobody_took_a_coin_is_not_a_crash(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "official_stats.json"
+            path.write_text(json.dumps({
+                "by_agent": {"research_agent": {"score": 0, "rounds": 2}}
+            }), encoding="utf-8")
+            metrics = repeat_measure._job_metrics(path, "research_agent")
+        self.assertTrue(metrics["coins_share"] != metrics["coins_share"])  # nan
+
+
+class TheOpponentIsPartOfTheMeasurementTest(unittest.TestCase):
+    """Same weights, different opponents: the transfer question.
+
+    docs/05 hard rule 8 says a score has to name its scenario and whether
+    opponents were present. Three rule_based and three frozen copies of a
+    trained agent are both "3 opponents", so the label has to name which, or
+    two incomparable numbers sit in one table looking comparable.
+    """
+
+    def _scaffold(self, root: Path, **overrides):
+        arguments = Namespace(source_run="source", run_id="repeat", repeats=1,
+                              suite="classic_versus_opponents", seed_role="holdout",
+                              checkpoint_round=None, opponents=None, eval_seeds=None,
+                              frozen_route="R02_9", frozen_model=None)
+        for key, value in overrides.items():
+            setattr(arguments, key, value)
+        with patch.object(repeat_measure, "RUNS_ROOT", root):
+            repeat_measure.scaffold(arguments)
+        return root / arguments.run_id
+
+    def test_the_override_reaches_every_job(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            _source_run(root)
+            destination = self._scaffold(root, opponents=["coin_collector_agent"] * 3)
+            written = sorted((destination / "job_parameters").glob("*.json"))
+            self.assertTrue(written)
+            for job_file in written:
+                job = json.loads(job_file.read_text(encoding="utf-8"))
+                self.assertEqual(job["opponents"], ["coin_collector_agent"] * 3)
+
+    def test_the_override_is_recorded_in_provenance(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            _source_run(root)
+            destination = self._scaffold(root, opponents=["coin_collector_agent"] * 3)
+            provenance = json.loads((destination / "provenance.json").read_text(encoding="utf-8"))
+            self.assertEqual(provenance["repeat_measurement"]["opponents"],
+                             ["coin_collector_agent"] * 3)
+
+    def test_the_label_names_which_opponents_not_how_many(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            _source_run(root)
+            plain = self._scaffold(root, run_id="plain")
+            swapped = self._scaffold(root, run_id="swapped",
+                                     opponents=["coin_collector_agent"] * 3)
+            suite = "classic_versus_opponents"
+            self.assertNotEqual(repeat_measure._suite_label(plain, suite),
+                                repeat_measure._suite_label(swapped, suite))
+            self.assertIn("coin_collector_agent", repeat_measure._suite_label(swapped, suite))
+
+    def test_a_frozen_opponent_without_a_model_is_refused(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            _source_run(root)
+            with self.assertRaises(SystemExit) as caught:
+                self._scaffold(root, opponents=["frozen_agent"] * 3)
+            self.assertIn("--frozen-model", str(caught.exception))
+
+    def test_a_model_without_a_frozen_opponent_is_refused(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            _source_run(root)
+            with self.assertRaises(SystemExit):
+                self._scaffold(root, opponents=["rule_based_agent"] * 3,
+                               frozen_model="frozen_opponents/R02_9_seed1001_round05000.npz")
+
+
 class ScaffoldSelectsExactlyWhatWasAskedForTest(unittest.TestCase):
     def _scaffold(self, root: Path, **overrides):
         arguments = Namespace(source_run="source", run_id="repeat", repeats=3,
                               suite="classic_versus_opponents", seed_role="holdout",
-                              checkpoint_round=None)
+                              checkpoint_round=None, opponents=None, eval_seeds=None,
+                              frozen_route="R02_9", frozen_model=None)
         for key, value in overrides.items():
             setattr(arguments, key, value)
         with patch.object(repeat_measure, "RUNS_ROOT", root):

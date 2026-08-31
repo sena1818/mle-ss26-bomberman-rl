@@ -125,6 +125,32 @@ IMPLEMENTED_ROUTES = {
         "reward_versions": _VECTOR_REWARD_VERSIONS,
         "exploration_versions": {"E12"},
     },
+    # R02_12 is R02_9's declaration with noisy exploration substituted for
+    # epsilon-greedy -- the add-one-in ablation of R02_11.  E12 alone, for the
+    # same reason R02_11 takes E12 alone.
+    "R02_12": {
+        "lines": ("M3",),
+        "declaration": ("mlp_q", "double_dqn", "handcrafted_v3"),
+        "reward_versions": _VECTOR_REWARD_VERSIONS,
+        "exploration_versions": {"E12"},
+    },
+    # R02_13 is R02_12 with the epsilon schedule left on as well.  It opens the
+    # epsilon versions R02_9 opens, and not E12: E12 is epsilon 0, which would
+    # make it R02_12 under a second name.
+    "R02_13": {
+        "lines": ("M3",),
+        "declaration": ("mlp_q", "double_dqn", "handcrafted_v3"),
+        "reward_versions": _VECTOR_REWARD_VERSIONS,
+        "exploration_versions": {"E00", "E01", "E02", "E03", "E04", "E05", "E06", "E11"},
+    },
+    # R02_14 is the epsilon-0 baseline plus decoupled weight decay.  E12 only,
+    # for the same reason R02_12 is: it is that baseline and not another.
+    "R02_14": {
+        "lines": ("M3",),
+        "declaration": ("mlp_q", "double_dqn", "handcrafted_v3"),
+        "reward_versions": _VECTOR_REWARD_VERSIONS,
+        "exploration_versions": {"E12"},
+    },
     "R07": {
         "lines": ("M4",),
         "declaration": ("cnn_mlp_q", "double_dqn", "board_egocentric_v2"),
@@ -272,6 +298,58 @@ class Phase:
         if not seeds or len(set(seeds)) != len(seeds):
             raise ConfigError(f"{label}.seeds must be a non-empty list of distinct integers")
         return cls(scenario, opponents, seeds, budget)
+
+
+# The opponent directory that plays a fixed checkpoint.  Named once so the
+# runner, the validator and the tests cannot drift on the spelling.
+FROZEN_OPPONENT_AGENT = "frozen_agent"
+
+
+@dataclass(frozen=True)
+class FrozenOpponent:
+    """Which checkpoint the frozen_agent opponents play.
+
+    Self-play is the only setting on this project where the opponent is a
+    choice rather than a given, so it is declared and snapshotted like every
+    other factor.  The path is repository-relative, resolved against the
+    repository root, and checked to exist at load time -- a self-play arm that
+    silently fell back to some default opponent would be indistinguishable in
+    its logs from one that did what it said.
+    """
+
+    route: str
+    model_path: str
+    sha256: str
+
+    @classmethod
+    def parse(cls, value: Any) -> "FrozenOpponent | None":
+        if value is None:
+            return None
+        if not isinstance(value, dict):
+            raise ConfigError("frozen_opponent must be null or an object")
+        unknown = sorted(set(value) - {"route", "model_path", "sha256"})
+        if unknown:
+            raise ConfigError(f"Unknown frozen_opponent keys: {', '.join(unknown)}")
+        try:
+            parsed = cls(route=safe_identifier(value["route"], "frozen_opponent.route"),
+                         model_path=str(value["model_path"]),
+                         sha256=str(value["sha256"]))
+        except KeyError as exc:
+            raise ConfigError("frozen_opponent requires route, model_path and sha256") from exc
+        if parsed.model_path.startswith("/") or ".." in Path(parsed.model_path).parts:
+            raise ConfigError(
+                "frozen_opponent.model_path must be a repository-relative path without '..'")
+        if len(parsed.sha256) != 64 or parsed.sha256 != parsed.sha256.lower().strip():
+            raise ConfigError("frozen_opponent.sha256 must be a lowercase hex SHA-256 digest")
+        resolved = ROOT / parsed.model_path
+        if not resolved.is_file():
+            raise ConfigError(f"frozen_opponent.model_path does not exist: {resolved}")
+        digest = hashlib.sha256(resolved.read_bytes()).hexdigest()
+        if digest != parsed.sha256:
+            raise ConfigError(
+                f"frozen_opponent {parsed.model_path} has digest {digest}, but the config "
+                f"declares {parsed.sha256}. The opponent is a factor; it may not change silently.")
+        return parsed
 
 
 @dataclass(frozen=True)
@@ -542,6 +620,8 @@ class Experiment:
     shaping: dict[str, Any] | None = None
     # Weights every training seed starts from; None means fresh initialization.
     initial_model: InitialModel | None = None
+    # Declared only by a self-play arm; see FrozenOpponent.
+    frozen_opponent: FrozenOpponent | None = None
 
     def suite_checkpoints(self, suite: str) -> CheckpointEvaluation:
         """Return the checkpoint policy for one suite name.
@@ -638,6 +718,7 @@ class Experiment:
                 predeclared_design_numbers=predeclared_design_numbers,
                 terminal_on_truncation=bool(raw.get("terminal_on_truncation", False)),
                 initial_model=InitialModel.parse(raw.get("initial_model")),
+                frozen_opponent=FrozenOpponent.parse(raw.get("frozen_opponent")),
                 n_step=int(agent.get("n_step", 1)),
                 learning_rate=(float(agent["learning_rate"])
                                if agent.get("learning_rate") is not None else None),
@@ -668,6 +749,17 @@ class Experiment:
             raise ConfigError("agent.n_step must be a positive integer")
         if experiment.algorithm == "double_dqn" and experiment.replay is None:
             raise ConfigError("agent.algorithm 'double_dqn' requires an agent.replay block")
+        phases = [experiment.training, experiment.evaluation]
+        phases.extend(suite.phase for suite in experiment.evaluation_suites)
+        uses_frozen = any(FROZEN_OPPONENT_AGENT in phase.opponents for phase in phases)
+        if uses_frozen and experiment.frozen_opponent is None:
+            raise ConfigError(
+                f"an opponent list names {FROZEN_OPPONENT_AGENT} but no frozen_opponent "
+                "block declares which checkpoint it plays")
+        if experiment.frozen_opponent is not None and not uses_frozen:
+            raise ConfigError(
+                "frozen_opponent is declared but no phase lists "
+                f"{FROZEN_OPPONENT_AGENT} as an opponent")
         return experiment
 
     @property
@@ -768,6 +860,8 @@ class Experiment:
             snapshot["_predeclared_design_numbers"] = self.predeclared_design_numbers
         if self.initial_model is not None:
             snapshot["initial_model"] = asdict(self.initial_model)
+        if self.frozen_opponent is not None:
+            snapshot["frozen_opponent"] = asdict(self.frozen_opponent)
         if self.curriculum is not None:
             snapshot["curriculum"] = {
                 "source_run_id": self.curriculum.source_run_id,

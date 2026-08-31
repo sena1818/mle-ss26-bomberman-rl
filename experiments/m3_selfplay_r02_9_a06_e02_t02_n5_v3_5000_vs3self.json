@@ -1,0 +1,181 @@
+{
+  "_design_note": "Self-play on R02_9's recipe: one factor against runs/m3_lr_decay_5000_vs3rb_20260827, the training opponents. Three rule_based_agent become three frozen copies of R02_9 seed 1001 -- the arm's own best model, the submission candidate until the rainbow arm replaced it. Everything else is R02_9's: 5000 rounds, E02, L01, A06, n_step 5, the same five training seeds, and the same loot-crate scenario.\n\nEvaluation is deliberately NOT changed. The tournament suite stays classic + 3 rule_based_agent so this arm is comparable to all fourteen arms before it, and a third suite, classic_versus_frozen, adds the self-play axis. Without that second axis the arm is unmeasurable in the direction it is supposed to help: if self-play trades a little rule_based performance for a lot of performance against learned opponents, our only metric would report 'worse' and the gain would be invisible.\n\nWhat the frozen opponent is not: it is a single fixed checkpoint, not a pool and not a moving target. There is no opponent ladder here and no iterated self-play. That is a limitation of the arm, not an oversight -- one fixed opponent keeps the factor single, and an opponent that changes during training would confound the result with a curriculum.",
+  "_predeclared_design_numbers": {
+    "changed_factor": "One against R02_9: training.opponents, rule_based_agent x3 -> frozen_agent x3 (R02_9 seed 1001). Budget, schedule, reward, exploration and seeds are unchanged.",
+    "control": "runs/rep_lr (R02_9, ten repeats, 3.6371) on the identical tournament suite.",
+    "cost": "Three NumPy MLP forward passes a step on top of the trainer's own, against rule_based_agent's BFS which this replaces. Expected within about 30% of R02_9's wall clock either way; 5000 rounds, so roughly 2 to 3 hours.",
+    "falsification": "Distinguishably better on the tournament suite would refute all of that and make the opponent distribution the most valuable untried factor on this line. Indistinguishable, with a clear win on classic_versus_frozen, would say self-play buys generalisation that the tournament suite cannot see -- which is the interesting outcome and the reason the second suite exists.",
+    "prediction": "Distinguishably worse on the tournament suite. Two reasons, both from this project's own data. Coin share against three copies of itself is 0.25 by symmetry against the 0.3449 it takes from rule_based, so the coin signal per round drops by about a quarter, and coins are the half of the score this recipe has actually mastered. And the kills it does earn are earned against rule_based's specific escape rule (callbacks.py line 170); section 7.41's diagnostic shows the entire rainbow margin is in whether the target escapes on the last step before detonation, which is an opponent-specific skill.",
+    "reporting": "All five training-seed distributions, coins and coins_share beside every score (the predicted mechanism is a coin-share collapse, so it must be reported whether or not the score moves), and both suites.",
+    "resolution_tournament": "Ten repeats of the same fifteen holdout jobs, Welch, |t| > 2.3 (section 7.20.6). The classic_versus_frozen suite is reported but has no baseline arm yet, so it is descriptive only.",
+    "what_this_cannot_show": "Anything about a mixed or laddered opponent pool. It is one fixed opponent for the whole run."
+  },
+  "agent": {
+    "algorithm": "double_dqn",
+    "model": "mlp_q",
+    "n_step": 5,
+    "name": "research_agent",
+    "replay": {
+      "batch_size": 32,
+      "capacity": 50000,
+      "min_size": 1000,
+      "target_update_every": 500,
+      "train_every": 1
+    },
+    "state_representation": "handcrafted_v3"
+  },
+  "checkpoint_evaluation": {
+    "holdout_seeds": [
+      3001,
+      3002,
+      3003
+    ],
+    "mode": "all",
+    "validation_seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation": {
+    "budget": {
+      "checkpoint_every": 250,
+      "rounds": 30
+    },
+    "opponents": [
+      "rule_based_agent",
+      "rule_based_agent",
+      "rule_based_agent"
+    ],
+    "scenario": "loot-crate",
+    "seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation_suites": {
+    "classic_solo": {
+      "budget": {
+        "checkpoint_every": 250,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "classic_versus_frozen": {
+      "budget": {
+        "checkpoint_every": 500,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [
+        "frozen_agent",
+        "frozen_agent",
+        "frozen_agent"
+      ],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "classic_versus_opponents": {
+      "budget": {
+        "checkpoint_every": 250,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [
+        "rule_based_agent",
+        "rule_based_agent",
+        "rule_based_agent"
+      ],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    }
+  },
+  "experiment_id": "M3_SELFPLAY_R02_9_A06_E02_T02_n5_5000_vs3self",
+  "exploration_version": "E02",
+  "frozen_opponent": {
+    "model_path": "frozen_opponents/R02_9_seed1001_round05000.npz",
+    "route": "R02_9",
+    "sha256": "08576fe67b1d98aab7875371ad007aba5696fab86f17cc40c403656765f215d8"
+  },
+  "promotion": {
+    "primary_metric": "score"
+  },
+  "reward_version": "A06",
+  "route": "R02_9",
+  "schema_version": 1,
+  "shaping": {
+    "name": "potential_v1"
+  },
+  "terminal_on_truncation": false,
+  "training": {
+    "budget": {
+      "checkpoint_every": 250,
+      "rounds": 5000
+    },
+    "opponents": [
+      "frozen_agent",
+      "frozen_agent",
+      "frozen_agent"
+    ],
+    "scenario": "loot-crate",
+    "seeds": [
+      1001,
+      1002,
+      1003,
+      1004,
+      1005
+    ]
+  }
+}

@@ -1,0 +1,146 @@
+{
+  "_design_note": "The epsilon-0 baseline plus decoupled weight decay at 1e-4, and nothing else. One factor against runs/m3_noisy_10000_vs3rb_20260830, which is that baseline (section 7.44).\n\nWhy regularisation, and why now. Section 7.43 measured overfitting directly rather than inferring it: the rainbow arm takes 4.91x R02_9's kills against the opponent it trained on and 0.96x against a different neural agent. The tournament is other groups' agents, so the quantity that matters is what survives an opponent change. Farebrother, Machado and Bowling 2018 and Cobbe et al. 2019 both studied exactly this for value networks and both found L2 among the things that helped -- and this line has never carried any explicit regularisation at all: gradient clipping is the only candidate and section 7.38.2 measured it firing zero times in all eight arms.\n\nDecoupled rather than coupled, in the sense of Loshchilov and Hutter 2019. An L2 term added to the gradient is divided by Adam's running RMS along with everything else, so the realised penalty per weight ends up inversely proportional to that weight's gradient magnitude. Section 7.38.1 is the same mistake from the other direction: a loss rescaling read as a step-size change, which Adam's scale invariance made into nothing.\n\nOne implementation note that nearly cost a full run. learning_rate * weight_decay is 5e-8 here; the weights are float32 around 0.1, whose ulp is 7.5e-9, so multiplying by 1 - 5e-8 every step moves each weight by less than half an ulp and rounds straight back. The naive form is exactly a no-op. The factor is compounded and applied in bursts once it clears the rounding, and a test asserts the weights actually shrink.",
+  "_predeclared_design_numbers": {
+    "changed_factor": "One against the epsilon-0 baseline: weight_decay 0.0 -> 1e-4, decoupled, weight matrices only. Biases and any noise scales are excluded; decaying a bias shifts the function without constraining it, and decaying sigma would be a second undeclared annealing.",
+    "control": "runs/rep_noisy_n35 (the epsilon-0 baseline, 35 repeats, 3.8335) on the tournament suite, and runs/rep_tx_eps0_{r029,coin,rbow} on the three transfer sets -- the transfer axis is the one this arm is for.",
+    "cost": "Scalar head, uniform replay, 10000 rounds: about 3.5 hours training, 35 minutes evaluation. The decay is one multiply per burst, roughly every 200 gradient steps.",
+    "falsification": "Distinguishably worse on both axes closes explicit regularisation at this dose. Indistinguishable on the tournament suite with a gain on two of three transfer sets is the outcome that would justify a sweep.",
+    "prediction": "Indistinguishable on the tournament suite, and I would not read a small loss there as a failure. The point of the arm is the transfer sets, where the honest prior is weak: the papers behind it studied visual generalisation across game modes, not opponent change, and 1e-4 is one point rather than a sweep.",
+    "reporting": "All five training-seed distributions, both axes, and parameter_l2_norm beside the score: if the weights did not actually shrink the arm measured nothing, which is the failure this route was built around.",
+    "resolution_tournament": "Ten repeats of the same fifteen holdout jobs, Welch, |t| > 2.3 (section 7.20.6). On the transfer sets the repeats are degenerate -- frozen_agent and coin_collector are deterministic -- so those are Welch across the five training seeds with extra board seeds via scaffold --eval-seeds (section 7.43.3).",
+    "the_mechanism_check": "parameter_l2_norm at the end must be visibly below the baseline's 38-44 band. Equal norms mean the decay never fired and the arm is void."
+  },
+  "agent": {
+    "algorithm": "double_dqn",
+    "model": "mlp_q",
+    "n_step": 5,
+    "name": "research_agent",
+    "replay": {
+      "batch_size": 32,
+      "capacity": 50000,
+      "min_size": 1000,
+      "target_update_every": 500,
+      "train_every": 1
+    },
+    "state_representation": "handcrafted_v3"
+  },
+  "checkpoint_evaluation": {
+    "holdout_seeds": [
+      3001,
+      3002,
+      3003
+    ],
+    "mode": "all",
+    "validation_seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation": {
+    "budget": {
+      "checkpoint_every": 500,
+      "rounds": 30
+    },
+    "opponents": [
+      "rule_based_agent",
+      "rule_based_agent",
+      "rule_based_agent"
+    ],
+    "scenario": "loot-crate",
+    "seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation_suites": {
+    "classic_solo": {
+      "budget": {
+        "checkpoint_every": 500,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "classic_versus_opponents": {
+      "budget": {
+        "checkpoint_every": 500,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [
+        "rule_based_agent",
+        "rule_based_agent",
+        "rule_based_agent"
+      ],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    }
+  },
+  "experiment_id": "M3_WD_R02_14_A06_E12_T02_n5_10000_vs3rb",
+  "exploration_version": "E12",
+  "promotion": {
+    "primary_metric": "score"
+  },
+  "reward_version": "A06",
+  "route": "R02_14",
+  "schema_version": 1,
+  "shaping": {
+    "name": "potential_v1"
+  },
+  "terminal_on_truncation": false,
+  "training": {
+    "budget": {
+      "checkpoint_every": 500,
+      "rounds": 10000
+    },
+    "opponents": [
+      "rule_based_agent",
+      "rule_based_agent",
+      "rule_based_agent"
+    ],
+    "scenario": "loot-crate",
+    "seeds": [
+      1001,
+      1002,
+      1003,
+      1004,
+      1005
+    ]
+  }
+}
