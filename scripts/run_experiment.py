@@ -19,6 +19,7 @@ from pathlib import Path
 
 from experiment_lib import (
     FROZEN_OPPONENT_AGENT,
+    FROZEN_OPPONENT_AGENTS,
     ConfigError,
     Experiment,
     ROOT,
@@ -66,6 +67,62 @@ def make_run_id(experiment: Experiment) -> str:
     return f"{experiment.experiment_id}_{stamp}_{secrets.token_hex(4)}"
 
 
+def _frozen_payload(experiment: Experiment) -> dict:
+    """The frozen seats a job carries, in both spellings.
+
+    ``frozen_opponent`` is kept for the ``frozen_agent`` seat so every finished
+    run's job files and the repeat-measurement scaffolds keep reading; the
+    plural table is what a mixed board needs.
+    """
+    if not experiment.frozen_opponents:
+        return {}
+    payload = {"frozen_opponents": {seat: entry.__dict__
+                                    for seat, entry in experiment.frozen_opponents.items()}}
+    if experiment.frozen_opponent is not None:
+        payload["frozen_opponent"] = experiment.frozen_opponent.__dict__
+    return payload
+
+
+def frozen_opponent_environment(job: dict) -> dict[str, str]:
+    """The variables each frozen seat on this job's board reads its checkpoint from.
+
+    A frozen seat plays a fixed checkpoint and reads its own variables, so a
+    self-play or mixed-table job can name it as an opponent without the copies
+    inheriting the trainer's route or writing into the trainer's action log.
+    The path is required and must be absolute: the framework chdir's into each
+    agent's own directory before setup (agents.py line 305), so a relative path
+    would resolve somewhere nobody intended.
+
+    Repository-relative paths are resolved against the repository root -- the
+    same base FrozenOpponent.parse validates against.  Resolving against the
+    run directory instead made every self-play training job fail on its first
+    second, which is the behaviour the missing-checkpoint error was written for:
+    a frozen opponent has no fallback, so a wrong path is loud rather than a
+    silently weaker opponent.
+    """
+    table = dict(job.get("frozen_opponents") or {})
+    if job.get("frozen_opponent") and FROZEN_OPPONENT_AGENT not in table:
+        table[FROZEN_OPPONENT_AGENT] = job["frozen_opponent"]
+    environment: dict[str, str] = {}
+    for seat in job["opponents"]:
+        if seat not in FROZEN_OPPONENT_AGENTS:
+            continue
+        frozen = table.get(seat)
+        if not frozen:
+            raise ConfigError(
+                f"{job['job_id']} lists {seat} as an opponent but the experiment declares "
+                "no frozen_opponent(s) block for that seat.")
+        model = Path(frozen["model_path"])
+        if not model.is_absolute():
+            model = (ROOT / model).resolve()
+        if not model.is_file():
+            raise FileNotFoundError(f"Frozen opponent checkpoint is unavailable: {model}")
+        prefix = FROZEN_OPPONENT_AGENTS[seat]
+        environment[f"{prefix}_EXPERIMENT"] = frozen["route"]
+        environment[f"{prefix}_MODEL_PATH"] = str(model)
+    return environment
+
+
 def build_jobs(experiment: Experiment, run_dir: Path) -> list[dict]:
     jobs: list[dict] = []
     for seed in experiment.training.seeds:
@@ -74,8 +131,7 @@ def build_jobs(experiment: Experiment, run_dir: Path) -> list[dict]:
             "job_id": job_id, "mode": "train", "seed": seed,
             "phase": "training", "scenario": experiment.training.scenario,
             "opponents": list(experiment.training.opponents), "budget": experiment.training.budget.__dict__,
-            **({"frozen_opponent": experiment.frozen_opponent.__dict__}
-               if experiment.frozen_opponent is not None else {}),
+            **_frozen_payload(experiment),
             "artifact_relpath": str(Path("jobs") / job_id), "model_relpath": None,
         }
         if experiment.curriculum is not None:
@@ -119,8 +175,7 @@ def build_jobs(experiment: Experiment, run_dir: Path) -> list[dict]:
                             "job_id": job_id, "mode": "eval", "seed": seed, "train_seed": train_seed,
                             "phase": "evaluation", "suite": suite, "scenario": phase.scenario,
                             "opponents": list(phase.opponents), "budget": phase.budget.__dict__,
-                            **({"frozen_opponent": experiment.frozen_opponent.__dict__}
-                               if experiment.frozen_opponent is not None else {}),
+                            **_frozen_payload(experiment),
                             "artifact_relpath": str(Path("jobs") / job_id),
                             "model_relpath": model_relpath,
                             "checkpoint_round": checkpoint_round,
@@ -357,6 +412,7 @@ def _run_curriculum_segment(
         "BOMBERMAN_CONTINUE": "1",
         "BOMBERMAN_MODEL_PATH": str(input_model.resolve()),
     })
+    environment.update(frozen_opponent_environment(job))
     command = [
         sys.executable, "main.py", "play", "--agents", experiment.agent_name, *job["opponents"],
         "--scenario", segment["scenario"], "--seed", str(segment_seed), "--n-rounds", str(segment["rounds"]),
@@ -572,31 +628,7 @@ def execute_job(job_file: Path, *, retry: bool = False, keep_runtime: bool = Fal
         "BOMBERMAN_CHECKPOINT_EVERY": str(job["budget"]["checkpoint_every"]),
         "BOMBERMAN_CONTINUE": "0",
     })
-    # frozen_agent plays a fixed checkpoint and reads its own variables, so a
-    # self-play job can name it as an opponent without the three copies
-    # inheriting the trainer's route or writing into the trainer's action log.
-    # The path is required and must be absolute: the framework chdir's into
-    # each agent's own directory before setup (agents.py line 305), so a
-    # relative path would resolve somewhere nobody intended.
-    if FROZEN_OPPONENT_AGENT in job["opponents"]:
-        frozen = job.get("frozen_opponent")
-        if not frozen:
-            raise ConfigError(
-                f"{job['job_id']} lists {FROZEN_OPPONENT_AGENT} as an opponent but the "
-                "experiment declares no frozen_opponent block.")
-        # Repository-relative, resolved against the repository root -- the same
-        # base FrozenOpponent.parse validates against.  Resolving it against the
-        # run directory instead made every self-play training job fail on its
-        # first second, which is the behaviour the missing-checkpoint error was
-        # written for: a frozen opponent has no fallback, so a wrong path is
-        # loud rather than a silently weaker opponent.
-        model = Path(frozen["model_path"])
-        if not model.is_absolute():
-            model = (ROOT / model).resolve()
-        if not model.is_file():
-            raise FileNotFoundError(f"Frozen opponent checkpoint is unavailable: {model}")
-        environment["BOMBERMAN_FROZEN_EXPERIMENT"] = frozen["route"]
-        environment["BOMBERMAN_FROZEN_MODEL_PATH"] = str(model)
+    environment.update(frozen_opponent_environment(job))
     command = [sys.executable, "main.py", "play", "--agents", experiment.agent_name, *job["opponents"],
                "--scenario", job["scenario"], "--seed", str(job["seed"]), "--n-rounds", str(job["budget"]["rounds"]),
                "--no-gui", "--save-stats", str(stats_path), "--match-name", f"{run_dir.name}_{job['job_id']}"]

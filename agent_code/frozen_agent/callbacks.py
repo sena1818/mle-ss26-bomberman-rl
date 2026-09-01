@@ -38,18 +38,35 @@ from ..research_agent.models import load_model
 from ..research_agent.state import encode_state, legal_action_mask
 
 
+# One directory per frozen seat, because the framework selects an opponent's
+# code by directory name and these variables are process-global: three seats
+# reading the same prefix would all play the same checkpoint.  Mirrored in
+# scripts/experiment_lib.FROZEN_OPPONENT_AGENTS, with a test holding the two
+# together.  frozen_agent_b and frozen_agent_c are two-line wrappers over
+# ``setup_from`` and ``act``.
+ENVIRONMENT_PREFIXES = {
+    "frozen_agent": "BOMBERMAN_FROZEN",
+    "frozen_agent_b": "BOMBERMAN_FROZEN_B",
+    "frozen_agent_c": "BOMBERMAN_FROZEN_C",
+}
+
+
 def setup(self):
-    route = os.environ.get("BOMBERMAN_FROZEN_EXPERIMENT", "R02_9")
+    setup_from(self, ENVIRONMENT_PREFIXES["frozen_agent"])
+
+
+def setup_from(self, prefix: str):
+    route = os.environ.get(f"{prefix}_EXPERIMENT", "R02_9")
     try:
         config = EXPERIMENTS[route]
     except KeyError as exc:
         raise ValueError(
             f"Unknown frozen route {route!r}; declared routes: {sorted(EXPERIMENTS)}"
         ) from exc
-    selected = os.environ.get("BOMBERMAN_FROZEN_MODEL_PATH")
+    selected = os.environ.get(f"{prefix}_MODEL_PATH")
     if not selected:
         raise ValueError(
-            "frozen_agent requires BOMBERMAN_FROZEN_MODEL_PATH. It plays a fixed "
+            f"a frozen seat requires {prefix}_MODEL_PATH. It plays a fixed "
             "checkpoint and has no fallback: an opponent that silently played "
             "random weights would look like a weak opponent, not like a "
             "misconfiguration."

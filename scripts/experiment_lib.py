@@ -163,6 +163,14 @@ IMPLEMENTED_ROUTES = {
         "reward_versions": _VECTOR_REWARD_VERSIONS,
         "exploration_versions": {"E00", "E01", "E02", "E07", "E08", "E09", "E10"},
     },
+    # The hybrid representation: R07's trunk reading the M3 vector on its
+    # scalar branch.  No D4, so the route's replay block declares none.
+    "R09": {
+        "lines": ("M4",),
+        "declaration": ("cnn_mlp_q", "double_dqn", "hybrid_v1"),
+        "reward_versions": _VECTOR_REWARD_VERSIONS,
+        "exploration_versions": {"E00", "E01", "E02", "E07", "E08", "E09", "E10"},
+    },
 }
 MAIN_LINES = ("M1", "M2", "M3", "M4")
 # "rounds" evaluates an explicitly listed subset.  "all" times a long budget by
@@ -191,7 +199,7 @@ DECLARATIVE_ROUTE_VALUES = {
     "state_representation": {
         "handcrafted_v1", "handcrafted_v2", "handcrafted_v3",
         "board_channels_v1", "board_channels_global_v1",
-        "board_egocentric_v1", "board_egocentric_v2",
+        "board_egocentric_v1", "board_egocentric_v2", "hybrid_v1",
     },
 }
 
@@ -303,6 +311,17 @@ class Phase:
 # The opponent directory that plays a fixed checkpoint.  Named once so the
 # runner, the validator and the tests cannot drift on the spelling.
 FROZEN_OPPONENT_AGENT = "frozen_agent"
+# A mixed table needs more than one frozen checkpoint on the board at once, and
+# the framework picks an opponent's code by directory name while the frozen
+# agent reads its checkpoint from process-global variables.  So each frozen
+# seat is its own directory reading its own variable prefix.  The mapping is
+# mirrored in agent_code/frozen_agent/callbacks.py and a test holds the two
+# together.
+FROZEN_OPPONENT_AGENTS = {
+    "frozen_agent": "BOMBERMAN_FROZEN",
+    "frozen_agent_b": "BOMBERMAN_FROZEN_B",
+    "frozen_agent_c": "BOMBERMAN_FROZEN_C",
+}
 
 
 @dataclass(frozen=True)
@@ -322,34 +341,64 @@ class FrozenOpponent:
     sha256: str
 
     @classmethod
-    def parse(cls, value: Any) -> "FrozenOpponent | None":
+    def parse(cls, value: Any, label: str = "frozen_opponent") -> "FrozenOpponent | None":
         if value is None:
             return None
         if not isinstance(value, dict):
-            raise ConfigError("frozen_opponent must be null or an object")
+            raise ConfigError(f"{label} must be null or an object")
         unknown = sorted(set(value) - {"route", "model_path", "sha256"})
         if unknown:
-            raise ConfigError(f"Unknown frozen_opponent keys: {', '.join(unknown)}")
+            raise ConfigError(f"Unknown {label} keys: {', '.join(unknown)}")
         try:
-            parsed = cls(route=safe_identifier(value["route"], "frozen_opponent.route"),
+            parsed = cls(route=safe_identifier(value["route"], f"{label}.route"),
                          model_path=str(value["model_path"]),
                          sha256=str(value["sha256"]))
         except KeyError as exc:
-            raise ConfigError("frozen_opponent requires route, model_path and sha256") from exc
+            raise ConfigError(f"{label} requires route, model_path and sha256") from exc
         if parsed.model_path.startswith("/") or ".." in Path(parsed.model_path).parts:
             raise ConfigError(
-                "frozen_opponent.model_path must be a repository-relative path without '..'")
+                f"{label}.model_path must be a repository-relative path without '..'")
         if len(parsed.sha256) != 64 or parsed.sha256 != parsed.sha256.lower().strip():
-            raise ConfigError("frozen_opponent.sha256 must be a lowercase hex SHA-256 digest")
+            raise ConfigError(f"{label}.sha256 must be a lowercase hex SHA-256 digest")
         resolved = ROOT / parsed.model_path
         if not resolved.is_file():
-            raise ConfigError(f"frozen_opponent.model_path does not exist: {resolved}")
+            raise ConfigError(f"{label}.model_path does not exist: {resolved}")
         digest = hashlib.sha256(resolved.read_bytes()).hexdigest()
         if digest != parsed.sha256:
             raise ConfigError(
-                f"frozen_opponent {parsed.model_path} has digest {digest}, but the config "
+                f"{label} {parsed.model_path} has digest {digest}, but the config "
                 f"declares {parsed.sha256}. The opponent is a factor; it may not change silently.")
         return parsed
+
+    @classmethod
+    def parse_table(cls, singular: Any, plural: Any) -> dict[str, "FrozenOpponent"]:
+        """Read ``frozen_opponent`` (one seat) and ``frozen_opponents`` (a table).
+
+        The singular form is the historical spelling and names the
+        ``frozen_agent`` seat; the plural is keyed by frozen seat directory.
+        Both may appear, but not for the same seat.
+        """
+        table: dict[str, FrozenOpponent] = {}
+        parsed = cls.parse(singular)
+        if parsed is not None:
+            table[FROZEN_OPPONENT_AGENT] = parsed
+        if plural is None:
+            return table
+        if not isinstance(plural, dict):
+            raise ConfigError("frozen_opponents must be an object keyed by frozen seat directory")
+        for seat, value in plural.items():
+            if seat not in FROZEN_OPPONENT_AGENTS:
+                raise ConfigError(
+                    f"frozen_opponents names {seat!r}; the frozen seats are "
+                    f"{', '.join(FROZEN_OPPONENT_AGENTS)}")
+            entry = cls.parse(value, f"frozen_opponents.{seat}")
+            if entry is None:
+                raise ConfigError(f"frozen_opponents.{seat} must be an object")
+            if seat in table and table[seat] != entry:
+                raise ConfigError(
+                    f"frozen seat {seat!r} is declared twice with different checkpoints")
+            table[seat] = entry
+        return table
 
 
 @dataclass(frozen=True)
@@ -620,8 +669,14 @@ class Experiment:
     shaping: dict[str, Any] | None = None
     # Weights every training seed starts from; None means fresh initialization.
     initial_model: InitialModel | None = None
-    # Declared only by a self-play arm; see FrozenOpponent.
-    frozen_opponent: FrozenOpponent | None = None
+    # Declared only by an arm that seats frozen checkpoints; see FrozenOpponent.
+    # Keyed by frozen seat directory (FROZEN_OPPONENT_AGENTS).
+    frozen_opponents: dict[str, FrozenOpponent] = field(default_factory=dict)
+
+    @property
+    def frozen_opponent(self) -> FrozenOpponent | None:
+        """The historical single seat, ``frozen_agent``."""
+        return self.frozen_opponents.get(FROZEN_OPPONENT_AGENT)
 
     def suite_checkpoints(self, suite: str) -> CheckpointEvaluation:
         """Return the checkpoint policy for one suite name.
@@ -718,7 +773,8 @@ class Experiment:
                 predeclared_design_numbers=predeclared_design_numbers,
                 terminal_on_truncation=bool(raw.get("terminal_on_truncation", False)),
                 initial_model=InitialModel.parse(raw.get("initial_model")),
-                frozen_opponent=FrozenOpponent.parse(raw.get("frozen_opponent")),
+                frozen_opponents=FrozenOpponent.parse_table(
+                    raw.get("frozen_opponent"), raw.get("frozen_opponents")),
                 n_step=int(agent.get("n_step", 1)),
                 learning_rate=(float(agent["learning_rate"])
                                if agent.get("learning_rate") is not None else None),
@@ -751,15 +807,15 @@ class Experiment:
             raise ConfigError("agent.algorithm 'double_dqn' requires an agent.replay block")
         phases = [experiment.training, experiment.evaluation]
         phases.extend(suite.phase for suite in experiment.evaluation_suites)
-        uses_frozen = any(FROZEN_OPPONENT_AGENT in phase.opponents for phase in phases)
-        if uses_frozen and experiment.frozen_opponent is None:
+        seated = {name for phase in phases for name in phase.opponents
+                  if name in FROZEN_OPPONENT_AGENTS}
+        for seat in sorted(seated - set(experiment.frozen_opponents)):
             raise ConfigError(
-                f"an opponent list names {FROZEN_OPPONENT_AGENT} but no frozen_opponent "
-                "block declares which checkpoint it plays")
-        if experiment.frozen_opponent is not None and not uses_frozen:
+                f"an opponent list names {seat} but no frozen_opponent block "
+                f"(or frozen_opponents.{seat} entry) declares which checkpoint it plays")
+        for seat in sorted(set(experiment.frozen_opponents) - seated):
             raise ConfigError(
-                "frozen_opponent is declared but no phase lists "
-                f"{FROZEN_OPPONENT_AGENT} as an opponent")
+                f"frozen seat {seat} is declared but no phase lists it as an opponent")
         return experiment
 
     @property
@@ -860,8 +916,13 @@ class Experiment:
             snapshot["_predeclared_design_numbers"] = self.predeclared_design_numbers
         if self.initial_model is not None:
             snapshot["initial_model"] = asdict(self.initial_model)
-        if self.frozen_opponent is not None:
-            snapshot["frozen_opponent"] = asdict(self.frozen_opponent)
+        if self.frozen_opponents:
+            snapshot["frozen_opponents"] = {
+                seat: asdict(entry) for seat, entry in self.frozen_opponents.items()}
+            if self.frozen_opponent is not None:
+                # The historical spelling, kept so every reader of a finished
+                # self-play run still finds the seat where it always was.
+                snapshot["frozen_opponent"] = asdict(self.frozen_opponent)
         if self.curriculum is not None:
             snapshot["curriculum"] = {
                 "source_run_id": self.curriculum.source_run_id,

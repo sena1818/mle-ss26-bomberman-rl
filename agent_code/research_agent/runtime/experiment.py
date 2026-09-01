@@ -259,6 +259,15 @@ class ExperimentRuntime:
         # gamma, which is what makes the policy-invariance argument hold.
         self.shaping: PotentialShaping | None = build_shaping(config)
         self._assembler = NStepAssembler(config.n_step, config.discount)
+        # The same observation is encoded up to three times per step: once to
+        # act on it, once as the successor of the previous transition, once as
+        # the predecessor of the next.  The framework hands out a fresh dict
+        # each time but the content at one (round, step) is the same, so the
+        # encoding is memoised on that key.  The hybrid encoder's BFS blocks
+        # cost about 0.3 ms a call, which at three calls per step is a fifth
+        # of a training step; the board encoders gain almost nothing but lose
+        # nothing either.  Two entries are all a step ever needs.
+        self._encoded: dict[tuple[int, int], np.ndarray] = {}
         self._reset_round_metrics()
         append_jsonl("agent_setup", {
             "experiment": config.name,
@@ -297,9 +306,21 @@ class ExperimentRuntime:
         assert self.model is not None
         self.model.q_values(np.zeros(input_dim, dtype=np.float32))
 
+    def _encode(self, game_state: dict | None) -> np.ndarray | None:
+        if game_state is None:
+            return None
+        key = (int(game_state["round"]), int(game_state["step"]))
+        cached = self._encoded.get(key)
+        if cached is None:
+            cached = encode_state(game_state, self.config.state_encoder)
+            if len(self._encoded) >= 2:
+                self._encoded.pop(next(iter(self._encoded)))
+            self._encoded[key] = cached
+        return cached
+
     def select_action(self, game_state: dict) -> str:
         started = perf_counter()
-        state = encode_state(game_state, self.config.state_encoder)
+        state = self._encode(game_state)
         assert state is not None
         self._ensure_initialized(state.shape[0])
         assert self.learner is not None
@@ -364,9 +385,9 @@ class ExperimentRuntime:
         self._commit(
             EncodedTransition(
                 key=(round_number, int(old_game_state["step"])),
-                state=encode_state(old_game_state, self.config.state_encoder),
+                state=self._encode(old_game_state),
                 action_index=ACTIONS.index(action),
-                next_state=encode_state(new_game_state, self.config.state_encoder),
+                next_state=self._encode(new_game_state),
                 next_legal_mask=legal_action_mask(new_game_state) if new_game_state is not None else None,
                 events=list(events),
                 potential=self._potential(old_game_state),
@@ -426,7 +447,7 @@ class ExperimentRuntime:
             self._commit(
                 EncodedTransition(
                     key=key,
-                    state=encode_state(last_game_state, self.config.state_encoder),
+                    state=self._encode(last_game_state),
                     action_index=ACTIONS.index(last_action),
                     next_state=None,
                     next_legal_mask=None,

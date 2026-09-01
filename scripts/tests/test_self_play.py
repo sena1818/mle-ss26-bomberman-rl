@@ -356,3 +356,129 @@ class WeightDecayHasToSurviveFloat32Test(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+RAINBOW_MODEL = "frozen_opponents/R02_11_rainbow_seed1005_round10000.npz"
+OPPBC_MODEL = "frozen_opponents/R07_oppbc_seed1004_round10000.npz"
+
+
+def _digest(relative: str) -> str:
+    import hashlib
+
+    return hashlib.sha256((ROOT / relative).read_bytes()).hexdigest()
+
+
+class AMixedTableSeatsSeveralFrozenCheckpointsTest(unittest.TestCase):
+    """Three frozen seats, each its own directory reading its own variables.
+
+    The framework picks an opponent's code by directory name and the checkpoint
+    comes from process-global variables, so two seats sharing a prefix would
+    both play the same weights.  Everything below holds the two sides of that
+    convention together and checks the table survives the snapshot.
+    """
+
+    def _mixed(self) -> dict:
+        raw = json.loads(SELF_PLAY_CONFIG.read_text(encoding="utf-8"))
+        del raw["frozen_opponent"]
+        raw["training"]["opponents"] = ["rule_based_agent", "frozen_agent", "frozen_agent_b"]
+        raw["frozen_opponents"] = {
+            "frozen_agent": {"route": "R02_11", "model_path": RAINBOW_MODEL, "sha256": _digest(RAINBOW_MODEL)},
+            "frozen_agent_b": {"route": "R07", "model_path": OPPBC_MODEL, "sha256": _digest(OPPBC_MODEL)},
+        }
+        return raw
+
+    def _load(self, raw: dict) -> Experiment:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "config.json"
+            path.write_text(json.dumps(raw), encoding="utf-8")
+            return Experiment.load(path)
+
+    def test_the_seat_prefixes_agree_between_the_runner_and_the_agent(self):
+        from agent_code.frozen_agent.callbacks import ENVIRONMENT_PREFIXES
+        from experiment_lib import FROZEN_OPPONENT_AGENTS
+
+        self.assertEqual(dict(ENVIRONMENT_PREFIXES), dict(FROZEN_OPPONENT_AGENTS))
+        for seat in FROZEN_OPPONENT_AGENTS:
+            self.assertTrue((ROOT / "agent_code" / seat / "callbacks.py").is_file(), seat)
+
+    def test_a_mixed_table_loads_and_snapshots_both_seats(self):
+        experiment = self._load(self._mixed())
+        self.assertEqual(set(experiment.frozen_opponents), {"frozen_agent", "frozen_agent_b"})
+        self.assertEqual(experiment.frozen_opponents["frozen_agent_b"].route, "R07")
+        # The historical single-seat view still names the frozen_agent seat.
+        self.assertEqual(experiment.frozen_opponent.model_path, RAINBOW_MODEL)
+        snapshot = experiment.snapshot()
+        self.assertIn("frozen_opponents", snapshot)
+        self.assertIn("frozen_opponent", snapshot)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "snapshot.json"
+            path.write_text(json.dumps(snapshot), encoding="utf-8")
+            reloaded = Experiment.load(path)
+        self.assertEqual(reloaded.frozen_opponents, experiment.frozen_opponents)
+
+    def test_a_seat_on_the_board_without_a_checkpoint_is_refused(self):
+        raw = self._mixed()
+        del raw["frozen_opponents"]["frozen_agent_b"]
+        with self.assertRaises(ConfigError) as caught:
+            self._load(raw)
+        self.assertIn("frozen_agent_b", str(caught.exception))
+
+    def test_an_unknown_seat_is_refused(self):
+        raw = self._mixed()
+        raw["frozen_opponents"]["frozen_agent_z"] = raw["frozen_opponents"]["frozen_agent"]
+        with self.assertRaises(ConfigError) as caught:
+            self._load(raw)
+        self.assertIn("frozen_agent_z", str(caught.exception))
+
+    def test_the_runner_exports_one_prefix_per_seat(self):
+        from run_experiment import build_jobs, frozen_opponent_environment
+
+        experiment = self._load(self._mixed())
+        jobs = build_jobs(experiment, Path("/nowhere"))
+        training = next(job for job in jobs if job["mode"] == "train")
+        self.assertIn("frozen_opponents", training)
+        self.assertIn("frozen_opponent", training)
+        environment = frozen_opponent_environment(training)
+        self.assertEqual(environment["BOMBERMAN_FROZEN_EXPERIMENT"], "R02_11")
+        self.assertEqual(environment["BOMBERMAN_FROZEN_B_EXPERIMENT"], "R07")
+        self.assertTrue(environment["BOMBERMAN_FROZEN_B_MODEL_PATH"].endswith(Path(OPPBC_MODEL).name))
+        self.assertTrue(Path(environment["BOMBERMAN_FROZEN_MODEL_PATH"]).is_absolute())
+        self.assertNotIn("BOMBERMAN_FROZEN_C_EXPERIMENT", environment)
+
+    def test_the_historical_single_seat_job_still_exports(self):
+        from run_experiment import frozen_opponent_environment
+
+        job = {"job_id": "j", "opponents": ["frozen_agent"] * 3,
+               "frozen_opponent": {"route": "R02_9", "model_path": FROZEN_MODEL, "sha256": "x" * 64}}
+        environment = frozen_opponent_environment(job)
+        self.assertEqual(environment["BOMBERMAN_FROZEN_EXPERIMENT"], "R02_9")
+        self.assertEqual(set(environment), {"BOMBERMAN_FROZEN_EXPERIMENT", "BOMBERMAN_FROZEN_MODEL_PATH"})
+
+    def test_a_seated_frozen_agent_with_no_block_fails_the_job_not_the_game(self):
+        from run_experiment import frozen_opponent_environment
+
+        with self.assertRaises(ConfigError):
+            frozen_opponent_environment({"job_id": "j", "opponents": ["frozen_agent_b"]})
+
+    def test_the_noisy_rule_based_proxy_errs_at_the_declared_rate(self):
+        import logging
+        import os
+        from types import SimpleNamespace
+        from unittest.mock import patch
+
+        from agent_code.rule_based_noisy_agent import callbacks as noisy
+        from agent_code.research_agent.tests.test_state import game_state
+
+        state = game_state(self_pos=(3, 3), coins=[(1, 1)])
+        state["round"] = 1
+        for epsilon, expected in (("1.0", set(noisy.RANDOM_ACTIONS)), ("0.0", None)):
+            with patch.dict(os.environ, {"BOMBERMAN_NOISY_RULE_BASED_EPSILON": epsilon}):
+                agent = SimpleNamespace(logger=logging.getLogger("noisy_test"))
+                noisy.setup(agent)
+                actions = {noisy.act(agent, dict(state)) for _ in range(30)}
+            if expected is None:
+                self.assertNotIn("WAIT", actions)
+                self.assertTrue(actions <= set(noisy.RANDOM_ACTIONS) | {"WAIT"})
+            else:
+                self.assertTrue(actions <= expected)
+                self.assertNotIn("WAIT", actions)

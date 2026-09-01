@@ -1039,6 +1039,40 @@ EXPERIMENTS = {
         td_loss="huber",
         gradient_clip_norm=10.0,
     ),
+    # M4 hybrid representation -- R07 with the M3 handcrafted vector appended to
+    # the scalar branch (``state.hybrid_v1``).  Same trunk, same replay, same
+    # algorithm; the one structural difference is that D4 augmentation is off,
+    # because the vector's bearings, escape answers and route gradients are
+    # not label-preserving under a board rotation.  The BFS routing and escape
+    # search the vector carries are what a three-layer trunk cannot compute
+    # past a few cells, and what the M3 line measured mattered most.
+    "R09": ExperimentConfig(
+        name="R09",
+        lines=("M4",),
+        state_encoder="hybrid_v1",
+        network="cnn_mlp_q",
+        algorithm="double_dqn",
+        learning_rate=2.5e-4,
+        discount=0.95,
+        epsilon=0.15,
+        safety_filter="legality_only",
+        feature_version="hybrid_v1",
+        reward_version=REWARD_VERSION,
+        exploration_version=EXPLORATION_VERSION,
+        terminal_on_truncation=TERMINAL_ON_TRUNCATION,
+        hidden_layers=(256,),
+        replay=ReplayConfig(
+            capacity=100_000,
+            batch_size=32,
+            min_size=10_000,
+            train_every=4,
+            target_update_every=500,
+            augmentation="none",
+        ),
+        optimizer="adam",
+        td_loss="huber",
+        gradient_clip_norm=10.0,
+    ),
     # M4 dueling increment -- identical to R07 apart from the value/advantage
     # split in the head.  It exists as its own route so the increment is a
     # single declared factor rather than a flag buried in the model.

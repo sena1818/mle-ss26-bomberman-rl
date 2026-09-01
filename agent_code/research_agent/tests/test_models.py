@@ -32,7 +32,7 @@ class SharedQModelContractTest(unittest.TestCase):
     """Run the same contract against every implemented adapter."""
 
     def adapters(self):
-        for route in ("R01", "R02", "R02_1", "R07", "R08"):
+        for route in ("R01", "R02", "R02_1", "R07", "R08", "R09"):
             config = EXPERIMENTS[route]
             if config.network in {"cnn_mlp_q", "dueling_cnn_mlp_q"} and not TORCH_AVAILABLE:
                 continue
@@ -234,3 +234,48 @@ class CnnHonoursItsDeclarationsTest(unittest.TestCase):
         self.assertEqual(type(copy.optimizer).__name__, "SGD")
         self.assertEqual((copy.td_loss, copy.gradient_clip_norm), ("mse", 5.0))
         self.assertEqual(copy.optimizer.param_groups[0]["lr"], 3e-4)
+
+
+@unittest.skipUnless(TORCH_AVAILABLE, "the hybrid route is an M4 capability and requires PyTorch")
+class HybridRouteModelTest(unittest.TestCase):
+    """R09 is R07's trunk with a wider scalar branch; the width follows the layout."""
+
+    def test_the_hybrid_model_builds_reloads_and_clones(self):
+        import tempfile
+
+        from agent_code.research_agent.config import validate_config
+        from agent_code.research_agent.state import state_dimension
+
+        config = validate_config(EXPERIMENTS["R09"])
+        dimension = state_dimension("hybrid_v1")
+        model = build_model(config, dimension, seed=3)
+        state = np.random.default_rng(0).random(dimension).astype(np.float32)
+        self.assertEqual(model.q_values(state).shape, (len(ACTIONS),))
+        linear_layers = [layer for layer in model.network.globals if layer.__class__.__name__ == "Linear"]
+        self.assertEqual([layer.in_features for layer in linear_layers], [68, 128])
+        narrow = build_model(validate_config(EXPERIMENTS["R07"]), state_dimension("board_egocentric_v2"), seed=3)
+        narrow_layers = [layer for layer in narrow.network.globals if layer.__class__.__name__ == "Linear"]
+        self.assertEqual([layer.in_features for layer in narrow_layers], [6])
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "hybrid.npz"
+            model.save(path)
+            reloaded = load_model(config, path)
+        np.testing.assert_allclose(reloaded.q_values(state), model.q_values(state), rtol=0, atol=1e-6)
+        np.testing.assert_allclose(model.clone().q_values(state), model.q_values(state), rtol=0, atol=1e-6)
+
+    def test_the_hybrid_model_can_be_behaviour_cloned(self):
+        from agent_code.research_agent.config import validate_config
+        from agent_code.research_agent.state import state_dimension
+
+        config = validate_config(EXPERIMENTS["R09"])
+        dimension = state_dimension("hybrid_v1")
+        model = build_model(config, dimension, seed=1)
+        generator = np.random.default_rng(4)
+        labels = generator.integers(0, 6, size=32)
+        states = generator.normal(0.0, 0.05, size=(32, dimension)).astype(np.float32)
+        # Write the label into the handcrafted tail, where the wide branch reads it.
+        states[np.arange(32), 7 * 17 * 17 + 6 + labels] += 4.0
+        losses = [model.fit_policy_batch(states, labels) for _ in range(80)]
+        self.assertLess(losses[-1], losses[0])
+        accuracy = float(np.mean(np.argmax(model.q_values_batch(states), axis=1) == labels))
+        self.assertGreater(accuracy, 0.8)

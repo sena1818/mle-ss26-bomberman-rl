@@ -1,0 +1,108 @@
+{
+  "_design_note": "Local smoke for the hybrid route on a mixed frozen table. Verifies interfaces only; never a result.",
+  "agent": {
+    "algorithm": "double_dqn",
+    "model": "cnn_mlp_q",
+    "n_step": 3,
+    "name": "research_agent",
+    "replay": {
+      "augmentation": "none",
+      "batch_size": 32,
+      "capacity": 2000,
+      "min_size": 64,
+      "target_update_every": 50,
+      "train_every": 4
+    },
+    "state_representation": "hybrid_v1"
+  },
+  "checkpoint_evaluation": {
+    "holdout_seeds": [
+      3001
+    ],
+    "mode": "rounds",
+    "rounds": [
+      2,
+      4
+    ],
+    "validation_seeds": [
+      2001
+    ]
+  },
+  "evaluation": {
+    "budget": {
+      "checkpoint_every": 2,
+      "rounds": 2
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      2001
+    ]
+  },
+  "evaluation_suites": {
+    "classic_versus_opponents": {
+      "budget": {
+        "checkpoint_every": 2,
+        "rounds": 2
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001
+        ]
+      },
+      "opponents": [
+        "rule_based_agent",
+        "rule_based_agent",
+        "rule_based_agent"
+      ],
+      "scenario": "classic",
+      "seeds": [
+        2001
+      ]
+    }
+  },
+  "experiment_id": "M4_R09_smoke_pool",
+  "exploration_version": "E10",
+  "frozen_opponents": {
+    "frozen_agent": {
+      "model_path": "frozen_opponents/R02_11_rainbow_seed1005_round10000.npz",
+      "route": "R02_11",
+      "sha256": "013b2bd47375a2cc2bc2588eb9813f31311e814edae54557591904216b8a684c"
+    },
+    "frozen_agent_b": {
+      "model_path": "frozen_opponents/R07_oppbc_seed1004_round10000.npz",
+      "route": "R07",
+      "sha256": "87ce8924a4322faa388e1e9e1a4ab71bf8b19495eb670ca4c976ca4b737ef97c"
+    }
+  },
+  "promotion": {
+    "primary_metric": "score",
+    "selection_suite": "classic_versus_opponents"
+  },
+  "reward_version": "A06",
+  "route": "R09",
+  "schema_version": 1,
+  "shaping": {
+    "name": "potential_v1"
+  },
+  "terminal_on_truncation": false,
+  "training": {
+    "budget": {
+      "checkpoint_every": 2,
+      "rounds": 4
+    },
+    "opponents": [
+      "rule_based_agent",
+      "frozen_agent",
+      "frozen_agent_b"
+    ],
+    "scenario": "loot-crate",
+    "seeds": [
+      1901
+    ]
+  }
+}

@@ -143,12 +143,17 @@ class NoisyIsDeclaredNotImpliedTest(unittest.TestCase):
         for round_number in (1, 2500, 5000):
             self.assertEqual(epsilon_for_training_round(config, round_number, 5000), 0.0)
 
-    def test_noisy_without_e12_is_refused_and_e12_without_noisy_too(self):
-        """Two exploration mechanisms at once is not a factor anybody could read."""
+    def test_noisy_without_e12_is_refused_but_e12_without_noisy_is_the_baseline(self):
+        """Two exploration mechanisms at once is not a factor anybody could read.
+
+        The reverse -- epsilon held at 0 with no noise -- used to be refused too,
+        until section 7.42 measured it by accident and it became the M3 baseline
+        (test_self_play covers the same rule from the other side).
+        """
         with self.assertRaises(ValueError):
             validate_config(replace(EXPERIMENTS["R02_11"], exploration_version="E02"))
-        with self.assertRaises(ValueError):
-            validate_config(replace(EXPERIMENTS["R02_9"], exploration_version="E12"))
+        route = replace(EXPERIMENTS["R02_9"], exploration_version="E12")
+        self.assertIs(validate_config(route), route)
 
     def test_dueling_is_refused_on_a_scalar_head(self):
         with self.assertRaises(ValueError):

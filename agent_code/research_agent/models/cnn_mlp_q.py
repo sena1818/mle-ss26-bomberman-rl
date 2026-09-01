@@ -377,8 +377,23 @@ def _build_network_module():
             )
             with torch.no_grad():
                 board_features = self.board(torch.zeros(1, channels, width, height)).shape[1]
-            self.globals = nn.Sequential(nn.Linear(global_dim, 32), nn.ReLU())
-            self.fused = nn.Sequential(nn.Linear(board_features + 32, hidden_width), nn.ReLU())
+            # Six scalars get one narrow layer.  The hybrid layout hands this
+            # branch 68 inputs, 62 of them the handcrafted vector the M3 line
+            # trained a 128-64 MLP on, so it gets that MLP: a single 32-wide
+            # layer would squeeze the routing and escape answers through a
+            # bottleneck narrower than the vector itself.  The width follows
+            # from the layout, which follows from the input length, so a
+            # checkpoint reloads into the same shape without a stored flag.
+            if global_dim <= 8:
+                global_widths = (32,)
+            else:
+                global_widths = (128, 64)
+            layers, fan_in = [], global_dim
+            for width in global_widths:
+                layers.extend((nn.Linear(fan_in, width), nn.ReLU()))
+                fan_in = width
+            self.globals = nn.Sequential(*layers)
+            self.fused = nn.Sequential(nn.Linear(board_features + fan_in, hidden_width), nn.ReLU())
             if dueling:
                 self.value = nn.Linear(hidden_width, 1)
                 self.advantage = nn.Linear(hidden_width, len(ACTIONS))

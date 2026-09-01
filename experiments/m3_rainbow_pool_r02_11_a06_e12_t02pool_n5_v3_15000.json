@@ -1,0 +1,173 @@
+{
+  "_design_note": "The rainbow recipe trained on a mixed table instead of three rule_based_agent. docs/01 section 7.43 measured the rainbow arm's kill advantage as opponent-specific: 4.91x against the rule_based it trained on, 1.1-1.9x against agents it had never met. The tournament is played against other groups' agents, so the training opponents are diversified: one rule_based_agent (the framework's best dodger), one frozen copy of the rainbow submission checkpoint (a neural agent that hunts), and one frozen copy of the M4 opponents+BC checkpoint (a neural agent that survives). The single-frozen-opponent self-play arm of section 7.43.5 collapsed by symmetry -- three identical copies of one policy -- and this table is built to avoid that: no two seats are the same policy and one of them is scripted.\n\nBudget 15000 rounds: the rainbow kill curve was still rising between 7000 and 10000 (0.364 to 0.393, section 7.41.1) while its loot-crate curve was flat. The prioritized replay's importance-sampling anneal is stretched to match (1.8M gradient steps).\n\nEvaluation keeps the 3x rule_based tournament suite so the score stays comparable with every earlier arm; the tournament proxy pool (scripts/tournament_pool.py) is the selection instrument and is run on the finished checkpoints separately.",
+  "_predeclared_design_numbers": {
+    "changed_factor": "Two against the rainbow arm: the training table (3x rule_based -> rule_based + frozen rainbow + frozen M4 oppbc) and the budget (10000 -> 15000). Declared as two; the 10000-round checkpoint is evaluated so the budget half can be read off the same run.",
+    "control": "runs/rep_rainbow_n35 (rainbow @10000 on 3x rule_based, 35 repeats, 5.7975) for the familiar table; the transfer cells of section 7.45 for unfamiliar opponents.",
+    "falsification": "If the pool mean is not above the rainbow submission's on the proxy pool, opponent diversity does not transfer the kill skill and the submission stays a single-table arm.",
+    "prediction": "Lower than 5.80 on the 3x rule_based suite (that number was bought by overfitting to rule_based), higher than rainbow's 2.85 on the unfamiliar-opponent cells, and kills that survive an opponent swap better than 1.1-1.9x.",
+    "reporting": "All five training seeds, kills beside score, the 10000 and 15000 checkpoints side by side, and the proxy pool as the selection number.",
+    "reproducibility": "rule_based_agent seeds from system entropy; the two frozen seats are deterministic. Repeat measurements against rule_based add information; against the frozen seats only board seeds do.",
+    "the_mechanism_check": "mean_importance_weight below 1.0, mean_target inside [-2, 12], mean_noise_scale away from zero at the end. Additionally: the frozen seats must appear in the framework log as agents; a job whose opponents fell back to anything else is not this arm."
+  },
+  "agent": {
+    "algorithm": "double_dqn",
+    "model": "categorical_mlp_q",
+    "n_step": 5,
+    "name": "research_agent",
+    "replay": {
+      "batch_size": 32,
+      "capacity": 50000,
+      "importance_sampling_start": 0.4,
+      "importance_sampling_steps": 1800000,
+      "min_size": 1000,
+      "priority_exponent": 0.6,
+      "sampling": "prioritized",
+      "target_update_every": 500,
+      "train_every": 1
+    },
+    "state_representation": "handcrafted_v3"
+  },
+  "checkpoint_evaluation": {
+    "holdout_seeds": [
+      3001,
+      3002,
+      3003
+    ],
+    "mode": "rounds",
+    "rounds": [
+      3000,
+      6000,
+      9000,
+      12000,
+      15000
+    ],
+    "validation_seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation": {
+    "budget": {
+      "checkpoint_every": 500,
+      "rounds": 30
+    },
+    "opponents": [
+      "rule_based_agent",
+      "rule_based_agent",
+      "rule_based_agent"
+    ],
+    "scenario": "loot-crate",
+    "seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation_suites": {
+    "classic_solo": {
+      "budget": {
+        "checkpoint_every": 500,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "classic_versus_opponents": {
+      "budget": {
+        "checkpoint_every": 500,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "rounds",
+        "rounds": [
+          10000,
+          15000
+        ],
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [
+        "rule_based_agent",
+        "rule_based_agent",
+        "rule_based_agent"
+      ],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    }
+  },
+  "experiment_id": "M3_RAINBOW_POOL_R02_11_A06_E12_C00_T02pool_n5_15000",
+  "exploration_version": "E12",
+  "frozen_opponents": {
+    "frozen_agent": {
+      "model_path": "frozen_opponents/R02_11_rainbow_seed1005_round10000.npz",
+      "route": "R02_11",
+      "sha256": "013b2bd47375a2cc2bc2588eb9813f31311e814edae54557591904216b8a684c"
+    },
+    "frozen_agent_b": {
+      "model_path": "frozen_opponents/R07_oppbc_seed1004_round10000.npz",
+      "route": "R07",
+      "sha256": "87ce8924a4322faa388e1e9e1a4ab71bf8b19495eb670ca4c976ca4b737ef97c"
+    }
+  },
+  "promotion": {
+    "primary_metric": "score",
+    "selection_suite": "classic_versus_opponents"
+  },
+  "reward_version": "A06",
+  "route": "R02_11",
+  "schema_version": 1,
+  "shaping": {
+    "name": "potential_v1"
+  },
+  "terminal_on_truncation": false,
+  "training": {
+    "budget": {
+      "checkpoint_every": 500,
+      "rounds": 15000
+    },
+    "opponents": [
+      "rule_based_agent",
+      "frozen_agent",
+      "frozen_agent_b"
+    ],
+    "scenario": "loot-crate",
+    "seeds": [
+      1001,
+      1002,
+      1003,
+      1004,
+      1005
+    ]
+  }
+}

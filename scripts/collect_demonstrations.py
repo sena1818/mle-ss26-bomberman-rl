@@ -43,24 +43,33 @@ def collect_from_world(world, *, encoder: str, rounds: int, max_states: int, age
     of the six actions -- ``None`` before its first act, or ``"ERROR"`` for a
     silenced exception.  Cloning those would teach the network to imitate the
     framework's substitutions rather than the demonstrator.
+
+    The demonstrator is the first agent the world was built with.  It is found
+    by position rather than by name because the framework renames duplicated
+    directories (``rule_based_agent_0`` ...), so a demonstrator that shares its
+    directory with an opponent would otherwise never match its own name.
     """
     states: list[np.ndarray] = []
     actions: list[int] = []
     skipped = 0
     played_rounds = 0
+    demonstrator = world.agents[0]
+    if demonstrator.name != agent_name and not demonstrator.name.startswith(agent_name):
+        raise RuntimeError(
+            f"the first agent is {demonstrator.name!r}, not the demonstrator {agent_name!r}")
     for _ in range(rounds):
         world.new_round()
         played_rounds += 1
         while world.running and len(states) < max_states:
             world.do_step()
-            for agent in world.agents:
-                if agent.name != agent_name or agent.last_game_state is None:
-                    continue
-                if agent.last_action not in ACTIONS:
-                    skipped += 1
-                    continue
-                states.append(encode_state(agent.last_game_state, encoder).astype(np.float16))
-                actions.append(ACTIONS.index(agent.last_action))
+            agent = demonstrator
+            if agent.last_game_state is None or getattr(agent, "dead", False):
+                continue
+            if agent.last_action not in ACTIONS:
+                skipped += 1
+                continue
+            states.append(encode_state(agent.last_game_state, encoder).astype(np.float16))
+            actions.append(ACTIONS.index(agent.last_action))
         if world.running:
             world.end_round()
         if len(states) >= max_states:
@@ -71,7 +80,8 @@ def collect_from_world(world, *, encoder: str, rounds: int, max_states: int, age
     return np.stack(states), np.asarray(actions, dtype=np.int64), summary
 
 
-def build_world(*, agent_name: str, scenario: str, seed: int, log_dir: Path):
+def build_world(*, agent_name: str, scenario: str, seed: int, log_dir: Path,
+                opponents: tuple[str, ...] = ()):
     from environment import BombeRLeWorld, WorldArgs
 
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -82,12 +92,43 @@ def build_world(*, agent_name: str, scenario: str, seed: int, log_dir: Path):
         silence_errors=False, scenario=scenario,
     )
     # ``False`` is the per-agent train flag: a demonstrator is never trained.
-    return BombeRLeWorld(args, [(agent_name, False)])
+    # The demonstrator is seated first; collect_from_world relies on that.
+    return BombeRLeWorld(args, [(agent_name, False), *((name, False) for name in opponents)])
+
+
+def seat_frozen_demonstrator(agent_name: str, route: str | None, model_path: str | None) -> dict | None:
+    """Point a frozen seat at its checkpoint through the variables it reads.
+
+    A frozen demonstrator is how a *trained* policy -- the M4 opponents arm, say
+    -- becomes the teacher instead of rule_based_agent.  The frozen directories
+    read their checkpoint from process-global variables (agent_code/frozen_agent),
+    so those are set here before the world builds the agent.  Returns the
+    provenance record, or None for a scripted demonstrator.
+    """
+    import os
+
+    from experiment_lib import FROZEN_OPPONENT_AGENTS
+
+    if agent_name not in FROZEN_OPPONENT_AGENTS:
+        if route or model_path:
+            raise ValueError(f"--frozen-route/--frozen-model only apply to a frozen seat, not {agent_name!r}")
+        return None
+    if not route or not model_path:
+        raise ValueError(f"demonstrator {agent_name} needs --frozen-route and --frozen-model")
+    resolved = (ROOT / model_path).resolve()
+    if not resolved.is_file():
+        raise FileNotFoundError(f"frozen demonstrator checkpoint is unavailable: {resolved}")
+    prefix = FROZEN_OPPONENT_AGENTS[agent_name]
+    os.environ[f"{prefix}_EXPERIMENT"] = route
+    os.environ[f"{prefix}_MODEL_PATH"] = str(resolved)
+    return {"route": route, "model_path": model_path,
+            "sha256": hashlib.sha256(resolved.read_bytes()).hexdigest()}
 
 
 def collect(
     *, agent_name: str, scenario: str, seeds: list[int], rounds: int, encoder: str,
-    max_states: int, output: Path, log_dir: Path,
+    max_states: int, output: Path, log_dir: Path, opponents: tuple[str, ...] = (),
+    frozen_demonstrator: dict | None = None,
 ) -> Path:
     all_states: list[np.ndarray] = []
     all_actions: list[np.ndarray] = []
@@ -96,7 +137,8 @@ def collect(
         remaining = max_states - sum(len(chunk) for chunk in all_states)
         if remaining <= 0:
             break
-        world = build_world(agent_name=agent_name, scenario=scenario, seed=seed, log_dir=log_dir)
+        world = build_world(agent_name=agent_name, scenario=scenario, seed=seed, log_dir=log_dir,
+                            opponents=opponents)
         try:
             states, actions, summary = collect_from_world(
                 world, encoder=encoder, rounds=rounds, max_states=remaining, agent_name=agent_name
@@ -115,6 +157,8 @@ def collect(
     np.savez_compressed(output, states=states, action_indices=actions)
     metadata = {
         "demonstrator": agent_name,
+        "frozen_demonstrator": frozen_demonstrator,
+        "opponents": list(opponents),
         "scenario": scenario,
         "seeds": seeds,
         "rounds_per_seed": rounds,
@@ -136,6 +180,11 @@ def collect(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--agent", default="rule_based_agent", help="the demonstrator to record")
+    parser.add_argument("--opponents", nargs="*", default=[], metavar="AGENT",
+                        help="up to three opponents seated with the demonstrator, so the recorded "
+                             "states contain other agents (the solo sets never did)")
+    parser.add_argument("--frozen-route", help="route of a frozen demonstrator (--agent frozen_agent)")
+    parser.add_argument("--frozen-model", help="repository-relative checkpoint of a frozen demonstrator")
     parser.add_argument("--scenario", default="classic", choices=sorted(SCENARIOS))
     parser.add_argument("--seeds", type=int, nargs="+", default=[9001, 9002, 9003])
     parser.add_argument("--rounds", type=int, default=40, help="rounds per seed")
@@ -146,10 +195,14 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     output = args.output or DEFAULT_OUTPUT / f"{args.agent}_{args.scenario}_{args.max_states}.npz"
+    if len(args.opponents) > 3:
+        raise SystemExit("at most three opponents fit on the board")
+    frozen_demonstrator = seat_frozen_demonstrator(args.agent, args.frozen_route, args.frozen_model)
     collect(
         agent_name=args.agent, scenario=args.scenario, seeds=args.seeds, rounds=args.rounds,
         encoder=args.encoder, max_states=args.max_states, output=output,
-        log_dir=ROOT / "pretraining" / "logs",
+        log_dir=ROOT / "pretraining" / "logs", opponents=tuple(args.opponents),
+        frozen_demonstrator=frozen_demonstrator,
     )
     return 0
 

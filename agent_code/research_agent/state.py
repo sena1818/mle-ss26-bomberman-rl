@@ -185,6 +185,8 @@ def encode_state(game_state: dict, encoder_name: str) -> np.ndarray | None:
         return board_egocentric_v1(game_state)
     if encoder_name == "board_egocentric_v2":
         return board_egocentric_v2(game_state)
+    if encoder_name == "hybrid_v1":
+        return hybrid_v1(game_state)
     raise NotImplementedError(f"State encoder {encoder_name!r} has not been implemented yet.")
 
 
@@ -437,6 +439,7 @@ def board_egocentric_v1(game_state: dict) -> np.ndarray:
 BOARD_LAYOUTS = {
     "board_egocentric_v1": BOARD_EGOCENTRIC_LAYOUT,
     "board_egocentric_v2": BOARD_EGOCENTRIC_V2_LAYOUT,
+    # Registered below its definition; ``hybrid_v1`` needs the v2 layout first.
 }
 
 
@@ -517,6 +520,52 @@ def board_egocentric_v2(game_state: dict) -> np.ndarray:
     channels = encode_board_channels_v2(game_state)
     window = _egocentric_crop(channels, game_state["self"][3])
     return np.concatenate([window.reshape(-1), global_features_v2(game_state)]).astype(np.float32)
+
+
+# ``hybrid_v1``: the M4 board planes with the M3 handcrafted vector riding on
+# the scalar branch.  The trunk is three 3x3 convolutions, two of them strided,
+# so a feature at the last convolution sees nine cells and path information
+# propagates one cell per layer: the CNN cannot compute reachability or a BFS
+# distance beyond a few cells and has to leave that to the fused head, which
+# has no spatial prior at all.  ``handcrafted_v3`` already carries exactly those
+# answers -- BFS routing to the nearest coin and crate, the multi-step escape
+# search, the danger forecast -- and the M3 line validated every block of it.
+# Putting the two side by side lets one network read the local geometry from
+# the planes and the long-range routing from the vector.
+#
+# The vector is *not* label-preserving under the eight board symmetries: it
+# carries bearings, per-direction escape answers, route gradients and the
+# legality mask, all of which would have to be permuted with the action.  So a
+# route on this encoder declares no D4 augmentation, and ``validate_config``
+# refuses it, the same way it refuses D4 for the handcrafted vectors.
+HYBRID_V1_LAYOUT = {
+    "board_shape": (len(BOARD_CHANNELS_V2), EGOCENTRIC_WINDOW, EGOCENTRIC_WINDOW),
+    "channels": BOARD_CHANNELS_V2,
+    "global_dimension": len(BOARD_EGOCENTRIC_V2_LAYOUT["globals"]) + FEATURE_DIMENSION_V3,
+    "globals": BOARD_EGOCENTRIC_V2_LAYOUT["globals"] + ("handcrafted_v3",),
+    "quantisation": BOARD_QUANTISATION,
+    "flat_order": "board channels flattened in C order, then the six v2 scalars, "
+                  "then the 62 handcrafted_v3 entries",
+}
+
+
+def hybrid_v1(game_state: dict) -> np.ndarray:
+    """Return the hybrid state: the v2 planes, the v2 scalars, then handcrafted_v3.
+
+    The board prefix is bit-identical to ``board_egocentric_v2``'s, so the
+    uint8 replay storage and the CNN trunk are unchanged; only the scalar branch
+    grows from 6 to 68 inputs.
+    """
+    channels = encode_board_channels_v2(game_state)
+    window = _egocentric_crop(channels, game_state["self"][3])
+    return np.concatenate([
+        window.reshape(-1),
+        global_features_v2(game_state),
+        handcrafted_v3(game_state),
+    ]).astype(np.float32)
+
+
+BOARD_LAYOUTS["hybrid_v1"] = HYBRID_V1_LAYOUT
 
 
 def quantised_board_spec(encoder_name: str) -> tuple[int, int]:

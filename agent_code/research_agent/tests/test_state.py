@@ -334,3 +334,70 @@ class BoardEgocentricV2Test(unittest.TestCase):
             np.testing.assert_allclose(scaled, np.rint(scaled), rtol=0, atol=1e-4)
             self.assertGreaterEqual(board.min(), 0.0)
             self.assertLessEqual(board.max(), 1.0)
+
+
+class HybridV1Test(unittest.TestCase):
+    """The hybrid state is the v2 planes and scalars with handcrafted_v3 appended.
+
+    Nothing is re-derived: the board prefix has to be bit-identical to the v2
+    encoder's (so the uint8 replay storage and the CNN trunk carry over), and
+    the tail has to be exactly the vector the M3 line validated.
+    """
+
+    def _state(self) -> dict:
+        state = game_state(self_pos=(3, 3), coins=[(1, 1), (5, 5)], bombs=[((5, 3), 2)])
+        state["others"] = [("o", 0, True, (7, 7)), ("p", 2, False, (1, 7))]
+        return state
+
+    def test_the_layout_is_the_v2_board_plus_sixty_eight_scalars(self):
+        vector = state_module.hybrid_v1(self._state())
+        self.assertEqual(vector.shape, (7 * 17 * 17 + 6 + 62,))
+        self.assertEqual(vector.dtype, np.float32)
+        self.assertEqual(state_module.state_dimension("hybrid_v1"), vector.shape[0])
+        self.assertIs(state_module.layout_for_dimension(vector.shape[0]), state_module.HYBRID_V1_LAYOUT)
+        board, globals_ = state_module.split_board_and_globals(vector)
+        self.assertEqual(board.shape, (7, 17, 17))
+        self.assertEqual(globals_.shape, (68,))
+        self.assertEqual(state_module.quantised_board_spec("hybrid_v1"), (7 * 17 * 17, 20))
+
+    def test_the_prefix_is_v2_and_the_tail_is_v2_scalars_then_v3(self):
+        state = self._state()
+        vector = state_module.encode_state(state, "hybrid_v1")
+        v2 = state_module.board_egocentric_v2(state)
+        board_size = 7 * 17 * 17
+        np.testing.assert_array_equal(vector[:board_size], v2[:board_size])
+        np.testing.assert_array_equal(vector[board_size:board_size + 6], state_module.global_features_v2(state))
+        np.testing.assert_array_equal(vector[board_size + 6:], state_module.handcrafted_v3(state))
+
+    def test_the_opponents_are_on_the_planes_and_in_the_vector(self):
+        state = self._state()
+        vector = state_module.hybrid_v1(state)
+        board, globals_ = state_module.split_board_and_globals(vector)
+        plane = state_module.BOARD_CHANNELS_V2.index("opponents")
+        self.assertEqual(board[plane].sum(), 2.0)
+        self.assertEqual(globals_[3], 2 / 3)
+
+    def test_d4_augmentation_is_refused_on_the_hybrid_route(self):
+        """The vector carries bearings and per-direction answers; a rotation would mislabel them."""
+        from dataclasses import replace
+
+        from agent_code.research_agent.config import EXPERIMENTS, validate_config
+
+        route = validate_config(EXPERIMENTS["R09"])
+        self.assertEqual(route.state_encoder, "hybrid_v1")
+        self.assertEqual(route.replay.augmentation, "none")
+        rotated = replace(route, replay=replace(route.replay, augmentation="d4"))
+        with self.assertRaises(ValueError):
+            validate_config(rotated)
+
+    def test_the_replay_buffer_stores_the_hybrid_state_losslessly(self):
+        from agent_code.research_agent.replay import ReplayBuffer
+
+        state = state_module.hybrid_v1(self._state())
+        board_size, quantisation = state_module.quantised_board_spec("hybrid_v1")
+        buffer = ReplayBuffer(4, state.shape[0], 6, seed=0,
+                              quantised_board=board_size, quantisation=quantisation)
+        buffer.append(state, 1, 0.5, state, np.ones(6, dtype=bool), False, 0.95)
+        batch = buffer.sample(1)
+        np.testing.assert_array_equal(batch["states"][0], state)
+        np.testing.assert_array_equal(batch["next_states"][0], state)

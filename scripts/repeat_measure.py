@@ -36,7 +36,8 @@ import statistics
 import sys
 from pathlib import Path
 
-from experiment_lib import FROZEN_OPPONENT_AGENT, ROOT, RUNS_ROOT, git_provenance, write_json
+from experiment_lib import (FROZEN_OPPONENT_AGENT, FROZEN_OPPONENT_AGENTS, ROOT, RUNS_ROOT,
+                            git_provenance, write_json)
 
 # Job ids are built by run_experiment.build_jobs; this is the same shape read
 # back.  The suite is absent for the primary suite, and the round is absent for
@@ -113,6 +114,49 @@ def _suite_label(run_dir: Path, suite: str) -> str:
     return f"{phase['scenario']} + {kinds}"
 
 
+def frozen_seats(opponents, models, routes) -> dict[str, dict]:
+    """Assign the given checkpoints to the frozen seats an opponent list names.
+
+    Seats are filled in the fixed order of ``FROZEN_OPPONENT_AGENTS``; the
+    n-th model goes to the n-th distinct frozen seat present in ``opponents``.
+    A route list shorter than the model list repeats its last entry, so the
+    common case of several checkpoints of one route is one flag.
+    """
+    seats = [seat for seat in FROZEN_OPPONENT_AGENTS if seat in opponents]
+    models = [models] if isinstance(models, str) else list(models)
+    routes = [routes] if isinstance(routes, str) else list(routes)
+    if not seats and not models:
+        return {}
+    if seats and not models:
+        raise SystemExit(
+            f"--opponents includes {', '.join(seats)}; pass --frozen-model with the "
+            "repository-relative checkpoint each should play. There is no default: a "
+            "frozen opponent that silently fell back to something else would read as a "
+            "weaker opponent rather than as a mistake.")
+    if models and not seats:
+        raise SystemExit(
+            f"--frozen-model given but no frozen seat ({', '.join(FROZEN_OPPONENT_AGENTS)}) "
+            "is among --opponents")
+    if len(models) != len(seats):
+        raise SystemExit(
+            f"{len(seats)} frozen seat(s) {seats} but {len(models)} --frozen-model value(s); "
+            "give exactly one checkpoint per seat")
+    if not routes:
+        routes = ["R02_9"]
+    if len(routes) < len(models):
+        routes = routes + [routes[-1]] * (len(models) - len(routes))
+    if len(routes) > len(models):
+        raise SystemExit("more --frozen-route values than --frozen-model values")
+    table: dict[str, dict] = {}
+    for seat, model_path, route in zip(seats, models, routes):
+        model = ROOT / model_path
+        if not model.is_file():
+            raise SystemExit(f"frozen opponent checkpoint is unavailable: {model}")
+        table[seat] = {"route": route, "model_path": model_path,
+                       "sha256": hashlib.sha256(model.read_bytes()).hexdigest()}
+    return table
+
+
 def scaffold(args: argparse.Namespace) -> None:
     source = RUNS_ROOT / args.source_run
     destination = RUNS_ROOT / args.run_id
@@ -121,21 +165,8 @@ def scaffold(args: argparse.Namespace) -> None:
     if destination.exists():
         raise SystemExit(f"refusing to overwrite {destination}")
 
-    frozen = None
-    if args.opponents and FROZEN_OPPONENT_AGENT in args.opponents:
-        if not args.frozen_model:
-            raise SystemExit(
-                f"--opponents includes {FROZEN_OPPONENT_AGENT}; pass --frozen-model with the "
-                "repository-relative checkpoint it should play. There is no default: a "
-                "frozen opponent that silently fell back to something else would read as a "
-                "weaker opponent rather than as a mistake.")
-        model = ROOT / args.frozen_model
-        if not model.is_file():
-            raise SystemExit(f"frozen opponent checkpoint is unavailable: {model}")
-        frozen = {"route": args.frozen_route, "model_path": args.frozen_model,
-                  "sha256": hashlib.sha256(model.read_bytes()).hexdigest()}
-    elif args.frozen_model:
-        raise SystemExit(f"--frozen-model given but {FROZEN_OPPONENT_AGENT} is not among --opponents")
+    frozen_table = frozen_seats(args.opponents or (), args.frozen_model or (), args.frozen_route or ())
+    frozen = frozen_table.get(FROZEN_OPPONENT_AGENT)
 
     wanted_rounds = set(args.checkpoint_round) if args.checkpoint_round else None
     candidates: list[dict] = []
@@ -214,6 +245,8 @@ def scaffold(args: argparse.Namespace) -> None:
         provenance["repeat_measurement"]["opponents"] = list(args.opponents)
         if frozen is not None:
             provenance["repeat_measurement"]["frozen_opponent"] = dict(frozen)
+        if frozen_table:
+            provenance["repeat_measurement"]["frozen_opponents"] = dict(frozen_table)
     write_json(destination / "provenance.json", provenance)
 
     # Copy in exactly the weights the selected jobs address, so a repeat run is
@@ -268,8 +301,14 @@ def scaffold(args: argparse.Namespace) -> None:
                     payload["seed"] = int(eval_seed)
                 if args.opponents:
                     payload["opponents"] = list(args.opponents)
+                    # Both spellings are dropped first: an override must not
+                    # inherit the source run's own frozen seats.
+                    payload.pop("frozen_opponent", None)
+                    payload.pop("frozen_opponents", None)
                     if frozen is not None:
                         payload["frozen_opponent"] = dict(frozen)
+                    if frozen_table:
+                        payload["frozen_opponents"] = dict(frozen_table)
                 write_json(destination / "job_parameters" / f"{job_id}.json", payload)
                 written += 1
     print(f"{destination}: {written} jobs "
@@ -386,10 +425,12 @@ def main() -> None:
                             "opponents -- the transfer question. Recorded in provenance and "
                             "in the suite label, so an overridden run can never be compared "
                             "against a differently-opposed one by accident.")
-    build.add_argument("--frozen-route", default="R02_9",
-                       help="Route whose encoder and network frozen_agent opponents build.")
-    build.add_argument("--frozen-model",
-                       help="Repository-relative checkpoint the frozen_agent opponents play.")
+    build.add_argument("--frozen-route", nargs="+", metavar="ROUTE",
+                       help="Route(s) whose encoder and network the frozen seats build, one per "
+                            "--frozen-model; a shorter list repeats its last entry. Default R02_9.")
+    build.add_argument("--frozen-model", nargs="+", metavar="PATH",
+                       help="Repository-relative checkpoint(s) the frozen seats play, assigned to "
+                            "frozen_agent, frozen_agent_b, frozen_agent_c in that order.")
     build.add_argument("--checkpoint-round", type=int, action="append",
                        help="Repeatable. Omit to replay the latest checkpoint.")
     build.set_defaults(handler=scaffold)

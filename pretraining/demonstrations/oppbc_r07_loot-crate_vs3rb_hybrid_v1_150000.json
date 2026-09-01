@@ -1,0 +1,51 @@
+{
+  "action_counts": {
+    "BOMB": 7340,
+    "DOWN": 46416,
+    "LEFT": 24668,
+    "RIGHT": 24024,
+    "UP": 44362,
+    "WAIT": 3190
+  },
+  "collected_at_utc": "2026-09-01T22:04:12+00:00",
+  "demonstrator": "frozen_agent",
+  "frozen_demonstrator": {
+    "model_path": "frozen_opponents/R07_oppbc_seed1004_round10000.npz",
+    "route": "R07",
+    "sha256": "87ce8924a4322faa388e1e9e1a4ab71bf8b19495eb670ca4c976ca4b737ef97c"
+  },
+  "git_commit": "562060bb79d972b29147e55183554b250ed86dc4",
+  "opponents": [
+    "rule_based_agent",
+    "rule_based_agent",
+    "rule_based_agent"
+  ],
+  "per_seed": [
+    {
+      "rounds_played": 300,
+      "seed": 9001,
+      "skipped_unusable_actions": 0,
+      "states": 100448
+    },
+    {
+      "rounds_played": 152,
+      "seed": 9002,
+      "skipped_unusable_actions": 0,
+      "states": 49552
+    }
+  ],
+  "prepared_at_utc": "2026-09-01T22:04:12+00:00",
+  "rounds_per_seed": 300,
+  "scenario": "loot-crate",
+  "seeds": [
+    9001,
+    9002,
+    9003
+  ],
+  "sha256": "fb07522e3b4c89ed48c01f891ad881f4a7a26c070afe56fc3e3ce8a56b904083",
+  "state_dimension": 2091,
+  "state_dtype": "float16",
+  "state_encoder": "hybrid_v1",
+  "states": 150000,
+  "worktree_dirty": true
+}
