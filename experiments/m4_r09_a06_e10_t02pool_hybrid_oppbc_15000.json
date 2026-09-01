@@ -1,0 +1,198 @@
+{
+  "_design_note": "The hybrid representation arm: route R09 = R07's trunk with handcrafted_v3 (62 entries) appended to the scalar branch (state.hybrid_v1), no D4. The three-layer trunk sees nine cells and cannot compute routing or reachability past a few, which the M3 line's vector already carries and validated block by block (docs/01 sections 7.10-7.11). THREE CHANGES against m4_r07_a06_e10_t02opp_oppbc, declared as three, because the calendar (code freeze 2026-09-21) does not leave room for one arm per factor: (1) the representation; (2) the clone's teacher -- the M4 oppbc submission checkpoint (docs/05 section 0.36) playing three rule_based on loot-crate, recorded with opponents on the board and with WAIT in the demonstrations (validation accuracy in the pretraining json), instead of rule_based solo; (3) the training table -- rule_based + frozen rainbow + frozen oppbc instead of three rule_based, so survival and kills are learned against neural bomb patterns as well (section 0.35: transfer comes from having seen opponents, not from the representation). Budget 15000 because the oppbc curve was still rising at 10000 (3.87 at 6000, 3.98 at 10000); the round-10000 checkpoint is evaluated for the comparison.\n\nClone: pretraining/models/r09_bc_oppbc_r07_loot-crate_vs3rb_hybrid_v1_150000.npz (sha256 dc58ed5cf1ed..., validation accuracy 0.841 against majority class 0.309).",
+  "_predeclared_design_numbers": {
+    "changed_factor": "Three against m4_r07_a06_e10_t02opp_oppbc: representation (board_egocentric_v2 -> hybrid_v1, D4 off), clone teacher (rule_based solo -> M4 oppbc with 3 rule_based), training table (3x rule_based -> rule_based + frozen rainbow + frozen oppbc). Plus the budget (10000 -> 15000), read off the same run.",
+    "control": "runs/rep10k_oppbc (3.9844 on 3x rule_based, ten repeats) and rep_m4t_oppbc_* (3.0511 on the two unfamiliar opponents).",
+    "falsification": "If the round-10000 checkpoint is not distinguishably above rep10k_oppbc on the proxy pool, the vector adds nothing a CNN with opponents did not already learn, and the submission stays oppbc.",
+    "prediction": "Round 2000 above 3.5 on the tournament suite if the clone transfers as the rule_based clone did; coins above oppbc's 3.34 if the vector's routing reaches the head; unfamiliar-opponent score above 3.05. Kills are the open question: the frozen rainbow seat is the first hunting opponent this line has trained against.",
+    "reporting": "All five training seeds; the 2000/6000/10000/15000 tournament checkpoints side by side; the proxy pool (scripts/tournament_pool.py) as the selection number, paired on the board seed against oppbc.",
+    "reproducibility": "rule_based_agent seeds from system entropy; both frozen seats are deterministic given the board. Arms with opponents are not bit-reproducible.",
+    "selection_protocol": "Pool the five training seeds at each checkpoint round; pick the round on the pooled VALIDATION curve; freeze it; then read the holdout numbers. The submission seed is chosen on the proxy pool."
+  },
+  "agent": {
+    "algorithm": "double_dqn",
+    "model": "cnn_mlp_q",
+    "n_step": 3,
+    "name": "research_agent",
+    "replay": {
+      "augmentation": "none",
+      "batch_size": 32,
+      "capacity": 100000,
+      "min_size": 10000,
+      "target_update_every": 500,
+      "train_every": 4
+    },
+    "state_representation": "hybrid_v1"
+  },
+  "checkpoint_evaluation": {
+    "holdout_seeds": [
+      3001,
+      3002,
+      3003
+    ],
+    "mode": "rounds",
+    "rounds": [
+      2000,
+      6000,
+      10000,
+      15000
+    ],
+    "validation_seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation": {
+    "budget": {
+      "checkpoint_every": 500,
+      "rounds": 30
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation_suites": {
+    "classic_solo": {
+      "budget": {
+        "checkpoint_every": 500,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "classic_versus_opponents": {
+      "budget": {
+        "checkpoint_every": 500,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "rounds",
+        "rounds": [
+          2000,
+          6000,
+          10000,
+          15000
+        ],
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [
+        "rule_based_agent",
+        "rule_based_agent",
+        "rule_based_agent"
+      ],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "coin_heaven_diagnostic": {
+      "budget": {
+        "checkpoint_every": 500,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "coin-heaven",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    }
+  },
+  "experiment_id": "M4_R09_A06_E10_C00_T02pool_n3_15000_hybrid_oppbc",
+  "exploration_version": "E10",
+  "frozen_opponents": {
+    "frozen_agent": {
+      "model_path": "frozen_opponents/R02_11_rainbow_seed1005_round10000.npz",
+      "route": "R02_11",
+      "sha256": "013b2bd47375a2cc2bc2588eb9813f31311e814edae54557591904216b8a684c"
+    },
+    "frozen_agent_b": {
+      "model_path": "frozen_opponents/R07_oppbc_seed1004_round10000.npz",
+      "route": "R07",
+      "sha256": "87ce8924a4322faa388e1e9e1a4ab71bf8b19495eb670ca4c976ca4b737ef97c"
+    }
+  },
+  "initial_model": {
+    "kind": "behaviour_cloning",
+    "path": "pretraining/models/r09_bc_oppbc_r07_loot-crate_vs3rb_hybrid_v1_150000.npz",
+    "sha256": "dc58ed5cf1ed5e7b407c2114750cd23cf1a04c0db57d5b912b4b6358ebff6073"
+  },
+  "promotion": {
+    "primary_metric": "score",
+    "selection_suite": "classic_versus_opponents"
+  },
+  "reward_version": "A06",
+  "route": "R09",
+  "schema_version": 1,
+  "shaping": {
+    "name": "potential_v1"
+  },
+  "terminal_on_truncation": false,
+  "training": {
+    "budget": {
+      "checkpoint_every": 500,
+      "rounds": 15000
+    },
+    "opponents": [
+      "rule_based_agent",
+      "frozen_agent",
+      "frozen_agent_b"
+    ],
+    "scenario": "loot-crate",
+    "seeds": [
+      1001,
+      1002,
+      1003,
+      1004,
+      1005
+    ]
+  }
+}

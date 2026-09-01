@@ -1,0 +1,58 @@
+{
+  "batch_size": 64,
+  "demonstration_sha256": "fb07522e3b4c89ed48c01f891ad881f4a7a26c070afe56fc3e3ce8a56b904083",
+  "demonstrations": "pretraining/demonstrations/oppbc_r07_loot-crate_vs3rb_hybrid_v1_150000.npz",
+  "demonstrator": "frozen_agent",
+  "epochs": 5,
+  "final_validation_accuracy": 0.8414666666666667,
+  "git_commit": "666c87d0ef99610e2d79f4123e35b66c7f3edc39",
+  "head_rescaling": {
+    "factor": 0.2832993812984627,
+    "mean_abs_q_after": 1.0,
+    "mean_abs_q_before": 3.529834747314453,
+    "target_q_scale": 1.0
+  },
+  "history": [
+    {
+      "epoch": 1,
+      "mean_cross_entropy": 0.7632190302233381,
+      "train_accuracy": 0.7731481481481481,
+      "validation_accuracy": 0.7747333333333334
+    },
+    {
+      "epoch": 2,
+      "mean_cross_entropy": 0.5289828236943006,
+      "train_accuracy": 0.8134814814814815,
+      "validation_accuracy": 0.8112
+    },
+    {
+      "epoch": 3,
+      "mean_cross_entropy": 0.46961361323136636,
+      "train_accuracy": 0.8327851851851852,
+      "validation_accuracy": 0.8250666666666666
+    },
+    {
+      "epoch": 4,
+      "mean_cross_entropy": 0.42916179276320987,
+      "train_accuracy": 0.8460962962962963,
+      "validation_accuracy": 0.8366
+    },
+    {
+      "epoch": 5,
+      "mean_cross_entropy": 0.398682100483737,
+      "train_accuracy": 0.8539481481481481,
+      "validation_accuracy": 0.8414666666666667
+    }
+  ],
+  "majority_class_accuracy": 0.30944,
+  "model": "cnn_mlp_q",
+  "prepared_at_utc": "2026-09-01T22:20:22+00:00",
+  "pretrained_at_utc": "2026-09-01T22:20:22+00:00",
+  "route": "R09",
+  "seed": 0,
+  "sha256": "dc58ed5cf1ed5e7b407c2114750cd23cf1a04c0db57d5b912b4b6358ebff6073",
+  "states": 150000,
+  "train_states": 135000,
+  "validation_states": 15000,
+  "worktree_dirty": true
+}
