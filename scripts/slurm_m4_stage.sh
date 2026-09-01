@@ -124,15 +124,22 @@ JOBS="${SLURM_CPUS_PER_TASK:-8}"
 # mistake docs/05 section 0.20 recorded and this ordering exists to avoid.  A
 # human can always sbatch a stage directly, so the check lives here too, not
 # only in run_m4_line.sh.
+# The decision was made once, on one anchor, and later arms are submitted under
+# their own date tags -- so the anchor to verify against is not always this
+# stage's date.  ANCHOR_DATE defaults to DATE, which is what the first batch
+# did; a later arm passes the date of the anchor its step size came from.
+ANCHOR_DATE="${ANCHOR_DATE:-$DATE}"
 case "$STAGE" in
-  opponents|no_shaping|bc|dueling)
+  opponents|no_shaping|bc|dueling|oppbc)
     "$VENV/bin/python" scripts/decide_learning_rate.py \
-        --anchor "runs/m4_anchor_${DATE}" --verify || {
+        --anchor "runs/m4_anchor_${ANCHOR_DATE}" --verify || {
         echo "REFUSING $STAGE. Produce the decision with:" >&2
         echo "    $VENV/bin/python scripts/decide_learning_rate.py \\" >&2
-        echo "        --anchor runs/m4_anchor_${DATE} \\" >&2
-        echo "        --candidate runs/m4_lr1e4_${DATE} \\" >&2
-        echo "        --candidate runs/m4_lr5e4_${DATE} --apply" >&2
+        echo "        --anchor runs/m4_anchor_${ANCHOR_DATE} \\" >&2
+        echo "        --candidate runs/m4_lr1e4_${ANCHOR_DATE} \\" >&2
+        echo "        --candidate runs/m4_lr5e4_${ANCHOR_DATE} --apply" >&2
+        echo "  (or pass ANCHOR_DATE=<the anchor's date tag> if the decision" >&2
+        echo "   was made on an earlier batch, which is the usual case.)" >&2
         exit 1
     }
     ;;
@@ -157,6 +164,7 @@ config = {
     "opponents":  "m4_r07_a06_e09_t02opp_opponents",
     "no_shaping": "m4_r07_a03_e09_t02_no_shaping",
     "bc":         "m4_r07_a06_e10_t02_bc",
+    "oppbc":      "m4_r07_a06_e10_t02opp_oppbc",   # docs/05 section 0.35
     "dueling":    "m4_r08_a06_e09_t02_dueling",
 }[stage]
 run_id = f"m4_{stage}_{date}"

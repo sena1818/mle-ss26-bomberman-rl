@@ -1,0 +1,195 @@
+{
+  "_design_note": "The opponent-exposure arm, warm started from the same behaviour clone the bc arm used. Everything else -- route, model, algorithm, n=3, replay, budget, seeds, training scenario and opponents -- is byte-identical to m4_r07_a06_e09_t02opp_opponents.json. TWO FACTORS, declared as two: the initial weights, and the exploration start (E09 -> E10). They are coupled and cannot be separated -- holding epsilon at 1.00 over a cloned policy spends the clone before it can be used -- which is exactly how the solo bc arm already declared it. WHY THIS AND NOT board_egocentric_v3: docs/05 section 0.35. Paired on the board seed, bc (which never met an opponent in training) TIES the opponents arm against frozen Rainbow, t = -0.90, and beats anchor on all three unfamiliar opponents at t = +4.19 to +7.39. A cloned start recovers most of what opponent exposure buys, from an orthogonal source, so the two together are the arm with a reason to compound. v3 is a danger feature and the danger side is saturated: the opponents arm kills itself 0.0772 times a round against strangers, half the best M3 arm. KNOWN BIAS, carried over from the solo bc arm: rule_based_agent emitted WAIT exactly 0 times in the 150,000 recorded states, so the clone never waits. A second bias is new here: those states were recorded in SOLO loot-crate, while this arm trains with three opponents. The clone is the same agent either way so the prior is still the right shape, but the demonstration distribution does not contain opponents and that is not a detail to discover later.",
+  "_predeclared_design_numbers": {
+    "budget_curve": "docs/05 section 0.18 found that on the handcrafted line, training past 2000 rounds made the competition-setting score worse, reproduced across two arms. Whether that holds for a model with three orders of magnitude more parameters is open; report classic_versus_opponents at every evaluated checkpoint rather than only at the end.",
+    "budget_note": "docs/05 section 0.21: on the handcrafted line opponent training saturated at about 2250 rounds and the second half of a 5000-round budget bought nothing. That number is NOT transferable -- this line learns from 2029 raw inputs and its own pilot needed about 1070 rounds before the first gradient step -- but it is the reason the opponent suite is evaluated at three checkpoints rather than only at the end: find where THIS line saturates.",
+    "changed_factor": "initial_model (none -> behaviour cloning) together with exploration_version (E09 -> E10), against the m4_opponents arm as the control.",
+    "control": "m4_r07_a06_e09_t02opp_opponents at the same budget and seeds.",
+    "expected_cost": "docs/01 section 7.15: expect solo classic to fall substantially. Report it rather than hiding it; the submitted agent is scored with opponents.",
+    "falsification": "If coins_share does not move by 0.022, opponent exposure is not the bridge to G-B and the zero-gradient argument, however sound structurally, does not cash out.",
+    "gate": "Learning from scratch, judged on VALIDATION seeds only so that holdout stays unselected. All three must hold: (a) the mean loot-crate validation score over the last two evaluated checkpoints exceeds the mean over the first two by more than the 4.7 resolution; (b) the final validation score is above an untrained-CNN control, which the smoke measured at score 0.0 with wait_fraction 0.998 and distinct_cells 1.9; (c) the policy is not degenerate -- distinct_cells > 20, bomb_rate > 0.01, wait_fraction < 0.6. Point-to-point monotonicity is NOT required and must not be used: an RL curve that dips once is not a failed arm.",
+    "judgment_requires_repeats": "docs/05 section 0.20, method note 1: a single-measurement threshold on the tournament suite can be bought down by repetition. M3.12 vs M3.4 was +0.189 once and judged indistinguishable; repeated five times the true +0.113 WAS distinguishable, because the standard error fell to a third. Per-arm sd was 0.038-0.057, below the 0.089 measured on M3.3XL, confirming that sigma varies by arm. So: judge this arm against the anchor by re-running the FINAL-checkpoint opponent evaluation at least five times per arm and comparing the means, not by one pass against 0.246 / 0.022. rule_based_agent seeds itself from system entropy, so re-running the same evaluation seed is a genuinely independent draw.",
+    "known_limitation": "Training is solo, so the opponents plane and the living_opponents scalar are identically zero throughout and the weights reading them keep their initialisation. At tournament evaluation those inputs become non-zero for the first time. This arm therefore cannot answer whether the representation helps against opponents; the opponent-exposure arm exists for that.",
+    "prediction": "The opponents arm's tournament curve is flat until round 4000 -- score 0.0144 at 2000, 3.7122 at 6000, 3.8211 at 10000 -- and the solo bc arm reached at round 2000 what the anchor needed 6000 rounds for, 44.120 against 0.516. If the clone removes the same dead zone here, this arm gets roughly 14,000 rounds of useful training inside a 10,000 round budget, and the curve was still rising at 10,000. Report classic_versus_opponents at every checkpoint, and repeat-measure before quoting anything.",
+    "reporting": "Quote evaluation_summary.json reportable_result, never selected_checkpoint: the latter maximises over train_seed x checkpoint_round and is biased upward. Report all five training-seed distributions, every G2 threshold, and coins_share alongside score for every arm that has opponents.",
+    "reproducibility": "rule_based_agent calls np.random.seed() with no argument (callbacks.py:69), so ARMS WITH OPPONENTS ARE NOT BIT-REPRODUCIBLE -- neither training nor evaluation. Every number from this arm carries that second noise source on top of training seed variance.",
+    "resolution_loot_crate": "docs/01 section 7.21: the five-seed spread of the handcrafted control gives sd 3.77, so two arms measured once each need a gap of 4.7. That threshold covers training variance; the tournament one below does not.",
+    "resolution_tournament": "docs/01 section 7.20: pooled 450-round classic-with-opponents score has sd 0.089, so two arms need a gap of 0.246 (coins_share: 0.022). This was measured by re-running ONE fixed set of checkpoints, so it is evaluation noise only and does NOT cover training variance. Use it for a paired same-seed difference, never to bless a maximum taken over seeds.",
+    "selection_protocol": "Pool the five training seeds at each checkpoint round; pick the round on the pooled VALIDATION curve; freeze it; then read the holdout numbers at that round. Holdout is never used to decide whether to continue an arm."
+  },
+  "agent": {
+    "algorithm": "double_dqn",
+    "model": "cnn_mlp_q",
+    "n_step": 3,
+    "name": "research_agent",
+    "replay": {
+      "augmentation": "d4",
+      "batch_size": 32,
+      "capacity": 100000,
+      "min_size": 10000,
+      "target_update_every": 500,
+      "train_every": 4
+    },
+    "state_representation": "board_egocentric_v2"
+  },
+  "checkpoint_evaluation": {
+    "holdout_seeds": [
+      3001,
+      3002,
+      3003
+    ],
+    "mode": "rounds",
+    "rounds": [
+      1000,
+      2000,
+      4000,
+      6000,
+      8000,
+      10000
+    ],
+    "validation_seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation": {
+    "budget": {
+      "checkpoint_every": 500,
+      "rounds": 30
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation_suites": {
+    "classic_solo": {
+      "budget": {
+        "checkpoint_every": 500,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "classic_versus_opponents": {
+      "budget": {
+        "checkpoint_every": 500,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "rounds",
+        "rounds": [
+          2000,
+          6000,
+          10000
+        ],
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [
+        "rule_based_agent",
+        "rule_based_agent",
+        "rule_based_agent"
+      ],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "coin_heaven_diagnostic": {
+      "budget": {
+        "checkpoint_every": 500,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "coin-heaven",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    }
+  },
+  "experiment_id": "M4_R07_A06_E10_C00_T02opp_n3_10000_bc",
+  "exploration_version": "E10",
+  "promotion": {
+    "primary_metric": "score",
+    "selection_suite": "classic_versus_opponents"
+  },
+  "reward_version": "A06",
+  "route": "R07",
+  "schema_version": 1,
+  "shaping": {
+    "name": "potential_v1"
+  },
+  "terminal_on_truncation": false,
+  "training": {
+    "budget": {
+      "checkpoint_every": 500,
+      "rounds": 10000
+    },
+    "opponents": [
+      "rule_based_agent",
+      "rule_based_agent",
+      "rule_based_agent"
+    ],
+    "scenario": "loot-crate",
+    "seeds": [
+      1001,
+      1002,
+      1003,
+      1004,
+      1005
+    ]
+  },
+  "initial_model": {
+    "kind": "behaviour_cloning",
+    "path": "pretraining/models/r07_bc_rule_based_agent_loot-crate_v2.npz",
+    "sha256": "f146e250b58d72326ef6981fd3bd88cdd9e68cf4b7262b3d316b78aa38aaa879"
+  }
+}

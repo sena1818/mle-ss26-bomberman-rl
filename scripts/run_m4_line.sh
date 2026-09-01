@@ -56,6 +56,12 @@ STAGES=(
   "no_shaping:m4_r07_a03_e09_t02_no_shaping:training"
   "bc:m4_r07_a06_e10_t02_bc:training"
   "dueling:m4_r08_a06_e09_t02_dueling:training"
+  # Added after the transfer measurement (docs/05 section 0.35): bc ties the
+  # opponents arm against frozen Rainbow without ever having met an opponent,
+  # so the two buy the same thing from different places and are worth running
+  # together.  v3 waits: it is a danger feature and the danger side is already
+  # saturated at 0.0772 suicides a round.
+  "oppbc:m4_r07_a06_e10_t02opp_oppbc:training"
 )
 
 say() { printf '\n=== %s ===\n' "$*"; }
@@ -129,7 +135,7 @@ if [ "$LR_SETTLED" = "1" ] && [ "$DRY_RUN" != "1" ]; then
   # used to compare the four configs only to each other, so four arms that all
   # named the wrong rate -- or named nothing and fell back to the route default
   # -- satisfied it without the decision being consulted at all.
-  $PYTHON scripts/decide_learning_rate.py --anchor "runs/m4_anchor_${DATE}" --verify || exit 1
+  $PYTHON scripts/decide_learning_rate.py --anchor "runs/m4_anchor_${ANCHOR_DATE:-$DATE}" --verify || exit 1
 fi
 
 say "M4 line, date tag ${DATE}, ${JOBS} parallel jobs, logs in ${LOG_DIR}"
