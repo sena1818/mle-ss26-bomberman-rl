@@ -13,7 +13,7 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .config import ExperimentConfig
+from .config import ExperimentConfig, submission_declaration
 
 
 _LEGACY_ARTIFACT_ROOT = Path(__file__).resolve().parent / "artifacts"
@@ -55,7 +55,14 @@ def model_path() -> Path:
     selected = os.environ.get("BOMBERMAN_MODEL_PATH")
     if selected:
         return Path(selected).expanduser().resolve()
-    return Path(__file__).resolve().parent / _PACKAGED_MODEL_NAME
+    here = Path(__file__).resolve().parent
+    declaration = submission_declaration()
+    if declaration is not None:
+        # Relative to the agent directory, never absolute: the tournament
+        # unpacks this folder somewhere nobody here can predict, and a leading
+        # slash is the most common way a submitted agent fails their setup.
+        return here / declaration["model"]
+    return here / _PACKAGED_MODEL_NAME
 
 
 def checkpoint_path(config: ExperimentConfig, round_number: int, updates: int) -> Path:
@@ -109,8 +116,23 @@ def close_artifact_logs() -> None:
 atexit.register(close_artifact_logs)
 
 
+def action_logging_enabled() -> bool:
+    """Whether this process writes the per-action record.
+
+    Every diagnostic in docs/01 is computed from that record, so it stays on for
+    experiments.  A packaged agent turns it off: it is one flushed line per
+    step, the tournament plays many rounds back to back, and nothing there will
+    ever read the file -- it would only be unbounded growth inside a directory
+    the organisers unpack.
+    """
+    declaration = submission_declaration()
+    return True if declaration is None else bool(declaration.get("action_log", False))
+
+
 def append_jsonl(kind: str, payload: dict) -> None:
     """Append one self-describing event record without a non-stdlib dependency."""
+    if not action_logging_enabled():
+        return
     log_path = artifact_root() / "agent.jsonl"
     record = {
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),

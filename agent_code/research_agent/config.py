@@ -1372,9 +1372,32 @@ def validate_config(config: ExperimentConfig) -> ExperimentConfig:
     return config
 
 
+# A packaged agent has no experiment runner and therefore no BOMBERMAN_*
+# variables: the official framework imports ``callbacks`` and nothing else.
+# Without this file the fallback would be ``ACTIVE_EXPERIMENT`` -- R01, the
+# linear baseline -- so a submitted CNN would quietly play as the first arm
+# this project ever ran.  The environment variable still wins where it is set,
+# so no experiment job changes behaviour.
+SUBMISSION_DECLARATION = "submission.json"
+
+
+def submission_declaration() -> dict | None:
+    """Return what a packaged agent pins, or ``None`` for a source checkout."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), SUBMISSION_DECLARATION)
+    if not os.path.isfile(path):
+        return None
+    with open(path, encoding="utf-8") as handle:
+        declaration = json.load(handle)
+    if "route" not in declaration or "model" not in declaration:
+        raise ValueError(f"{path} must declare both a route and a model file.")
+    return declaration
+
+
 def active_config() -> ExperimentConfig:
     """Select the requested route and its declared dimensions for one job."""
-    selected = os.environ.get("BOMBERMAN_EXPERIMENT", ACTIVE_EXPERIMENT)
+    declaration = submission_declaration()
+    default_route = declaration["route"] if declaration else ACTIVE_EXPERIMENT
+    selected = os.environ.get("BOMBERMAN_EXPERIMENT", default_route)
     try:
         route_config = EXPERIMENTS[selected]
     except KeyError as exc:
