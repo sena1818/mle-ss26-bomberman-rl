@@ -1,0 +1,285 @@
+{
+    "by_agent": {
+        "frozen_agent": {
+            "bombs": 1172,
+            "coins": 266,
+            "crates": 3866,
+            "invalid": 1,
+            "kills": 37,
+            "moves": 8511,
+            "rounds": 40,
+            "score": 451,
+            "steps": 13455,
+            "suicides": 16,
+            "time": 6.196849346160889
+        },
+        "peaceful_agent_0": {
+            "coins": 2,
+            "invalid": 7555,
+            "moves": 5386,
+            "rounds": 40,
+            "score": 2,
+            "steps": 12941,
+            "time": 0.20683073997497559
+        },
+        "peaceful_agent_1": {
+            "invalid": 7603,
+            "moves": 5140,
+            "rounds": 40,
+            "score": 0,
+            "steps": 12743,
+            "time": 0.16085505485534668
+        },
+        "peaceful_agent_2": {
+            "coins": 1,
+            "invalid": 8133,
+            "moves": 5703,
+            "rounds": 40,
+            "score": 1,
+            "steps": 13836,
+            "time": 0.16141319274902344
+        }
+    },
+    "by_round": {
+        "e_peace3 | Round 01 (2026-09-03 12-53-23)": {
+            "coins": 9,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 0
+        },
+        "e_peace3 | Round 02 (2026-09-03 12-53-23)": {
+            "coins": 4,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 1
+        },
+        "e_peace3 | Round 03 (2026-09-03 12-53-23)": {
+            "coins": 7,
+            "kills": 0,
+            "steps": 400,
+            "suicides": 0
+        },
+        "e_peace3 | Round 04 (2026-09-03 12-53-23)": {
+            "coins": 6,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 0
+        },
+        "e_peace3 | Round 05 (2026-09-03 12-53-24)": {
+            "coins": 9,
+            "kills": 0,
+            "steps": 400,
+            "suicides": 0
+        },
+        "e_peace3 | Round 06 (2026-09-03 12-53-24)": {
+            "coins": 9,
+            "kills": 2,
+            "steps": 400,
+            "suicides": 1
+        },
+        "e_peace3 | Round 07 (2026-09-03 12-53-24)": {
+            "coins": 7,
+            "kills": 0,
+            "steps": 400,
+            "suicides": 0
+        },
+        "e_peace3 | Round 08 (2026-09-03 12-53-24)": {
+            "coins": 6,
+            "kills": 0,
+            "steps": 400,
+            "suicides": 0
+        },
+        "e_peace3 | Round 09 (2026-09-03 12-53-24)": {
+            "coins": 6,
+            "kills": 2,
+            "steps": 400,
+            "suicides": 1
+        },
+        "e_peace3 | Round 10 (2026-09-03 12-53-25)": {
+            "coins": 3,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 1
+        },
+        "e_peace3 | Round 11 (2026-09-03 12-53-25)": {
+            "coins": 7,
+            "kills": 0,
+            "steps": 400,
+            "suicides": 1
+        },
+        "e_peace3 | Round 12 (2026-09-03 12-53-25)": {
+            "coins": 7,
+            "kills": 0,
+            "steps": 400,
+            "suicides": 0
+        },
+        "e_peace3 | Round 13 (2026-09-03 12-53-25)": {
+            "coins": 6,
+            "kills": 0,
+            "steps": 400,
+            "suicides": 0
+        },
+        "e_peace3 | Round 14 (2026-09-03 12-53-25)": {
+            "coins": 9,
+            "kills": 0,
+            "steps": 400,
+            "suicides": 0
+        },
+        "e_peace3 | Round 15 (2026-09-03 12-53-26)": {
+            "coins": 9,
+            "kills": 2,
+            "steps": 400,
+            "suicides": 0
+        },
+        "e_peace3 | Round 16 (2026-09-03 12-53-26)": {
+            "coins": 9,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 0
+        },
+        "e_peace3 | Round 17 (2026-09-03 12-53-26)": {
+            "coins": 7,
+            "kills": 0,
+            "steps": 400,
+            "suicides": 0
+        },
+        "e_peace3 | Round 18 (2026-09-03 12-53-26)": {
+            "coins": 7,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 0
+        },
+        "e_peace3 | Round 19 (2026-09-03 12-53-27)": {
+            "coins": 7,
+            "kills": 2,
+            "steps": 400,
+            "suicides": 0
+        },
+        "e_peace3 | Round 20 (2026-09-03 12-53-27)": {
+            "coins": 6,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 0
+        },
+        "e_peace3 | Round 21 (2026-09-03 12-53-27)": {
+            "coins": 8,
+            "kills": 0,
+            "steps": 400,
+            "suicides": 0
+        },
+        "e_peace3 | Round 22 (2026-09-03 12-53-27)": {
+            "coins": 6,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 0
+        },
+        "e_peace3 | Round 23 (2026-09-03 12-53-28)": {
+            "coins": 5,
+            "kills": 0,
+            "steps": 400,
+            "suicides": 1
+        },
+        "e_peace3 | Round 24 (2026-09-03 12-53-28)": {
+            "coins": 5,
+            "kills": 0,
+            "steps": 400,
+            "suicides": 1
+        },
+        "e_peace3 | Round 25 (2026-09-03 12-53-28)": {
+            "coins": 2,
+            "kills": 0,
+            "steps": 400,
+            "suicides": 1
+        },
+        "e_peace3 | Round 26 (2026-09-03 12-53-28)": {
+            "coins": 9,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 1
+        },
+        "e_peace3 | Round 27 (2026-09-03 12-53-28)": {
+            "coins": 9,
+            "kills": 3,
+            "steps": 400,
+            "suicides": 0
+        },
+        "e_peace3 | Round 28 (2026-09-03 12-53-29)": {
+            "coins": 5,
+            "kills": 0,
+            "steps": 400,
+            "suicides": 1
+        },
+        "e_peace3 | Round 29 (2026-09-03 12-53-29)": {
+            "coins": 5,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 1
+        },
+        "e_peace3 | Round 30 (2026-09-03 12-53-29)": {
+            "coins": 7,
+            "kills": 2,
+            "steps": 400,
+            "suicides": 1
+        },
+        "e_peace3 | Round 31 (2026-09-03 12-53-29)": {
+            "coins": 9,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 0
+        },
+        "e_peace3 | Round 32 (2026-09-03 12-53-29)": {
+            "coins": 6,
+            "kills": 2,
+            "steps": 400,
+            "suicides": 0
+        },
+        "e_peace3 | Round 33 (2026-09-03 12-53-30)": {
+            "coins": 8,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 1
+        },
+        "e_peace3 | Round 34 (2026-09-03 12-53-30)": {
+            "coins": 3,
+            "kills": 0,
+            "steps": 400,
+            "suicides": 1
+        },
+        "e_peace3 | Round 35 (2026-09-03 12-53-30)": {
+            "coins": 5,
+            "kills": 0,
+            "steps": 400,
+            "suicides": 1
+        },
+        "e_peace3 | Round 36 (2026-09-03 12-53-30)": {
+            "coins": 8,
+            "kills": 2,
+            "steps": 400,
+            "suicides": 0
+        },
+        "e_peace3 | Round 37 (2026-09-03 12-53-30)": {
+            "coins": 8,
+            "kills": 3,
+            "steps": 400,
+            "suicides": 0
+        },
+        "e_peace3 | Round 38 (2026-09-03 12-53-31)": {
+            "coins": 9,
+            "kills": 2,
+            "steps": 400,
+            "suicides": 0
+        },
+        "e_peace3 | Round 39 (2026-09-03 12-53-31)": {
+            "coins": 5,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 1
+        },
+        "e_peace3 | Round 40 (2026-09-03 12-53-31)": {
+            "coins": 7,
+            "kills": 2,
+            "steps": 400,
+            "suicides": 0
+        }
+    }
+}

@@ -1,0 +1,190 @@
+{
+  "_design_note": "M4 kill-density ablation, CONTROL. Identical to the D1 arm except that the two peacefuls are two evader_agent: an opponent that also never bombs and also takes almost no coins, but that dodges, and is therefore measured at an eighth of the kill density. It exists so that a D1 win can be attributed to kill density rather than to the softer table that comes with it.",
+  "_predeclared_design_numbers": {
+    "changed_factor": "One: training.opponents, 3x rule_based -> rule_based + 2x evader.",
+    "control": "The D1 arm, and runs/m4_oppbc_20260901.",
+    "evaluation": "Judged on the opponent proxy pool (scripts/tournament_pool.py), both board sets, single seeds and the five-seed ensemble. NOTE THE CONTAMINATED CELL: the pool's mixed_weak table contains a peaceful_agent, so for an arm trained on peacefuls that cell is partly familiar and must be reported separately; the verdict rests on coin3, noisyrb3, rb3 and mixed_neural.",
+    "falsification": "If the pool mean is not above this arm's own baseline, kill-signal density is not a lever on this line and the direction closes.",
+    "measured_kill_density": "Measured before the arms were written (docs/05 section 0.41), with the epsilon-0 weights over 40 rounds: three rule_based give 0.200 kills a round; swapping ONE for a peaceful changes nothing (0.200); two peacefuls give 0.625 (3.1x) and three give 0.925 (4.6x). Two evaders give 0.075 -- LOWER than three rule_based -- because an agent that never bombs never walks into its own blast, which is what actually kills rule_based (its own suicides are 1.27 a round against peaceful's and evader's 0.00).",
+    "prediction": "Kills at or below the oppbc arm's. If D1 beats C1, kill density is the factor; if they land together, the softer table is.",
+    "reporting": "All five training seeds, kills and suicides beside every score, the tournament curve at every evaluated checkpoint, and the pool as the selection number.",
+    "reproducibility": "rule_based_agent and peaceful_agent both call np.random.seed() with no argument, and evader_agent does the same, so no arm with opponents is bit-reproducible in training or in evaluation.",
+    "the_confound_and_its_control": "Substituting a peaceful for a rule_based moves three things at once: kill density up, coin competition down (their coins 5.65 -> 3.90) and bomb density down. The evader arm is the control that separates them: it matches the competition and the bomb density of the peaceful table while leaving kill density 8x lower, so the D1-minus-C1 difference is kill density with the rest held roughly fixed. It is NOT a second dose.",
+    "why_frequency_and_not_magnitude": "The kill signal is the sparsest thing this project trains on: KILLED_OPPONENT is 1.7% of the positive reward and 191 times rarer than a coin (docs/01 section 7.27.2), every epsilon-greedy arm's kill curve peaks near round 3000 and then falls (section 7.41.1), and raising the *value* of a kill was measured as a null -- A07's shaping doubled the bombing rate and moved kills by 0.0002 (section 7.29.3). Raising the *frequency* of kills has never been tried, and the mixed-table arm (section 0.38) is the evidence that it matters: putting two nearly unkillable neural opponents on the training table took kills from 0.520 to 0.106. This is that experiment run in the other direction."
+  },
+  "agent": {
+    "algorithm": "double_dqn",
+    "model": "cnn_mlp_q",
+    "n_step": 3,
+    "name": "research_agent",
+    "replay": {
+      "augmentation": "d4",
+      "batch_size": 32,
+      "capacity": 100000,
+      "min_size": 10000,
+      "target_update_every": 500,
+      "train_every": 4
+    },
+    "state_representation": "board_egocentric_v2"
+  },
+  "checkpoint_evaluation": {
+    "holdout_seeds": [
+      3001,
+      3002,
+      3003
+    ],
+    "mode": "rounds",
+    "rounds": [
+      1000,
+      2000,
+      4000,
+      6000,
+      8000,
+      10000
+    ],
+    "validation_seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation": {
+    "budget": {
+      "checkpoint_every": 500,
+      "rounds": 30
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation_suites": {
+    "classic_solo": {
+      "budget": {
+        "checkpoint_every": 500,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "classic_versus_opponents": {
+      "budget": {
+        "checkpoint_every": 500,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "rounds",
+        "rounds": [
+          2000,
+          6000,
+          10000
+        ],
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [
+        "rule_based_agent",
+        "rule_based_agent",
+        "rule_based_agent"
+      ],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "coin_heaven_diagnostic": {
+      "budget": {
+        "checkpoint_every": 500,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "latest",
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "coin-heaven",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    }
+  },
+  "experiment_id": "M4_R07_A06_E10_T02kill_C1_rb1evade2_10000",
+  "exploration_version": "E10",
+  "initial_model": {
+    "kind": "behaviour_cloning",
+    "path": "pretraining/models/r07_bc_rule_based_agent_loot-crate_v2.npz",
+    "sha256": "f146e250b58d72326ef6981fd3bd88cdd9e68cf4b7262b3d316b78aa38aaa879"
+  },
+  "promotion": {
+    "primary_metric": "score",
+    "selection_suite": "classic_versus_opponents"
+  },
+  "reward_version": "A06",
+  "route": "R07",
+  "schema_version": 1,
+  "shaping": {
+    "name": "potential_v1"
+  },
+  "terminal_on_truncation": false,
+  "training": {
+    "budget": {
+      "checkpoint_every": 500,
+      "rounds": 10000
+    },
+    "opponents": [
+      "rule_based_agent",
+      "evader_agent",
+      "evader_agent"
+    ],
+    "scenario": "loot-crate",
+    "seeds": [
+      1001,
+      1002,
+      1003,
+      1004,
+      1005
+    ]
+  }
+}

@@ -1,0 +1,62 @@
+{
+    "by_agent": {
+        "evader_agent": {
+            "invalid": 13,
+            "moves": 784,
+            "rounds": 2,
+            "score": 0,
+            "steps": 800,
+            "time": 0.006203651428222656
+        },
+        "frozen_agent": {
+            "bombs": 21,
+            "coins": 5,
+            "crates": 76,
+            "moves": 139,
+            "rounds": 2,
+            "score": 5,
+            "steps": 181,
+            "suicides": 1,
+            "time": 0.09143352508544922
+        },
+        "rule_based_agent_0": {
+            "bombs": 45,
+            "coins": 4,
+            "crates": 81,
+            "invalid": 15,
+            "kills": 1,
+            "moves": 447,
+            "rounds": 2,
+            "score": 9,
+            "steps": 507,
+            "suicides": 1,
+            "time": 0.15669918060302734
+        },
+        "rule_based_agent_1": {
+            "bombs": 30,
+            "coins": 5,
+            "crates": 70,
+            "invalid": 8,
+            "moves": 294,
+            "rounds": 2,
+            "score": 5,
+            "steps": 332,
+            "suicides": 2,
+            "time": 0.08445620536804199
+        }
+    },
+    "by_round": {
+        "chr_probe | Round 01 (2026-09-03 12-49-46)": {
+            "coins": 9,
+            "kills": 0,
+            "steps": 400,
+            "suicides": 2
+        },
+        "chr_probe | Round 02 (2026-09-03 12-49-47)": {
+            "coins": 5,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 2
+        }
+    }
+}

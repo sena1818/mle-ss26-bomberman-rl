@@ -1,0 +1,170 @@
+{
+    "by_agent": {
+        "evader_agent": {
+            "coins": 3,
+            "invalid": 55,
+            "moves": 7579,
+            "rounds": 20,
+            "score": 3,
+            "steps": 7644,
+            "time": 0.06807780265808105
+        },
+        "frozen_agent": {
+            "bombs": 563,
+            "coins": 97,
+            "crates": 1173,
+            "invalid": 18,
+            "kills": 8,
+            "moves": 4289,
+            "rounds": 20,
+            "score": 137,
+            "steps": 5355,
+            "suicides": 14,
+            "time": 2.6367390155792236
+        },
+        "peaceful_agent": {
+            "coins": 3,
+            "invalid": 2491,
+            "moves": 1714,
+            "rounds": 20,
+            "score": 3,
+            "steps": 4205,
+            "time": 0.06072044372558594
+        },
+        "rule_based_agent": {
+            "bombs": 520,
+            "coins": 71,
+            "crates": 1135,
+            "invalid": 111,
+            "kills": 14,
+            "moves": 5246,
+            "rounds": 20,
+            "score": 141,
+            "steps": 5884,
+            "suicides": 11,
+            "time": 1.839479923248291
+        }
+    },
+    "by_round": {
+        "chr_rb1peace1evade1 | Round 01 (2026-09-03 12-51-16)": {
+            "coins": 9,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 0
+        },
+        "chr_rb1peace1evade1 | Round 02 (2026-09-03 12-51-16)": {
+            "coins": 9,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 2
+        },
+        "chr_rb1peace1evade1 | Round 03 (2026-09-03 12-51-16)": {
+            "coins": 9,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 1
+        },
+        "chr_rb1peace1evade1 | Round 04 (2026-09-03 12-51-17)": {
+            "coins": 9,
+            "kills": 1,
+            "steps": 347,
+            "suicides": 2
+        },
+        "chr_rb1peace1evade1 | Round 05 (2026-09-03 12-51-17)": {
+            "coins": 9,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 2
+        },
+        "chr_rb1peace1evade1 | Round 06 (2026-09-03 12-51-17)": {
+            "coins": 9,
+            "kills": 1,
+            "steps": 340,
+            "suicides": 2
+        },
+        "chr_rb1peace1evade1 | Round 07 (2026-09-03 12-51-18)": {
+            "coins": 9,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 2
+        },
+        "chr_rb1peace1evade1 | Round 08 (2026-09-03 12-51-18)": {
+            "coins": 8,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 2
+        },
+        "chr_rb1peace1evade1 | Round 09 (2026-09-03 12-51-18)": {
+            "coins": 9,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 1
+        },
+        "chr_rb1peace1evade1 | Round 10 (2026-09-03 12-51-18)": {
+            "coins": 9,
+            "kills": 1,
+            "steps": 388,
+            "suicides": 2
+        },
+        "chr_rb1peace1evade1 | Round 11 (2026-09-03 12-51-19)": {
+            "coins": 9,
+            "kills": 3,
+            "steps": 386,
+            "suicides": 0
+        },
+        "chr_rb1peace1evade1 | Round 12 (2026-09-03 12-51-19)": {
+            "coins": 9,
+            "kills": 1,
+            "steps": 337,
+            "suicides": 2
+        },
+        "chr_rb1peace1evade1 | Round 13 (2026-09-03 12-51-19)": {
+            "coins": 9,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 1
+        },
+        "chr_rb1peace1evade1 | Round 14 (2026-09-03 12-51-19)": {
+            "coins": 9,
+            "kills": 2,
+            "steps": 350,
+            "suicides": 1
+        },
+        "chr_rb1peace1evade1 | Round 15 (2026-09-03 12-51-20)": {
+            "coins": 7,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 1
+        },
+        "chr_rb1peace1evade1 | Round 16 (2026-09-03 12-51-20)": {
+            "coins": 9,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 0
+        },
+        "chr_rb1peace1evade1 | Round 17 (2026-09-03 12-51-20)": {
+            "coins": 9,
+            "kills": 0,
+            "steps": 400,
+            "suicides": 1
+        },
+        "chr_rb1peace1evade1 | Round 18 (2026-09-03 12-51-21)": {
+            "coins": 6,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 2
+        },
+        "chr_rb1peace1evade1 | Round 19 (2026-09-03 12-51-21)": {
+            "coins": 9,
+            "kills": 2,
+            "steps": 400,
+            "suicides": 0
+        },
+        "chr_rb1peace1evade1 | Round 20 (2026-09-03 12-51-21)": {
+            "coins": 9,
+            "kills": 0,
+            "steps": 400,
+            "suicides": 1
+        }
+    }
+}

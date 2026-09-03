@@ -154,8 +154,11 @@ IMPLEMENTED_ROUTES = {
     "R07": {
         "lines": ("M4",),
         "declaration": ("cnn_mlp_q", "double_dqn", "board_egocentric_v2"),
+        # E11 is the continuation schedule: a constant 0.05, which is the floor
+        # E09/E10 anneal to, so a second stage explores exactly as its first
+        # stage finished rather than partly unlearning the policy first.
         "reward_versions": _VECTOR_REWARD_VERSIONS,
-        "exploration_versions": {"E00", "E01", "E02", "E07", "E08", "E09", "E10"},
+        "exploration_versions": {"E00", "E01", "E02", "E07", "E08", "E09", "E10", "E11"},
     },
     "R08": {
         "lines": ("M4",),

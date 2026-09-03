@@ -1,0 +1,294 @@
+{
+    "by_agent": {
+        "evader_agent": {
+            "coins": 3,
+            "invalid": 171,
+            "moves": 12728,
+            "rounds": 40,
+            "score": 3,
+            "steps": 12953,
+            "time": 0.11799860000610352
+        },
+        "frozen_agent": {
+            "bombs": 642,
+            "coins": 154,
+            "crates": 1857,
+            "invalid": 42,
+            "kills": 5,
+            "moves": 6325,
+            "rounds": 40,
+            "score": 179,
+            "steps": 9505,
+            "suicides": 15,
+            "time": 4.445083856582642
+        },
+        "rule_based_agent_0": {
+            "bombs": 888,
+            "coins": 109,
+            "crates": 1560,
+            "invalid": 298,
+            "kills": 19,
+            "moves": 10112,
+            "rounds": 40,
+            "score": 204,
+            "steps": 11308,
+            "suicides": 17,
+            "time": 4.066676139831543
+        },
+        "rule_based_agent_1": {
+            "bombs": 748,
+            "coins": 86,
+            "crates": 1398,
+            "invalid": 264,
+            "kills": 8,
+            "moves": 8192,
+            "rounds": 40,
+            "score": 126,
+            "steps": 9213,
+            "suicides": 24,
+            "time": 3.219167947769165
+        }
+    },
+    "by_round": {
+        "e_rb2ev50 | Round 01 (2026-09-03 12-53-32)": {
+            "coins": 9,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 0
+        },
+        "e_rb2ev50 | Round 02 (2026-09-03 12-53-32)": {
+            "coins": 9,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 2
+        },
+        "e_rb2ev50 | Round 03 (2026-09-03 12-53-32)": {
+            "coins": 9,
+            "kills": 2,
+            "steps": 276,
+            "suicides": 1
+        },
+        "e_rb2ev50 | Round 04 (2026-09-03 12-53-33)": {
+            "coins": 9,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 0
+        },
+        "e_rb2ev50 | Round 05 (2026-09-03 12-53-33)": {
+            "coins": 9,
+            "kills": 0,
+            "steps": 400,
+            "suicides": 2
+        },
+        "e_rb2ev50 | Round 06 (2026-09-03 12-53-33)": {
+            "coins": 9,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 1
+        },
+        "e_rb2ev50 | Round 07 (2026-09-03 12-53-34)": {
+            "coins": 9,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 2
+        },
+        "e_rb2ev50 | Round 08 (2026-09-03 12-53-34)": {
+            "coins": 9,
+            "kills": 0,
+            "steps": 400,
+            "suicides": 2
+        },
+        "e_rb2ev50 | Round 09 (2026-09-03 12-53-34)": {
+            "coins": 9,
+            "kills": 0,
+            "steps": 400,
+            "suicides": 3
+        },
+        "e_rb2ev50 | Round 10 (2026-09-03 12-53-35)": {
+            "coins": 9,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 1
+        },
+        "e_rb2ev50 | Round 11 (2026-09-03 12-53-35)": {
+            "coins": 9,
+            "kills": 0,
+            "steps": 400,
+            "suicides": 1
+        },
+        "e_rb2ev50 | Round 12 (2026-09-03 12-53-35)": {
+            "coins": 9,
+            "kills": 2,
+            "steps": 228,
+            "suicides": 1
+        },
+        "e_rb2ev50 | Round 13 (2026-09-03 12-53-36)": {
+            "coins": 9,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 1
+        },
+        "e_rb2ev50 | Round 14 (2026-09-03 12-53-36)": {
+            "coins": 8,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 3
+        },
+        "e_rb2ev50 | Round 15 (2026-09-03 12-53-36)": {
+            "coins": 9,
+            "kills": 2,
+            "steps": 400,
+            "suicides": 1
+        },
+        "e_rb2ev50 | Round 16 (2026-09-03 12-53-36)": {
+            "coins": 9,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 1
+        },
+        "e_rb2ev50 | Round 17 (2026-09-03 12-53-37)": {
+            "coins": 9,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 2
+        },
+        "e_rb2ev50 | Round 18 (2026-09-03 12-53-37)": {
+            "coins": 9,
+            "kills": 0,
+            "steps": 400,
+            "suicides": 1
+        },
+        "e_rb2ev50 | Round 19 (2026-09-03 12-53-37)": {
+            "coins": 8,
+            "kills": 0,
+            "steps": 400,
+            "suicides": 3
+        },
+        "e_rb2ev50 | Round 20 (2026-09-03 12-53-38)": {
+            "coins": 9,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 1
+        },
+        "e_rb2ev50 | Round 21 (2026-09-03 12-53-38)": {
+            "coins": 9,
+            "kills": 1,
+            "steps": 334,
+            "suicides": 2
+        },
+        "e_rb2ev50 | Round 22 (2026-09-03 12-53-38)": {
+            "coins": 9,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 1
+        },
+        "e_rb2ev50 | Round 23 (2026-09-03 12-53-39)": {
+            "coins": 7,
+            "kills": 0,
+            "steps": 400,
+            "suicides": 3
+        },
+        "e_rb2ev50 | Round 24 (2026-09-03 12-53-39)": {
+            "coins": 8,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 1
+        },
+        "e_rb2ev50 | Round 25 (2026-09-03 12-53-39)": {
+            "coins": 9,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 2
+        },
+        "e_rb2ev50 | Round 26 (2026-09-03 12-53-39)": {
+            "coins": 9,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 1
+        },
+        "e_rb2ev50 | Round 27 (2026-09-03 12-53-40)": {
+            "coins": 9,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 1
+        },
+        "e_rb2ev50 | Round 28 (2026-09-03 12-53-40)": {
+            "coins": 9,
+            "kills": 2,
+            "steps": 400,
+            "suicides": 0
+        },
+        "e_rb2ev50 | Round 29 (2026-09-03 12-53-41)": {
+            "coins": 9,
+            "kills": 0,
+            "steps": 400,
+            "suicides": 1
+        },
+        "e_rb2ev50 | Round 30 (2026-09-03 12-53-41)": {
+            "coins": 9,
+            "kills": 0,
+            "steps": 400,
+            "suicides": 0
+        },
+        "e_rb2ev50 | Round 31 (2026-09-03 12-53-42)": {
+            "coins": 9,
+            "kills": 1,
+            "steps": 307,
+            "suicides": 2
+        },
+        "e_rb2ev50 | Round 32 (2026-09-03 12-53-42)": {
+            "coins": 9,
+            "kills": 0,
+            "steps": 400,
+            "suicides": 1
+        },
+        "e_rb2ev50 | Round 33 (2026-09-03 12-53-42)": {
+            "coins": 9,
+            "kills": 2,
+            "steps": 339,
+            "suicides": 1
+        },
+        "e_rb2ev50 | Round 34 (2026-09-03 12-53-43)": {
+            "coins": 8,
+            "kills": 0,
+            "steps": 400,
+            "suicides": 3
+        },
+        "e_rb2ev50 | Round 35 (2026-09-03 12-53-43)": {
+            "coins": 9,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 0
+        },
+        "e_rb2ev50 | Round 36 (2026-09-03 12-53-43)": {
+            "coins": 8,
+            "kills": 0,
+            "steps": 400,
+            "suicides": 2
+        },
+        "e_rb2ev50 | Round 37 (2026-09-03 12-53-44)": {
+            "coins": 8,
+            "kills": 0,
+            "steps": 400,
+            "suicides": 2
+        },
+        "e_rb2ev50 | Round 38 (2026-09-03 12-53-44)": {
+            "coins": 9,
+            "kills": 2,
+            "steps": 400,
+            "suicides": 1
+        },
+        "e_rb2ev50 | Round 39 (2026-09-03 12-53-44)": {
+            "coins": 9,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 1
+        },
+        "e_rb2ev50 | Round 40 (2026-09-03 12-53-45)": {
+            "coins": 9,
+            "kills": 0,
+            "steps": 400,
+            "suicides": 2
+        }
+    }
+}

@@ -1,0 +1,174 @@
+{
+    "by_agent": {
+        "evader_agent": {
+            "coins": 2,
+            "invalid": 91,
+            "moves": 6829,
+            "rounds": 20,
+            "score": 2,
+            "steps": 6958,
+            "time": 0.06568598747253418
+        },
+        "frozen_agent": {
+            "bombs": 537,
+            "coins": 91,
+            "crates": 934,
+            "invalid": 19,
+            "kills": 1,
+            "moves": 4648,
+            "rounds": 20,
+            "score": 96,
+            "steps": 5750,
+            "suicides": 8,
+            "time": 2.753661870956421
+        },
+        "rule_based_agent_0": {
+            "bombs": 402,
+            "coins": 42,
+            "crates": 698,
+            "invalid": 131,
+            "kills": 4,
+            "moves": 4321,
+            "rounds": 20,
+            "score": 62,
+            "steps": 4858,
+            "suicides": 11,
+            "time": 1.7490990161895752
+        },
+        "rule_based_agent_1": {
+            "bombs": 367,
+            "coins": 44,
+            "crates": 813,
+            "invalid": 117,
+            "kills": 7,
+            "moves": 3891,
+            "rounds": 20,
+            "score": 79,
+            "steps": 4379,
+            "suicides": 11,
+            "time": 1.4899334907531738
+        }
+    },
+    "by_round": {
+        "chr_rb2evade | Round 01 (2026-09-03 12-50-57)": {
+            "coins": 9,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 0
+        },
+        "chr_rb2evade | Round 02 (2026-09-03 12-50-57)": {
+            "coins": 9,
+            "kills": 0,
+            "steps": 400,
+            "suicides": 2
+        },
+        "chr_rb2evade | Round 03 (2026-09-03 12-50-58)": {
+            "coins": 9,
+            "kills": 0,
+            "steps": 400,
+            "suicides": 1
+        },
+        "chr_rb2evade | Round 04 (2026-09-03 12-50-58)": {
+            "coins": 9,
+            "kills": 0,
+            "steps": 400,
+            "suicides": 1
+        },
+        "chr_rb2evade | Round 05 (2026-09-03 12-50-58)": {
+            "coins": 9,
+            "kills": 0,
+            "steps": 400,
+            "suicides": 1
+        },
+        "chr_rb2evade | Round 06 (2026-09-03 12-50-59)": {
+            "coins": 9,
+            "kills": 2,
+            "steps": 262,
+            "suicides": 1
+        },
+        "chr_rb2evade | Round 07 (2026-09-03 12-50-59)": {
+            "coins": 9,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 0
+        },
+        "chr_rb2evade | Round 08 (2026-09-03 12-51-00)": {
+            "coins": 9,
+            "kills": 0,
+            "steps": 400,
+            "suicides": 3
+        },
+        "chr_rb2evade | Round 09 (2026-09-03 12-51-00)": {
+            "coins": 9,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 1
+        },
+        "chr_rb2evade | Round 10 (2026-09-03 12-51-00)": {
+            "coins": 9,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 1
+        },
+        "chr_rb2evade | Round 11 (2026-09-03 12-51-01)": {
+            "coins": 9,
+            "kills": 0,
+            "steps": 400,
+            "suicides": 2
+        },
+        "chr_rb2evade | Round 12 (2026-09-03 12-51-01)": {
+            "coins": 8,
+            "kills": 2,
+            "steps": 162,
+            "suicides": 2
+        },
+        "chr_rb2evade | Round 13 (2026-09-03 12-51-01)": {
+            "coins": 9,
+            "kills": 0,
+            "steps": 400,
+            "suicides": 1
+        },
+        "chr_rb2evade | Round 14 (2026-09-03 12-51-01)": {
+            "coins": 9,
+            "kills": 2,
+            "steps": 400,
+            "suicides": 0
+        },
+        "chr_rb2evade | Round 15 (2026-09-03 12-51-02)": {
+            "coins": 9,
+            "kills": 0,
+            "steps": 400,
+            "suicides": 2
+        },
+        "chr_rb2evade | Round 16 (2026-09-03 12-51-02)": {
+            "coins": 9,
+            "kills": 0,
+            "steps": 323,
+            "suicides": 3
+        },
+        "chr_rb2evade | Round 17 (2026-09-03 12-51-02)": {
+            "coins": 9,
+            "kills": 0,
+            "steps": 400,
+            "suicides": 3
+        },
+        "chr_rb2evade | Round 18 (2026-09-03 12-51-03)": {
+            "coins": 9,
+            "kills": 0,
+            "steps": 400,
+            "suicides": 2
+        },
+        "chr_rb2evade | Round 19 (2026-09-03 12-51-03)": {
+            "coins": 9,
+            "kills": 1,
+            "steps": 341,
+            "suicides": 2
+        },
+        "chr_rb2evade | Round 20 (2026-09-03 12-51-03)": {
+            "coins": 9,
+            "kills": 1,
+            "steps": 328,
+            "suicides": 2
+        }
+    }
+}

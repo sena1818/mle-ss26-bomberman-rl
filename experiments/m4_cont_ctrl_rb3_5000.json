@@ -1,0 +1,204 @@
+{
+  "_design_note": "The seam control: the identical continuation on the UNCHANGED table. Without it a null result cannot be read -- a continuation that gains nothing might have gained from the table and lost the same amount to the seam. Everything is byte-identical to the D1 continuation except training.opponents.",
+  "_predeclared_design_numbers": {
+    "changed_factor": "One: the continuation seam. The table is unchanged.",
+    "control": "runs/m4_oppbc_20260901, whose round-10000 weights this arm resumes.",
+    "evaluation": "The opponent proxy pool, both board sets, single seeds and the five-seed ensemble. The pool's mixed_weak table contains a peaceful_agent and is therefore partly familiar to the D1 arm; the verdict rests on coin3, noisyrb3, rb3 and mixed_neural.",
+    "falsification": "If the continuation on the kill-dense table is not above its own seam control, the table did nothing and what is left is the seam.",
+    "measured_kill_density": "Three rule_based give 0.200 kills a round; one rule_based plus two peacefuls give 0.625. Measured over 40 rounds with the epsilon-0 weights before these arms were written (docs/05 section 0.41).",
+    "prediction": "Close to the source arm once the seam is repaid, which section 7.31.3 puts at 1000 to 2000 rounds -- hence the checkpoint at round 1000.",
+    "reporting": "All five training seeds, kills and suicides beside every score, the curve at rounds 1000/2500/5000 so the seam's repayment is visible, and the pool as the selection number.",
+    "reproducibility": "Not bit-reproducible: rule_based_agent and peaceful_agent both seed from system entropy.",
+    "the_precedent_that_argues_against_it": "Two-stage fine-tuning was measured once on the M3 line and was distinguishably worse (-0.207, t = -3.77, docs/01 section 7.31). But that arm changed the SCENARIO, and its own seam control was fine (t = +0.49): the loss was the scenario, not the seam. Changing the opponent table while staying on loot-crate has never been measured.",
+    "the_seam_is_a_second_factor_and_has_its_own_arm": "docs/01 section 7.31.3 measured a continuation's seam -- an emptied replay buffer and a fresh Adam -- at about -0.45, repaid within 1000 to 2000 rounds. So a continuation that changes the table changes TWO things, and the control arm continues on the unchanged 3x rule_based table for exactly the same 5000 rounds. Any difference between them is the table; the difference from the source arm is the table plus the seam.",
+    "why_a_continuation": "Each training seed resumes from ITS OWN round-10000 weights, not from one shared checkpoint. That matters now that the submission is an ensemble: five seeds continued from one file would be five correlated members, and the ensemble's whole gain -- +1.17 on the pool, docs/05 section 0.40 -- comes from members disagreeing. The curriculum mechanism is what warm-starts a seed from its own lineage.",
+    "why_e11": "E10 anneals to a floor of 0.05 and the source arm finished there, so E11's constant 0.05 continues exactly as the first stage ended. Restarting a hold-then-anneal schedule would spend the first hundreds of rounds partly unlearning the policy."
+  },
+  "agent": {
+    "algorithm": "double_dqn",
+    "model": "cnn_mlp_q",
+    "n_step": 3,
+    "name": "research_agent",
+    "replay": {
+      "augmentation": "d4",
+      "batch_size": 32,
+      "capacity": 100000,
+      "min_size": 10000,
+      "target_update_every": 500,
+      "train_every": 4
+    },
+    "state_representation": "board_egocentric_v2"
+  },
+  "checkpoint_evaluation": {
+    "holdout_seeds": [
+      3001,
+      3002,
+      3003
+    ],
+    "mode": "rounds",
+    "rounds": [
+      1000,
+      2500,
+      5000
+    ],
+    "validation_seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "curriculum": {
+    "anneal_mode": "per_segment",
+    "segments": [
+      {
+        "rounds": 5000,
+        "scenario": "loot-crate"
+      }
+    ],
+    "source_run_id": "m4_oppbc_20260901"
+  },
+  "evaluation": {
+    "budget": {
+      "checkpoint_every": 500,
+      "rounds": 30
+    },
+    "opponents": [],
+    "scenario": "loot-crate",
+    "seeds": [
+      2001,
+      2002,
+      2003
+    ]
+  },
+  "evaluation_suites": {
+    "classic_solo": {
+      "budget": {
+        "checkpoint_every": 500,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "rounds",
+        "rounds": [
+          1000,
+          2500,
+          5000
+        ],
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "classic_versus_opponents": {
+      "budget": {
+        "checkpoint_every": 500,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "rounds",
+        "rounds": [
+          1000,
+          2500,
+          5000
+        ],
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [
+        "rule_based_agent",
+        "rule_based_agent",
+        "rule_based_agent"
+      ],
+      "scenario": "classic",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    },
+    "coin_heaven_diagnostic": {
+      "budget": {
+        "checkpoint_every": 500,
+        "rounds": 30
+      },
+      "checkpoint_evaluation": {
+        "holdout_seeds": [
+          3001,
+          3002,
+          3003
+        ],
+        "mode": "rounds",
+        "rounds": [
+          1000,
+          2500,
+          5000
+        ],
+        "validation_seeds": [
+          2001,
+          2002,
+          2003
+        ]
+      },
+      "opponents": [],
+      "scenario": "coin-heaven",
+      "seeds": [
+        2001,
+        2002,
+        2003
+      ]
+    }
+  },
+  "experiment_id": "M4_R07_A06_E11_T02_CONT_CTRL_rb3_5000",
+  "exploration_version": "E11",
+  "promotion": {
+    "primary_metric": "score",
+    "selection_suite": "classic_versus_opponents"
+  },
+  "reward_version": "A06",
+  "route": "R07",
+  "schema_version": 1,
+  "shaping": {
+    "name": "potential_v1"
+  },
+  "terminal_on_truncation": false,
+  "training": {
+    "budget": {
+      "checkpoint_every": 500,
+      "rounds": 5000
+    },
+    "opponents": [
+      "rule_based_agent",
+      "rule_based_agent",
+      "rule_based_agent"
+    ],
+    "scenario": "loot-crate",
+    "seeds": [
+      1001,
+      1002,
+      1003,
+      1004,
+      1005
+    ]
+  }
+}
