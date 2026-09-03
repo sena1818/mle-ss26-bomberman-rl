@@ -39,7 +39,16 @@ from pathlib import Path
 from experiment_lib import FROZEN_OPPONENT_AGENTS, ROOT, RUNS_ROOT, git_provenance, write_json
 from repeat_measure import DISCRIMINATION_T, METRICS, _job_metrics
 
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+from agent_code.research_agent.models.ensemble import (  # noqa: E402
+    MANIFEST_SUFFIX, write_manifest)
+
 SUITE = "tournament_pool"
+# The pseudo training seed an ensemble is filed under.  It has to parse as a
+# train seed so the job ids, the report and every downstream reader keep one
+# format; 9999 is outside every real seed range this project has used.
+ENSEMBLE_TRAIN_SEED = 9999
 DEFAULT_BOARD_SEEDS = tuple(range(4001, 4007))
 # The pools.  ``frozen_opponents`` entries carry no digest here; scaffold fills
 # it in from the file, so a swapped checkpoint changes the recorded digest and
@@ -136,6 +145,9 @@ def scaffold(args: argparse.Namespace) -> None:
     train_seeds = list(args.train_seeds) if args.train_seeds else _train_seeds(source)
     pools = {name: _pool_table(name) for name in (args.pools or DEFAULT_POOLS)}
     checkpoint_round = args.checkpoint_round
+    snapshot = json.loads((source / "experiment_config.snapshot.json").read_text(encoding="utf-8"))
+    route = snapshot["route"]
+    input_dim = int(snapshot["resolved_runtime_config"]["feature_dimension"])
 
     (destination / "job_parameters").mkdir(parents=True)
     shutil.copy2(source / "experiment_config.snapshot.json",
@@ -144,6 +156,7 @@ def scaffold(args: argparse.Namespace) -> None:
     provenance["tournament_pool_of"] = str(source)
     provenance["tournament_pool"] = {
         "checkpoint_round": checkpoint_round if checkpoint_round is not None else "latest",
+        "ensemble": bool(args.ensemble),
         "train_seeds": train_seeds, "board_seeds": list(args.board_seeds),
         "repeats": args.repeats, "scenario": args.scenario, "rounds": args.rounds,
         "pools": pools,
@@ -152,25 +165,46 @@ def scaffold(args: argparse.Namespace) -> None:
 
     round_tag = "" if checkpoint_round is None else f"_round{checkpoint_round:05d}"
     written = 0
-    for train_seed in train_seeds:
-        origin = _checkpoint(source, train_seed, checkpoint_round)
-        agent_dir = destination / "jobs" / f"train_seed{train_seed}" / "agent"
-        if checkpoint_round is None:
+    seat_plan = ([(ENSEMBLE_TRAIN_SEED, None)] if args.ensemble
+                 else [(seed, seed) for seed in train_seeds])
+    for job_seed, train_seed in seat_plan:
+        agent_dir = destination / "jobs" / f"train_seed{job_seed}" / "agent"
+        if train_seed is None:
+            # One pseudo-seed holding every member and the manifest that names
+            # them.  The members travel with the manifest so the run directory
+            # -- and later the submitted agent folder -- stays movable.
+            members = []
+            for seed in train_seeds:
+                origin = _checkpoint(source, seed, checkpoint_round)
+                target = agent_dir / "members" / f"train_seed{seed}_{origin.name}"
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(origin, target)
+                members.append(target)
+            manifest = agent_dir / f"members{MANIFEST_SUFFIX}"
+            write_manifest(manifest, route=route, members=members, input_dim=input_dim,
+                           provenance={"source_run": str(source), "train_seeds": list(train_seeds),
+                                       "checkpoint_round": checkpoint_round})
+            model_relpath: str | None = str(manifest.relative_to(destination))
+        elif checkpoint_round is None:
+            origin = _checkpoint(source, train_seed, checkpoint_round)
             target = agent_dir / "latest_model.npz"
-            model_relpath: str | None = str(target.relative_to(destination))
+            model_relpath = str(target.relative_to(destination))
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(origin, target)
         else:
+            origin = _checkpoint(source, train_seed, checkpoint_round)
             target = agent_dir / "checkpoints" / origin.name
             model_relpath = None
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(origin, target)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(origin, target)
         for pool_name, pool in pools.items():
             for board_seed in args.board_seeds:
                 for repeat in range(1, args.repeats + 1):
                     job_id = (f"eval_{SUITE}_{pool_name}{round_tag}"
-                              f"_train{train_seed}_seed{board_seed}_rep{repeat:02d}")
+                              f"_train{job_seed}_seed{board_seed}_rep{repeat:02d}")
                     payload = {
                         "job_id": job_id, "mode": "eval", "seed": int(board_seed),
-                        "train_seed": int(train_seed), "phase": "evaluation", "suite": SUITE,
+                        "train_seed": int(job_seed), "phase": "evaluation", "suite": SUITE,
                         "pool": pool_name, "seed_role": "holdout",
                         "scenario": args.scenario, "opponents": pool["opponents"],
                         "budget": {"rounds": int(args.rounds), "checkpoint_every": int(args.rounds)},
@@ -180,14 +214,14 @@ def scaffold(args: argparse.Namespace) -> None:
                     }
                     if pool["frozen_opponents"]:
                         payload["frozen_opponents"] = pool["frozen_opponents"]
-                    if checkpoint_round is not None:
+                    if checkpoint_round is not None and model_relpath is None:
                         payload["checkpoint_search_relpath"] = str(
                             (agent_dir / "checkpoints").relative_to(destination))
                     write_json(destination / "job_parameters" / f"{job_id}.json", payload)
                     written += 1
     print(f"{destination}: {written} jobs "
-          f"({len(train_seeds)} train seeds x {len(pools)} pools x {len(args.board_seeds)} boards "
-          f"x {args.repeats} repeats)")
+          f"({len(seat_plan)} model(s){' (ensemble of ' + str(len(train_seeds)) + ')' if args.ensemble else ''}"
+          f" x {len(pools)} pools x {len(args.board_seeds)} boards x {args.repeats} repeats)")
     for name, pool in pools.items():
         print(f"  {name:13s} {', '.join(pool['opponents'])}")
 
@@ -308,6 +342,12 @@ def main() -> None:
                        help="Default: every train_seed* directory of the source run.")
     build.add_argument("--board-seeds", nargs="+", type=int, default=list(DEFAULT_BOARD_SEEDS), metavar="SEED")
     build.add_argument("--repeats", type=int, default=1)
+    build.add_argument("--ensemble", action="store_true",
+                       help="Average every training seed's Q-values into one policy instead of "
+                            "measuring the seeds separately. The submission is one model, and a "
+                            "single seed is a lottery this project has measured (docs/01 section "
+                            "7.39.5); the members already exist and a five-member forward pass is "
+                            "1.3 ms against the framework's 500 ms.")
     build.add_argument("--pools", nargs="+", metavar="POOL", help=f"Default: {' '.join(DEFAULT_POOLS)}")
     build.add_argument("--scenario", default="classic")
     build.add_argument("--rounds", type=int, default=30, help="Rounds per job.")

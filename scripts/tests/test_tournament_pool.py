@@ -31,7 +31,9 @@ BOARDS = (4001, 4002, 4003)
 
 def _source_run(root: Path) -> Path:
     run_dir = root / "source"
-    write_json(run_dir / "experiment_config.snapshot.json", {"agent": {"name": "research_agent"}})
+    write_json(run_dir / "experiment_config.snapshot.json", {
+        "agent": {"name": "research_agent"}, "route": "R07",
+        "resolved_runtime_config": {"feature_dimension": 2029}})
     for train_seed in TRAIN_SEEDS:
         agent_dir = run_dir / "jobs" / f"train_seed{train_seed}" / "agent"
         (agent_dir / "checkpoints").mkdir(parents=True)
@@ -60,7 +62,8 @@ class ScaffoldReachesEveryPoolBoardAndSeedTest(unittest.TestCase):
     def _scaffold(self, root: Path, **overrides) -> Path:
         arguments = Namespace(source_run="source", run_id="pool", checkpoint_round=10000,
                               train_seeds=None, board_seeds=list(BOARDS), repeats=1,
-                              pools=["rb3", "mixed_neural"], scenario="classic", rounds=30)
+                              pools=["rb3", "mixed_neural"], scenario="classic", rounds=30,
+                              ensemble=False)
         for key, value in overrides.items():
             setattr(arguments, key, value)
         with patch.object(tournament_pool, "RUNS_ROOT", root):
@@ -178,3 +181,55 @@ class ReportPairsOnTheBoardAndSelectsOverPoolsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AnEnsembleIsOneCandidateNotFiveTest(unittest.TestCase):
+    """--ensemble files every training seed under one pseudo-seat.
+
+    The submission is one model, so an ensemble has to appear in the pool as one
+    row, addressed by a manifest that travels with its members.
+    """
+
+    def _scaffold(self, root: Path, **overrides) -> Path:
+        arguments = Namespace(source_run="source", run_id="pool", checkpoint_round=10000,
+                              train_seeds=None, board_seeds=list(BOARDS), repeats=1,
+                              pools=["rb3"], scenario="classic", rounds=30, ensemble=True)
+        for key, value in overrides.items():
+            setattr(arguments, key, value)
+        with patch.object(tournament_pool, "RUNS_ROOT", root):
+            tournament_pool.scaffold(arguments)
+        return root / arguments.run_id
+
+    def test_one_job_per_board_and_a_manifest_that_names_every_seed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _source_run(root)
+            run_dir = self._scaffold(root)
+            jobs = [json.loads(path.read_text()) for path in (run_dir / "job_parameters").glob("*.json")]
+            manifests = list((run_dir / "jobs").glob(f"train_seed*/agent/*{tournament_pool.MANIFEST_SUFFIX}"))
+            manifest = json.loads(manifests[0].read_text())
+            members = list(manifests[0].parent.glob("members/*.npz"))
+        self.assertEqual(len(jobs), len(BOARDS))          # one model, not five
+        self.assertEqual({job["train_seed"] for job in jobs}, {tournament_pool.ENSEMBLE_TRAIN_SEED})
+        self.assertEqual(len(manifests), 1)
+        self.assertEqual(manifest["kind"], "ensemble")
+        self.assertEqual(manifest["route"], "R07")
+        self.assertEqual(len(manifest["members"]), len(TRAIN_SEEDS))
+        self.assertEqual(len(members), len(TRAIN_SEEDS))
+        self.assertEqual(sorted(manifest["provenance"]["train_seeds"]), sorted(TRAIN_SEEDS))
+        for job in jobs:
+            self.assertTrue(job["model_relpath"].endswith(tournament_pool.MANIFEST_SUFFIX))
+            # The manifest is the model; a round search would find nothing.
+            self.assertNotIn("checkpoint_search_relpath", job)
+            self.assertIsNotNone(tournament_pool.JOB_ID.match(job["job_id"]))
+
+    def test_the_ordinary_scaffold_still_files_one_row_per_seed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _source_run(root)
+            run_dir = self._scaffold(root, ensemble=False)
+            jobs = [json.loads(path.read_text()) for path in (run_dir / "job_parameters").glob("*.json")]
+        self.assertEqual(len(jobs), len(TRAIN_SEEDS) * len(BOARDS))
+        self.assertEqual({job["train_seed"] for job in jobs}, set(TRAIN_SEEDS))
+        for job in jobs:
+            self.assertIn("checkpoint_search_relpath", job)

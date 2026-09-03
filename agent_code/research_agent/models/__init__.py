@@ -15,6 +15,7 @@ from pathlib import Path
 
 from ..config import ExperimentConfig
 from .base import QModel
+from .ensemble import MANIFEST_SUFFIX
 from .linear_q import LinearQModel
 from .mlp_q import MLPQModel
 
@@ -87,6 +88,14 @@ def build_model(config: ExperimentConfig, input_dim: int, *, seed: int) -> QMode
 
 
 def load_model(config: ExperimentConfig, path: Path) -> QModel:
+    # An ensemble is a manifest naming several checkpoints of this same route,
+    # not a checkpoint of its own.  Dispatching on the file name keeps every
+    # caller -- the runtime, the diagnostics, the frozen opponent -- unchanged:
+    # they hand over a path and get back something with q_values.
+    if str(path).endswith(MANIFEST_SUFFIX):
+        from .ensemble import EnsembleQModel
+
+        return EnsembleQModel.load(config, path)
     if config.network == "linear_q":
         model = LinearQModel.load(path)
         model.learning_rate = config.learning_rate
@@ -140,4 +149,4 @@ def load_model(config: ExperimentConfig, path: Path) -> QModel:
     raise NotImplementedError(f"QModel adapter {config.network!r} has not been implemented yet.")
 
 
-__all__ = ("QModel", "LinearQModel", "MLPQModel", "build_model", "load_model")
+__all__ = ("QModel", "LinearQModel", "MLPQModel", "MANIFEST_SUFFIX", "build_model", "load_model")
