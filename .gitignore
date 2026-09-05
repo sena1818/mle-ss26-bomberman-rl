@@ -124,3 +124,18 @@ pretraining/logs/
 
 # git worktrees created for isolated experiment runs
 .worktrees/
+
+# The submission archive is a build product of scripts/package_submission.py;
+# the agent directory it zips is committed, so the zip would be a duplicate.
+final-project-agent-code.zip
+
+# Manual viewing sessions and their per-action logs. The opponent-table
+# characterisation under manual_matches/tables_*/ IS committed: docs/05
+# section 0.41 quotes it.
+manual_matches/auto_play.py
+manual_matches/diagnosis_*/
+manual_matches/m4_*/
+manual_matches/r02_9_*/
+manual_matches/rainbow_*/
+manual_matches/showcase_*/
+manual_matches/visual_*/
