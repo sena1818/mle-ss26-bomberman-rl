@@ -65,6 +65,11 @@ def export(*, route: str, model: Path, name: str, destination_root: Path,
         raise SystemExit(f"refusing to overwrite {destination}")
     if not model.is_file():
         raise SystemExit(f"model is unavailable: {model}")
+    # Read before the export writes anything.  Taken afterwards it describes the
+    # tree the export just made untracked, so every package recorded
+    # worktree_dirty even when it came from a clean checkout -- a provenance
+    # field that is always true says nothing.
+    provenance = git_provenance()
 
     destination.mkdir(parents=True)
     for file_name in PACKAGE_FILES:
@@ -102,7 +107,7 @@ def export(*, route: str, model: Path, name: str, destination_root: Path,
         "algorithm": config.algorithm,
         "state_dimension": state_dimension(config.state_encoder),
         "exported_from": str(model),
-        **git_provenance(),
+        **provenance,
     })
     return destination
 
