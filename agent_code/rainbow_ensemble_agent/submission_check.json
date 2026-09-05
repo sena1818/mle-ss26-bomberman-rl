@@ -1,0 +1,13 @@
+{
+  "decisions_timed": 400,
+  "invalid_actions": 13,
+  "max_decision_seconds": 0.0008204580517485738,
+  "median_decision_seconds": 9.308394510298967e-05,
+  "p99_decision_seconds": 0.0007672500796616077,
+  "packaged_action_log_written": false,
+  "rounds": 15,
+  "score_per_round": 10.466666666666667,
+  "setup_seconds": 0.0068916670279577374,
+  "steps": 3682,
+  "timeouts": 0
+}

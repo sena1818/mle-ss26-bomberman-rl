@@ -1,0 +1,13 @@
+{
+  "action_log": false,
+  "algorithm": "double_dqn",
+  "exported_from": "/tmp/sub/members.ensemble.json",
+  "git_commit": "7e6ad571454c8df168fddd5c8d24b584f58eb580",
+  "model": "model.ensemble.json",
+  "network": "categorical_mlp_q",
+  "prepared_at_utc": "2026-09-05T14:50:05+00:00",
+  "route": "R02_11",
+  "state_dimension": 62,
+  "state_representation": "handcrafted_v3",
+  "worktree_dirty": false
+}
