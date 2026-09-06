@@ -1,0 +1,34 @@
+{
+  "input_dim": 62,
+  "kind": "ensemble",
+  "members": [
+    {
+      "path": "members/train_seed1002_latest_model.npz",
+      "sha256": "23e644fcd431e8583bb5a9fa1c095a08956e4e22b3e2e76faec0078edc6d9088"
+    },
+    {
+      "path": "members/train_seed1003_latest_model.npz",
+      "sha256": "b2356bf24379029aba72e084b307faff64747ec65eb0bb94a090c6a49c880e83"
+    },
+    {
+      "path": "members/train_seed1004_latest_model.npz",
+      "sha256": "1a74392bc582600828a0e743318a96d786f738ff93c6bfdce99a9a7570df775c"
+    },
+    {
+      "path": "members/train_seed1005_latest_model.npz",
+      "sha256": "013b2bd47375a2cc2bc2588eb9813f31311e814edae54557591904216b8a684c"
+    }
+  ],
+  "provenance": {
+    "checkpoint_round": 10000,
+    "selected_by": "leave-one-out over the five seeds on tournament-pool boards 4001-4006; reported on boards 4007-4012 at 6.2478 (docs/05 section 0.43)",
+    "source_run": "runs/m3_rainbow_10000_vs3rb_20260829",
+    "train_seeds": [
+      1002,
+      1003,
+      1004,
+      1005
+    ]
+  },
+  "route": "R02_11"
+}
