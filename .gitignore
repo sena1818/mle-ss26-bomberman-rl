@@ -139,3 +139,7 @@ manual_matches/r02_9_*/
 manual_matches/rainbow_*/
 manual_matches/showcase_*/
 manual_matches/visual_*/
+
+# The handover archive is a build product of scripts/build_handover.py.
+/../bomberman_handover/
+/../bomberman_handover.zip

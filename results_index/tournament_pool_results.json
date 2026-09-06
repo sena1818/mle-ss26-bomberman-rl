@@ -1,0 +1,3102 @@
+[
+ {
+  "run": "ens_eps0_rep",
+  "arm": "M3 epsilon-0",
+  "members": "ensemble5",
+  "boards": "report",
+  "mean_over_pools": {
+   "score": 4.8467,
+   "coins": 4.1744,
+   "kills": 0.1344,
+   "suicides": 0.1211,
+   "coins_share": 0.4681
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 3.7722,
+    "coins": 3.2444,
+    "kills": 0.1056,
+    "suicides": 0.1056,
+    "coins_share": 0.3605
+   },
+   "mixed_neural": {
+    "score": 2.8056,
+    "coins": 2.6944,
+    "kills": 0.0222,
+    "suicides": 0.0444,
+    "coins_share": 0.2994
+   },
+   "mixed_weak": {
+    "score": 5.6889,
+    "coins": 4.1611,
+    "kills": 0.3056,
+    "suicides": 0.2556,
+    "coins_share": 0.4626
+   },
+   "noisyrb3": {
+    "score": 7.4167,
+    "coins": 6.9722,
+    "kills": 0.0889,
+    "suicides": 0.0667,
+    "coins_share": 0.7952
+   },
+   "rb3": {
+    "score": 4.55,
+    "coins": 3.8,
+    "kills": 0.15,
+    "suicides": 0.1333,
+    "coins_share": 0.4228
+   }
+  }
+ },
+ {
+  "run": "ens_eps0_sel",
+  "arm": "M3 epsilon-0",
+  "members": "ensemble5",
+  "boards": "selection",
+  "mean_over_pools": {
+   "score": 4.8211,
+   "coins": 4.2433,
+   "kills": 0.1156,
+   "suicides": 0.1444,
+   "coins_share": 0.4743
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 3.4889,
+    "coins": 3.1556,
+    "kills": 0.0667,
+    "suicides": 0.1389,
+    "coins_share": 0.3506
+   },
+   "mixed_neural": {
+    "score": 3.0056,
+    "coins": 2.7833,
+    "kills": 0.0444,
+    "suicides": 0.1056,
+    "coins_share": 0.3095
+   },
+   "mixed_weak": {
+    "score": 5.4278,
+    "coins": 4.4,
+    "kills": 0.2056,
+    "suicides": 0.2278,
+    "coins_share": 0.4904
+   },
+   "noisyrb3": {
+    "score": 7.9444,
+    "coins": 7.1944,
+    "kills": 0.15,
+    "suicides": 0.05,
+    "coins_share": 0.8115
+   },
+   "rb3": {
+    "score": 4.2389,
+    "coins": 3.6833,
+    "kills": 0.1111,
+    "suicides": 0.2,
+    "coins_share": 0.4095
+   }
+  }
+ },
+ {
+  "run": "ens_m3kc1_rep",
+  "arm": "M3 Rainbow kill-density C1 (CONTROL)",
+  "members": "ensemble5",
+  "boards": "report",
+  "mean_over_pools": {
+   "score": 4.9089,
+   "coins": 3.8867,
+   "kills": 0.2044,
+   "suicides": 0.1667,
+   "coins_share": 0.4338
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 3.4611,
+    "coins": 2.7389,
+    "kills": 0.1444,
+    "suicides": 0.15,
+    "coins_share": 0.3043
+   },
+   "mixed_neural": {
+    "score": 2.9611,
+    "coins": 2.4889,
+    "kills": 0.0944,
+    "suicides": 0.2222,
+    "coins_share": 0.2765
+   },
+   "mixed_weak": {
+    "score": 5.9278,
+    "coins": 3.7056,
+    "kills": 0.4444,
+    "suicides": 0.2389,
+    "coins_share": 0.4122
+   },
+   "noisyrb3": {
+    "score": 8.0167,
+    "coins": 7.0444,
+    "kills": 0.1944,
+    "suicides": 0.0389,
+    "coins_share": 0.7915
+   },
+   "rb3": {
+    "score": 4.1778,
+    "coins": 3.4556,
+    "kills": 0.1444,
+    "suicides": 0.1833,
+    "coins_share": 0.3842
+   }
+  }
+ },
+ {
+  "run": "ens_m3kc1_sel",
+  "arm": "ens_m3kc1_sel",
+  "members": "?",
+  "boards": "?",
+  "mean_over_pools": {
+   "score": 5.1078,
+   "coins": 3.8856,
+   "kills": 0.2444,
+   "suicides": 0.1744,
+   "coins_share": 0.4377
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 3.9667,
+    "coins": 2.9389,
+    "kills": 0.2056,
+    "suicides": 0.1167,
+    "coins_share": 0.3265
+   },
+   "mixed_neural": {
+    "score": 3.0833,
+    "coins": 2.3889,
+    "kills": 0.1389,
+    "suicides": 0.1833,
+    "coins_share": 0.2654
+   },
+   "mixed_weak": {
+    "score": 6.2889,
+    "coins": 3.9556,
+    "kills": 0.4667,
+    "suicides": 0.2222,
+    "coins_share": 0.4411
+   },
+   "noisyrb3": {
+    "score": 7.8722,
+    "coins": 6.7889,
+    "kills": 0.2167,
+    "suicides": 0.0889,
+    "coins_share": 0.782
+   },
+   "rb3": {
+    "score": 4.3278,
+    "coins": 3.3556,
+    "kills": 0.1944,
+    "suicides": 0.2611,
+    "coins_share": 0.3733
+   }
+  }
+ },
+ {
+  "run": "ens_m3kd1_rep",
+  "arm": "M3 Rainbow kill-density D1",
+  "members": "ensemble5",
+  "boards": "report",
+  "mean_over_pools": {
+   "score": 5.0011,
+   "coins": 3.8122,
+   "kills": 0.2378,
+   "suicides": 0.17,
+   "coins_share": 0.4267
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 3.6056,
+    "coins": 2.7722,
+    "kills": 0.1667,
+    "suicides": 0.1556,
+    "coins_share": 0.308
+   },
+   "mixed_neural": {
+    "score": 2.95,
+    "coins": 2.4222,
+    "kills": 0.1056,
+    "suicides": 0.1167,
+    "coins_share": 0.2691
+   },
+   "mixed_weak": {
+    "score": 5.9278,
+    "coins": 3.7611,
+    "kills": 0.4333,
+    "suicides": 0.2833,
+    "coins_share": 0.4181
+   },
+   "noisyrb3": {
+    "score": 7.8389,
+    "coins": 7.1167,
+    "kills": 0.1444,
+    "suicides": 0.0667,
+    "coins_share": 0.8061
+   },
+   "rb3": {
+    "score": 4.6833,
+    "coins": 2.9889,
+    "kills": 0.3389,
+    "suicides": 0.2278,
+    "coins_share": 0.3323
+   }
+  }
+ },
+ {
+  "run": "ens_m3kd1_sel",
+  "arm": "ens_m3kd1_sel",
+  "members": "?",
+  "boards": "?",
+  "mean_over_pools": {
+   "score": 5.1078,
+   "coins": 3.8522,
+   "kills": 0.2511,
+   "suicides": 0.1744,
+   "coins_share": 0.4314
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 3.6167,
+    "coins": 2.8667,
+    "kills": 0.15,
+    "suicides": 0.1611,
+    "coins_share": 0.3185
+   },
+   "mixed_neural": {
+    "score": 2.7889,
+    "coins": 2.3167,
+    "kills": 0.0944,
+    "suicides": 0.1667,
+    "coins_share": 0.2576
+   },
+   "mixed_weak": {
+    "score": 6.3722,
+    "coins": 3.9556,
+    "kills": 0.4833,
+    "suicides": 0.2556,
+    "coins_share": 0.4398
+   },
+   "noisyrb3": {
+    "score": 7.75,
+    "coins": 6.75,
+    "kills": 0.2,
+    "suicides": 0.0667,
+    "coins_share": 0.7661
+   },
+   "rb3": {
+    "score": 5.0111,
+    "coins": 3.3722,
+    "kills": 0.3278,
+    "suicides": 0.2222,
+    "coins_share": 0.3749
+   }
+  }
+ },
+ {
+  "run": "ens_m4kc1_rep",
+  "arm": "M4 kill-density C1 (CONTROL)",
+  "members": "ensemble5",
+  "boards": "report",
+  "mean_over_pools": {
+   "score": 4.6744,
+   "coins": 3.63,
+   "kills": 0.2089,
+   "suicides": 0.2256,
+   "coins_share": 0.4083
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 3.0889,
+    "coins": 2.3667,
+    "kills": 0.1444,
+    "suicides": 0.1389,
+    "coins_share": 0.263
+   },
+   "mixed_neural": {
+    "score": 3.3222,
+    "coins": 2.2667,
+    "kills": 0.2111,
+    "suicides": 0.2833,
+    "coins_share": 0.2519
+   },
+   "mixed_weak": {
+    "score": 5.1778,
+    "coins": 3.65,
+    "kills": 0.3056,
+    "suicides": 0.2889,
+    "coins_share": 0.4066
+   },
+   "noisyrb3": {
+    "score": 7.9222,
+    "coins": 6.8667,
+    "kills": 0.2111,
+    "suicides": 0.0667,
+    "coins_share": 0.7858
+   },
+   "rb3": {
+    "score": 3.8611,
+    "coins": 3.0,
+    "kills": 0.1722,
+    "suicides": 0.35,
+    "coins_share": 0.3341
+   }
+  }
+ },
+ {
+  "run": "ens_m4kc1_sel",
+  "arm": "ens_m4kc1_sel",
+  "members": "?",
+  "boards": "?",
+  "mean_over_pools": {
+   "score": 4.7211,
+   "coins": 3.5989,
+   "kills": 0.2244,
+   "suicides": 0.2133,
+   "coins_share": 0.4053
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 3.1667,
+    "coins": 2.4167,
+    "kills": 0.15,
+    "suicides": 0.1667,
+    "coins_share": 0.2687
+   },
+   "mixed_neural": {
+    "score": 3.1222,
+    "coins": 2.0944,
+    "kills": 0.2056,
+    "suicides": 0.2556,
+    "coins_share": 0.2327
+   },
+   "mixed_weak": {
+    "score": 5.4667,
+    "coins": 3.6889,
+    "kills": 0.3556,
+    "suicides": 0.2778,
+    "coins_share": 0.4114
+   },
+   "noisyrb3": {
+    "score": 7.7833,
+    "coins": 6.8111,
+    "kills": 0.1944,
+    "suicides": 0.0556,
+    "coins_share": 0.7816
+   },
+   "rb3": {
+    "score": 4.0667,
+    "coins": 2.9833,
+    "kills": 0.2167,
+    "suicides": 0.3111,
+    "coins_share": 0.3321
+   }
+  }
+ },
+ {
+  "run": "ens_m4kcont_rep",
+  "arm": "M4 continuation",
+  "members": "ensemble5",
+  "boards": "report",
+  "mean_over_pools": {
+   "score": 4.5156,
+   "coins": 3.6156,
+   "kills": 0.18,
+   "suicides": 0.2,
+   "coins_share": 0.4058
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 3.1556,
+    "coins": 2.4333,
+    "kills": 0.1444,
+    "suicides": 0.0944,
+    "coins_share": 0.2704
+   },
+   "mixed_neural": {
+    "score": 2.9278,
+    "coins": 2.2056,
+    "kills": 0.1444,
+    "suicides": 0.2222,
+    "coins_share": 0.2452
+   },
+   "mixed_weak": {
+    "score": 4.8722,
+    "coins": 3.5944,
+    "kills": 0.2556,
+    "suicides": 0.2611,
+    "coins_share": 0.3996
+   },
+   "noisyrb3": {
+    "score": 7.7778,
+    "coins": 6.9167,
+    "kills": 0.1722,
+    "suicides": 0.05,
+    "coins_share": 0.7885
+   },
+   "rb3": {
+    "score": 3.8444,
+    "coins": 2.9278,
+    "kills": 0.1833,
+    "suicides": 0.3722,
+    "coins_share": 0.3255
+   }
+  }
+ },
+ {
+  "run": "ens_m4kcont_sel",
+  "arm": "ens_m4kcont_sel",
+  "members": "?",
+  "boards": "?",
+  "mean_over_pools": {
+   "score": 4.5344,
+   "coins": 3.5844,
+   "kills": 0.19,
+   "suicides": 0.1911,
+   "coins_share": 0.4012
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 3.1778,
+    "coins": 2.3722,
+    "kills": 0.1611,
+    "suicides": 0.0778,
+    "coins_share": 0.2636
+   },
+   "mixed_neural": {
+    "score": 2.9389,
+    "coins": 2.2444,
+    "kills": 0.1389,
+    "suicides": 0.1778,
+    "coins_share": 0.2494
+   },
+   "mixed_weak": {
+    "score": 5.3111,
+    "coins": 3.5611,
+    "kills": 0.35,
+    "suicides": 0.2944,
+    "coins_share": 0.396
+   },
+   "noisyrb3": {
+    "score": 7.4889,
+    "coins": 6.85,
+    "kills": 0.1278,
+    "suicides": 0.0889,
+    "coins_share": 0.7752
+   },
+   "rb3": {
+    "score": 3.7556,
+    "coins": 2.8944,
+    "kills": 0.1722,
+    "suicides": 0.3167,
+    "coins_share": 0.322
+   }
+  }
+ },
+ {
+  "run": "ens_m4kctrl_rep",
+  "arm": "M4 continuation CONTROL",
+  "members": "ensemble5",
+  "boards": "report",
+  "mean_over_pools": {
+   "score": 4.5956,
+   "coins": 3.6011,
+   "kills": 0.1989,
+   "suicides": 0.1422,
+   "coins_share": 0.4042
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 3.1611,
+    "coins": 2.4111,
+    "kills": 0.15,
+    "suicides": 0.1278,
+    "coins_share": 0.2681
+   },
+   "mixed_neural": {
+    "score": 3.0611,
+    "coins": 2.2556,
+    "kills": 0.1611,
+    "suicides": 0.1278,
+    "coins_share": 0.2506
+   },
+   "mixed_weak": {
+    "score": 5.0944,
+    "coins": 3.3167,
+    "kills": 0.3556,
+    "suicides": 0.2167,
+    "coins_share": 0.3688
+   },
+   "noisyrb3": {
+    "score": 7.7444,
+    "coins": 6.9111,
+    "kills": 0.1667,
+    "suicides": 0.0389,
+    "coins_share": 0.7874
+   },
+   "rb3": {
+    "score": 3.9167,
+    "coins": 3.1111,
+    "kills": 0.1611,
+    "suicides": 0.2,
+    "coins_share": 0.3461
+   }
+  }
+ },
+ {
+  "run": "ens_m4kctrl_sel",
+  "arm": "ens_m4kctrl_sel",
+  "members": "?",
+  "boards": "?",
+  "mean_over_pools": {
+   "score": 4.6067,
+   "coins": 3.5456,
+   "kills": 0.2122,
+   "suicides": 0.16,
+   "coins_share": 0.3991
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 3.3389,
+    "coins": 2.5333,
+    "kills": 0.1611,
+    "suicides": 0.1,
+    "coins_share": 0.2815
+   },
+   "mixed_neural": {
+    "score": 2.95,
+    "coins": 2.2278,
+    "kills": 0.1444,
+    "suicides": 0.2,
+    "coins_share": 0.2475
+   },
+   "mixed_weak": {
+    "score": 5.2222,
+    "coins": 3.5278,
+    "kills": 0.3389,
+    "suicides": 0.2111,
+    "coins_share": 0.3932
+   },
+   "noisyrb3": {
+    "score": 7.5167,
+    "coins": 6.4611,
+    "kills": 0.2111,
+    "suicides": 0.0889,
+    "coins_share": 0.7414
+   },
+   "rb3": {
+    "score": 4.0056,
+    "coins": 2.9778,
+    "kills": 0.2056,
+    "suicides": 0.2,
+    "coins_share": 0.3317
+   }
+  }
+ },
+ {
+  "run": "ens_m4kd1_rep",
+  "arm": "M4 kill-density D1",
+  "members": "ensemble5",
+  "boards": "report",
+  "mean_over_pools": {
+   "score": 4.62,
+   "coins": 3.5089,
+   "kills": 0.2222,
+   "suicides": 0.2267,
+   "coins_share": 0.3945
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 3.0556,
+    "coins": 2.25,
+    "kills": 0.1611,
+    "suicides": 0.1778,
+    "coins_share": 0.2502
+   },
+   "mixed_neural": {
+    "score": 2.7833,
+    "coins": 2.1722,
+    "kills": 0.1222,
+    "suicides": 0.2222,
+    "coins_share": 0.2414
+   },
+   "mixed_weak": {
+    "score": 5.2667,
+    "coins": 3.4889,
+    "kills": 0.3556,
+    "suicides": 0.3389,
+    "coins_share": 0.3882
+   },
+   "noisyrb3": {
+    "score": 8.0333,
+    "coins": 6.7278,
+    "kills": 0.2611,
+    "suicides": 0.05,
+    "coins_share": 0.7696
+   },
+   "rb3": {
+    "score": 3.9611,
+    "coins": 2.9056,
+    "kills": 0.2111,
+    "suicides": 0.3444,
+    "coins_share": 0.3233
+   }
+  }
+ },
+ {
+  "run": "ens_m4kd1_sel",
+  "arm": "ens_m4kd1_sel",
+  "members": "?",
+  "boards": "?",
+  "mean_over_pools": {
+   "score": 4.4811,
+   "coins": 3.4922,
+   "kills": 0.1978,
+   "suicides": 0.2367,
+   "coins_share": 0.3918
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 2.9,
+    "coins": 2.2889,
+    "kills": 0.1222,
+    "suicides": 0.1333,
+    "coins_share": 0.2543
+   },
+   "mixed_neural": {
+    "score": 2.7944,
+    "coins": 2.1,
+    "kills": 0.1389,
+    "suicides": 0.2778,
+    "coins_share": 0.2333
+   },
+   "mixed_weak": {
+    "score": 5.1167,
+    "coins": 3.3944,
+    "kills": 0.3444,
+    "suicides": 0.3611,
+    "coins_share": 0.3779
+   },
+   "noisyrb3": {
+    "score": 8.0,
+    "coins": 6.7778,
+    "kills": 0.2444,
+    "suicides": 0.0333,
+    "coins_share": 0.7703
+   },
+   "rb3": {
+    "score": 3.5944,
+    "coins": 2.9,
+    "kills": 0.1389,
+    "suicides": 0.3778,
+    "coins_share": 0.323
+   }
+  }
+ },
+ {
+  "run": "ens_m4kd2_rep",
+  "arm": "M4 kill-density D2",
+  "members": "ensemble5",
+  "boards": "report",
+  "mean_over_pools": {
+   "score": 4.7911,
+   "coins": 3.0022,
+   "kills": 0.3578,
+   "suicides": 0.4467,
+   "coins_share": 0.3459
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 3.5778,
+    "coins": 1.7444,
+    "kills": 0.3667,
+    "suicides": 0.3778,
+    "coins_share": 0.1947
+   },
+   "mixed_neural": {
+    "score": 2.6056,
+    "coins": 1.6611,
+    "kills": 0.1889,
+    "suicides": 0.5833,
+    "coins_share": 0.1847
+   },
+   "mixed_weak": {
+    "score": 6.6667,
+    "coins": 3.0,
+    "kills": 0.7333,
+    "suicides": 0.5167,
+    "coins_share": 0.3386
+   },
+   "noisyrb3": {
+    "score": 7.5611,
+    "coins": 6.4222,
+    "kills": 0.2278,
+    "suicides": 0.0667,
+    "coins_share": 0.7669
+   },
+   "rb3": {
+    "score": 3.5444,
+    "coins": 2.1833,
+    "kills": 0.2722,
+    "suicides": 0.6889,
+    "coins_share": 0.2446
+   }
+  }
+ },
+ {
+  "run": "ens_m4kd2_sel",
+  "arm": "ens_m4kd2_sel",
+  "members": "?",
+  "boards": "?",
+  "mean_over_pools": {
+   "score": 4.9478,
+   "coins": 3.0089,
+   "kills": 0.3878,
+   "suicides": 0.4667,
+   "coins_share": 0.3475
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 3.8944,
+    "coins": 1.8111,
+    "kills": 0.4167,
+    "suicides": 0.3944,
+    "coins_share": 0.2019
+   },
+   "mixed_neural": {
+    "score": 2.7611,
+    "coins": 1.6222,
+    "kills": 0.2278,
+    "suicides": 0.5778,
+    "coins_share": 0.1805
+   },
+   "mixed_weak": {
+    "score": 7.2056,
+    "coins": 3.2056,
+    "kills": 0.8,
+    "suicides": 0.4778,
+    "coins_share": 0.3639
+   },
+   "noisyrb3": {
+    "score": 7.6111,
+    "coins": 6.3333,
+    "kills": 0.2556,
+    "suicides": 0.1167,
+    "coins_share": 0.7584
+   },
+   "rb3": {
+    "score": 3.2667,
+    "coins": 2.0722,
+    "kills": 0.2389,
+    "suicides": 0.7667,
+    "coins_share": 0.2331
+   }
+  }
+ },
+ {
+  "run": "ens_oppbc_rep",
+  "arm": "M4 opponents+BC",
+  "members": "ensemble5",
+  "boards": "report",
+  "mean_over_pools": {
+   "score": 4.8933,
+   "coins": 4.1544,
+   "kills": 0.1478,
+   "suicides": 0.0733,
+   "coins_share": 0.4659
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 3.9111,
+    "coins": 3.3556,
+    "kills": 0.1111,
+    "suicides": 0.0556,
+    "coins_share": 0.3728
+   },
+   "mixed_neural": {
+    "score": 2.9944,
+    "coins": 2.8278,
+    "kills": 0.0333,
+    "suicides": 0.0444,
+    "coins_share": 0.3142
+   },
+   "mixed_weak": {
+    "score": 5.5111,
+    "coins": 4.3444,
+    "kills": 0.2333,
+    "suicides": 0.0833,
+    "coins_share": 0.4843
+   },
+   "noisyrb3": {
+    "score": 7.6611,
+    "coins": 6.6333,
+    "kills": 0.2056,
+    "suicides": 0.0444,
+    "coins_share": 0.7559
+   },
+   "rb3": {
+    "score": 4.3889,
+    "coins": 3.6111,
+    "kills": 0.1556,
+    "suicides": 0.1389,
+    "coins_share": 0.4025
+   }
+  }
+ },
+ {
+  "run": "ens_oppbc_sel",
+  "arm": "M4 opponents+BC",
+  "members": "ensemble5",
+  "boards": "selection",
+  "mean_over_pools": {
+   "score": 4.9322,
+   "coins": 4.2933,
+   "kills": 0.1278,
+   "suicides": 0.05,
+   "coins_share": 0.4801
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 3.7111,
+    "coins": 3.2111,
+    "kills": 0.1,
+    "suicides": 0.05,
+    "coins_share": 0.3568
+   },
+   "mixed_neural": {
+    "score": 3.3111,
+    "coins": 2.8944,
+    "kills": 0.0833,
+    "suicides": 0.0278,
+    "coins_share": 0.3216
+   },
+   "mixed_weak": {
+    "score": 5.7611,
+    "coins": 4.4,
+    "kills": 0.2722,
+    "suicides": 0.0778,
+    "coins_share": 0.4898
+   },
+   "noisyrb3": {
+    "score": 7.6944,
+    "coins": 7.1944,
+    "kills": 0.1,
+    "suicides": 0.0167,
+    "coins_share": 0.8136
+   },
+   "rb3": {
+    "score": 4.1833,
+    "coins": 3.7667,
+    "kills": 0.0833,
+    "suicides": 0.0778,
+    "coins_share": 0.4188
+   }
+  }
+ },
+ {
+  "run": "ens_rainbow_rep",
+  "arm": "M3 Rainbow",
+  "members": "ensemble5",
+  "boards": "report",
+  "mean_over_pools": {
+   "score": 5.9056,
+   "coins": 4.1111,
+   "kills": 0.3589,
+   "suicides": 0.1378,
+   "coins_share": 0.4604
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 3.3056,
+    "coins": 3.0278,
+    "kills": 0.0556,
+    "suicides": 0.1167,
+    "coins_share": 0.3364
+   },
+   "mixed_neural": {
+    "score": 3.9444,
+    "coins": 2.7222,
+    "kills": 0.2444,
+    "suicides": 0.15,
+    "coins_share": 0.3025
+   },
+   "mixed_weak": {
+    "score": 6.8056,
+    "coins": 4.0278,
+    "kills": 0.5556,
+    "suicides": 0.1944,
+    "coins_share": 0.4475
+   },
+   "noisyrb3": {
+    "score": 8.05,
+    "coins": 7.0222,
+    "kills": 0.2056,
+    "suicides": 0.0444,
+    "coins_share": 0.7976
+   },
+   "rb3": {
+    "score": 7.4222,
+    "coins": 3.7556,
+    "kills": 0.7333,
+    "suicides": 0.1833,
+    "coins_share": 0.4178
+   }
+  }
+ },
+ {
+  "run": "ens_rainbow_sel",
+  "arm": "M3 Rainbow",
+  "members": "ensemble5",
+  "boards": "selection",
+  "mean_over_pools": {
+   "score": 5.9478,
+   "coins": 4.2256,
+   "kills": 0.3444,
+   "suicides": 0.1311,
+   "coins_share": 0.4729
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 3.45,
+    "coins": 3.1444,
+    "kills": 0.0611,
+    "suicides": 0.0444,
+    "coins_share": 0.3494
+   },
+   "mixed_neural": {
+    "score": 3.6944,
+    "coins": 2.6389,
+    "kills": 0.2111,
+    "suicides": 0.15,
+    "coins_share": 0.2936
+   },
+   "mixed_weak": {
+    "score": 7.5278,
+    "coins": 4.4167,
+    "kills": 0.6222,
+    "suicides": 0.1333,
+    "coins_share": 0.4907
+   },
+   "noisyrb3": {
+    "score": 7.9111,
+    "coins": 6.9667,
+    "kills": 0.1889,
+    "suicides": 0.0444,
+    "coins_share": 0.79
+   },
+   "rb3": {
+    "score": 7.1556,
+    "coins": 3.9611,
+    "kills": 0.6389,
+    "suicides": 0.2833,
+    "coins_share": 0.4407
+   }
+  }
+ },
+ {
+  "run": "enscurve_k2_a",
+  "arm": "enscurve_k2_a",
+  "members": "?",
+  "boards": "?",
+  "mean_over_pools": {
+   "score": 5.8778,
+   "coins": 4.0167,
+   "kills": 0.3722,
+   "suicides": 0.1511,
+   "coins_share": 0.4573
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 3.3722,
+    "coins": 2.9556,
+    "kills": 0.0833,
+    "suicides": 0.1222,
+    "coins_share": 0.3284
+   },
+   "mixed_neural": {
+    "score": 3.4,
+    "coins": 2.65,
+    "kills": 0.15,
+    "suicides": 0.1833,
+    "coins_share": 0.2944
+   },
+   "mixed_weak": {
+    "score": 7.1,
+    "coins": 4.4056,
+    "kills": 0.5389,
+    "suicides": 0.1667,
+    "coins_share": 0.4908
+   },
+   "noisyrb3": {
+    "score": 7.4389,
+    "coins": 6.4944,
+    "kills": 0.1889,
+    "suicides": 0.0556,
+    "coins_share": 0.7754
+   },
+   "rb3": {
+    "score": 8.0778,
+    "coins": 3.5778,
+    "kills": 0.9,
+    "suicides": 0.2278,
+    "coins_share": 0.3975
+   }
+  }
+ },
+ {
+  "run": "enscurve_k2_b",
+  "arm": "enscurve_k2_b",
+  "members": "?",
+  "boards": "?",
+  "mean_over_pools": {
+   "score": 5.0411,
+   "coins": 3.88,
+   "kills": 0.2322,
+   "suicides": 0.1533,
+   "coins_share": 0.4512
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 3.1167,
+    "coins": 2.9222,
+    "kills": 0.0389,
+    "suicides": 0.1056,
+    "coins_share": 0.3247
+   },
+   "mixed_neural": {
+    "score": 3.2611,
+    "coins": 2.5944,
+    "kills": 0.1333,
+    "suicides": 0.1722,
+    "coins_share": 0.2883
+   },
+   "mixed_weak": {
+    "score": 6.4944,
+    "coins": 4.1056,
+    "kills": 0.4778,
+    "suicides": 0.2222,
+    "coins_share": 0.46
+   },
+   "noisyrb3": {
+    "score": 6.9333,
+    "coins": 6.1833,
+    "kills": 0.15,
+    "suicides": 0.0667,
+    "coins_share": 0.7831
+   },
+   "rb3": {
+    "score": 5.4,
+    "coins": 3.5944,
+    "kills": 0.3611,
+    "suicides": 0.2,
+    "coins_share": 0.4001
+   }
+  }
+ },
+ {
+  "run": "enscurve_k2_c",
+  "arm": "enscurve_k2_c",
+  "members": "?",
+  "boards": "?",
+  "mean_over_pools": {
+   "score": 5.8611,
+   "coins": 3.9222,
+   "kills": 0.3878,
+   "suicides": 0.1467,
+   "coins_share": 0.4554
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 3.6444,
+    "coins": 3.0889,
+    "kills": 0.1111,
+    "suicides": 0.1056,
+    "coins_share": 0.3432
+   },
+   "mixed_neural": {
+    "score": 3.4278,
+    "coins": 2.5667,
+    "kills": 0.1722,
+    "suicides": 0.1278,
+    "coins_share": 0.2852
+   },
+   "mixed_weak": {
+    "score": 7.5833,
+    "coins": 4.3056,
+    "kills": 0.6556,
+    "suicides": 0.2056,
+    "coins_share": 0.4792
+   },
+   "noisyrb3": {
+    "score": 6.7667,
+    "coins": 5.9889,
+    "kills": 0.1556,
+    "suicides": 0.0556,
+    "coins_share": 0.7625
+   },
+   "rb3": {
+    "score": 7.8833,
+    "coins": 3.6611,
+    "kills": 0.8444,
+    "suicides": 0.2389,
+    "coins_share": 0.4071
+   }
+  }
+ },
+ {
+  "run": "enscurve_k3_a",
+  "arm": "enscurve_k3_a",
+  "members": "?",
+  "boards": "?",
+  "mean_over_pools": {
+   "score": 5.8433,
+   "coins": 4.1211,
+   "kills": 0.3444,
+   "suicides": 0.1467,
+   "coins_share": 0.4632
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 3.4889,
+    "coins": 3.0167,
+    "kills": 0.0944,
+    "suicides": 0.0667,
+    "coins_share": 0.3352
+   },
+   "mixed_neural": {
+    "score": 3.45,
+    "coins": 2.6444,
+    "kills": 0.1611,
+    "suicides": 0.1556,
+    "coins_share": 0.2938
+   },
+   "mixed_weak": {
+    "score": 7.1222,
+    "coins": 4.4,
+    "kills": 0.5444,
+    "suicides": 0.1944,
+    "coins_share": 0.4889
+   },
+   "noisyrb3": {
+    "score": 7.5222,
+    "coins": 6.6333,
+    "kills": 0.1778,
+    "suicides": 0.1056,
+    "coins_share": 0.7623
+   },
+   "rb3": {
+    "score": 7.6333,
+    "coins": 3.9111,
+    "kills": 0.7444,
+    "suicides": 0.2111,
+    "coins_share": 0.4359
+   }
+  }
+ },
+ {
+  "run": "enscurve_k3_b",
+  "arm": "enscurve_k3_b",
+  "members": "?",
+  "boards": "?",
+  "mean_over_pools": {
+   "score": 6.5267,
+   "coins": 4.1322,
+   "kills": 0.4789,
+   "suicides": 0.1356,
+   "coins_share": 0.4669
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 3.8889,
+    "coins": 3.1667,
+    "kills": 0.1444,
+    "suicides": 0.1278,
+    "coins_share": 0.3519
+   },
+   "mixed_neural": {
+    "score": 4.2056,
+    "coins": 2.7333,
+    "kills": 0.2944,
+    "suicides": 0.15,
+    "coins_share": 0.3037
+   },
+   "mixed_weak": {
+    "score": 7.7556,
+    "coins": 4.3111,
+    "kills": 0.6889,
+    "suicides": 0.1222,
+    "coins_share": 0.4799
+   },
+   "noisyrb3": {
+    "score": 8.1333,
+    "coins": 6.9111,
+    "kills": 0.2444,
+    "suicides": 0.0333,
+    "coins_share": 0.8053
+   },
+   "rb3": {
+    "score": 8.65,
+    "coins": 3.5389,
+    "kills": 1.0222,
+    "suicides": 0.2444,
+    "coins_share": 0.3935
+   }
+  }
+ },
+ {
+  "run": "enscurve_k3_c",
+  "arm": "enscurve_k3_c",
+  "members": "?",
+  "boards": "?",
+  "mean_over_pools": {
+   "score": 5.9133,
+   "coins": 4.0744,
+   "kills": 0.3678,
+   "suicides": 0.1489,
+   "coins_share": 0.461
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 3.5,
+    "coins": 2.9722,
+    "kills": 0.1056,
+    "suicides": 0.1333,
+    "coins_share": 0.3302
+   },
+   "mixed_neural": {
+    "score": 3.55,
+    "coins": 2.6611,
+    "kills": 0.1778,
+    "suicides": 0.1333,
+    "coins_share": 0.2957
+   },
+   "mixed_weak": {
+    "score": 7.2111,
+    "coins": 4.3222,
+    "kills": 0.5778,
+    "suicides": 0.1722,
+    "coins_share": 0.4823
+   },
+   "noisyrb3": {
+    "score": 7.7778,
+    "coins": 6.75,
+    "kills": 0.2056,
+    "suicides": 0.05,
+    "coins_share": 0.7893
+   },
+   "rb3": {
+    "score": 7.5278,
+    "coins": 3.6667,
+    "kills": 0.7722,
+    "suicides": 0.2556,
+    "coins_share": 0.4077
+   }
+  }
+ },
+ {
+  "run": "enscurve_k4_a",
+  "arm": "enscurve_k4_a",
+  "members": "?",
+  "boards": "?",
+  "mean_over_pools": {
+   "score": 6.0667,
+   "coins": 4.2222,
+   "kills": 0.3689,
+   "suicides": 0.1533,
+   "coins_share": 0.4747
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 3.4333,
+    "coins": 3.0444,
+    "kills": 0.0778,
+    "suicides": 0.1111,
+    "coins_share": 0.3383
+   },
+   "mixed_neural": {
+    "score": 3.6167,
+    "coins": 2.95,
+    "kills": 0.1333,
+    "suicides": 0.1722,
+    "coins_share": 0.3278
+   },
+   "mixed_weak": {
+    "score": 7.2722,
+    "coins": 4.3,
+    "kills": 0.5944,
+    "suicides": 0.2278,
+    "coins_share": 0.4789
+   },
+   "noisyrb3": {
+    "score": 8.1056,
+    "coins": 6.9667,
+    "kills": 0.2278,
+    "suicides": 0.0389,
+    "coins_share": 0.8008
+   },
+   "rb3": {
+    "score": 7.9056,
+    "coins": 3.85,
+    "kills": 0.8111,
+    "suicides": 0.2167,
+    "coins_share": 0.4278
+   }
+  }
+ },
+ {
+  "run": "enscurve_k4_b",
+  "arm": "M3 Rainbow, SUBMITTED (drop seed 1001)",
+  "members": "ensemble4",
+  "boards": "report",
+  "mean_over_pools": {
+   "score": 6.2478,
+   "coins": 4.1089,
+   "kills": 0.4278,
+   "suicides": 0.1289,
+   "coins_share": 0.4651
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 3.6333,
+    "coins": 3.1333,
+    "kills": 0.1,
+    "suicides": 0.0778,
+    "coins_share": 0.3481
+   },
+   "mixed_neural": {
+    "score": 3.9778,
+    "coins": 2.7556,
+    "kills": 0.2444,
+    "suicides": 0.1556,
+    "coins_share": 0.3062
+   },
+   "mixed_weak": {
+    "score": 7.6056,
+    "coins": 4.2722,
+    "kills": 0.6667,
+    "suicides": 0.1556,
+    "coins_share": 0.4756
+   },
+   "noisyrb3": {
+    "score": 7.5833,
+    "coins": 6.7222,
+    "kills": 0.1722,
+    "suicides": 0.0333,
+    "coins_share": 0.7886
+   },
+   "rb3": {
+    "score": 8.4389,
+    "coins": 3.6611,
+    "kills": 0.9556,
+    "suicides": 0.2222,
+    "coins_share": 0.407
+   }
+  }
+ },
+ {
+  "run": "enscurve_k4_c",
+  "arm": "enscurve_k4_c",
+  "members": "?",
+  "boards": "?",
+  "mean_over_pools": {
+   "score": 5.8689,
+   "coins": 4.1133,
+   "kills": 0.3511,
+   "suicides": 0.1378,
+   "coins_share": 0.4632
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 3.4056,
+    "coins": 2.9333,
+    "kills": 0.0944,
+    "suicides": 0.0944,
+    "coins_share": 0.3259
+   },
+   "mixed_neural": {
+    "score": 4.1,
+    "coins": 2.8222,
+    "kills": 0.2556,
+    "suicides": 0.1333,
+    "coins_share": 0.3136
+   },
+   "mixed_weak": {
+    "score": 6.85,
+    "coins": 4.2944,
+    "kills": 0.5111,
+    "suicides": 0.2167,
+    "coins_share": 0.4778
+   },
+   "noisyrb3": {
+    "score": 7.8167,
+    "coins": 6.9278,
+    "kills": 0.1778,
+    "suicides": 0.05,
+    "coins_share": 0.8001
+   },
+   "rb3": {
+    "score": 7.1722,
+    "coins": 3.5889,
+    "kills": 0.7167,
+    "suicides": 0.1944,
+    "coins_share": 0.3988
+   }
+  }
+ },
+ {
+  "run": "loo_drop1001_sel",
+  "arm": "M3 Rainbow, SUBMITTED (drop seed 1001)",
+  "members": "ensemble4",
+  "boards": "selection",
+  "mean_over_pools": {
+   "score": 6.3611,
+   "coins": 4.1667,
+   "kills": 0.4389,
+   "suicides": 0.1333,
+   "coins_share": 0.4688
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 3.8444,
+    "coins": 3.0667,
+    "kills": 0.1556,
+    "suicides": 0.0611,
+    "coins_share": 0.3407
+   },
+   "mixed_neural": {
+    "score": 3.8889,
+    "coins": 2.6667,
+    "kills": 0.2444,
+    "suicides": 0.1889,
+    "coins_share": 0.2963
+   },
+   "mixed_weak": {
+    "score": 8.2056,
+    "coins": 4.6222,
+    "kills": 0.7167,
+    "suicides": 0.1278,
+    "coins_share": 0.5136
+   },
+   "noisyrb3": {
+    "score": 7.6944,
+    "coins": 6.6944,
+    "kills": 0.2,
+    "suicides": 0.0389,
+    "coins_share": 0.7725
+   },
+   "rb3": {
+    "score": 8.1722,
+    "coins": 3.7833,
+    "kills": 0.8778,
+    "suicides": 0.25,
+    "coins_share": 0.4206
+   }
+  }
+ },
+ {
+  "run": "loo_drop1002_sel",
+  "arm": "loo_drop1002_sel",
+  "members": "?",
+  "boards": "?",
+  "mean_over_pools": {
+   "score": 5.7522,
+   "coins": 4.1467,
+   "kills": 0.3211,
+   "suicides": 0.1122,
+   "coins_share": 0.4658
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 3.4167,
+    "coins": 3.0833,
+    "kills": 0.0667,
+    "suicides": 0.0889,
+    "coins_share": 0.3426
+   },
+   "mixed_neural": {
+    "score": 3.3222,
+    "coins": 2.6278,
+    "kills": 0.1389,
+    "suicides": 0.1222,
+    "coins_share": 0.292
+   },
+   "mixed_weak": {
+    "score": 7.3111,
+    "coins": 4.4222,
+    "kills": 0.5778,
+    "suicides": 0.1778,
+    "coins_share": 0.4925
+   },
+   "noisyrb3": {
+    "score": 8.0167,
+    "coins": 7.0444,
+    "kills": 0.1944,
+    "suicides": 0.0167,
+    "coins_share": 0.8067
+   },
+   "rb3": {
+    "score": 6.6944,
+    "coins": 3.5556,
+    "kills": 0.6278,
+    "suicides": 0.1556,
+    "coins_share": 0.3953
+   }
+  }
+ },
+ {
+  "run": "loo_drop1003_rep",
+  "arm": "loo_drop1003_rep",
+  "members": "?",
+  "boards": "?",
+  "mean_over_pools": {
+   "score": 6.33,
+   "coins": 4.2133,
+   "kills": 0.4233,
+   "suicides": 0.1078,
+   "coins_share": 0.4729
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 3.3778,
+    "coins": 3.0722,
+    "kills": 0.0611,
+    "suicides": 0.0611,
+    "coins_share": 0.3414
+   },
+   "mixed_neural": {
+    "score": 4.2333,
+    "coins": 2.7611,
+    "kills": 0.2944,
+    "suicides": 0.15,
+    "coins_share": 0.3068
+   },
+   "mixed_weak": {
+    "score": 7.5889,
+    "coins": 4.3389,
+    "kills": 0.65,
+    "suicides": 0.1167,
+    "coins_share": 0.4821
+   },
+   "noisyrb3": {
+    "score": 7.9833,
+    "coins": 7.0389,
+    "kills": 0.1889,
+    "suicides": 0.0056,
+    "coins_share": 0.8056
+   },
+   "rb3": {
+    "score": 8.4667,
+    "coins": 3.8556,
+    "kills": 0.9222,
+    "suicides": 0.2056,
+    "coins_share": 0.4284
+   }
+  }
+ },
+ {
+  "run": "loo_drop1003_sel",
+  "arm": "loo_drop1003_sel",
+  "members": "?",
+  "boards": "?",
+  "mean_over_pools": {
+   "score": 6.0789,
+   "coins": 4.1122,
+   "kills": 0.3933,
+   "suicides": 0.1389,
+   "coins_share": 0.4608
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 3.4722,
+    "coins": 3.1111,
+    "kills": 0.0722,
+    "suicides": 0.1,
+    "coins_share": 0.3457
+   },
+   "mixed_neural": {
+    "score": 3.7222,
+    "coins": 2.6111,
+    "kills": 0.2222,
+    "suicides": 0.15,
+    "coins_share": 0.2901
+   },
+   "mixed_weak": {
+    "score": 7.35,
+    "coins": 4.2389,
+    "kills": 0.6222,
+    "suicides": 0.1944,
+    "coins_share": 0.471
+   },
+   "noisyrb3": {
+    "score": 7.9,
+    "coins": 6.9278,
+    "kills": 0.1944,
+    "suicides": 0.0278,
+    "coins_share": 0.789
+   },
+   "rb3": {
+    "score": 7.95,
+    "coins": 3.6722,
+    "kills": 0.8556,
+    "suicides": 0.2222,
+    "coins_share": 0.4083
+   }
+  }
+ },
+ {
+  "run": "loo_drop1004_rep",
+  "arm": "loo_drop1004_rep",
+  "members": "?",
+  "boards": "?",
+  "mean_over_pools": {
+   "score": 5.8378,
+   "coins": 4.1933,
+   "kills": 0.3289,
+   "suicides": 0.1567,
+   "coins_share": 0.4693
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 3.5833,
+    "coins": 3.1389,
+    "kills": 0.0889,
+    "suicides": 0.0778,
+    "coins_share": 0.3488
+   },
+   "mixed_neural": {
+    "score": 3.3722,
+    "coins": 2.7333,
+    "kills": 0.1278,
+    "suicides": 0.1722,
+    "coins_share": 0.3043
+   },
+   "mixed_weak": {
+    "score": 6.7444,
+    "coins": 4.1889,
+    "kills": 0.5111,
+    "suicides": 0.25,
+    "coins_share": 0.466
+   },
+   "noisyrb3": {
+    "score": 8.0333,
+    "coins": 7.0333,
+    "kills": 0.2,
+    "suicides": 0.05,
+    "coins_share": 0.7972
+   },
+   "rb3": {
+    "score": 7.4556,
+    "coins": 3.8722,
+    "kills": 0.7167,
+    "suicides": 0.2333,
+    "coins_share": 0.4302
+   }
+  }
+ },
+ {
+  "run": "loo_drop1004_sel",
+  "arm": "loo_drop1004_sel",
+  "members": "?",
+  "boards": "?",
+  "mean_over_pools": {
+   "score": 6.0567,
+   "coins": 4.2289,
+   "kills": 0.3656,
+   "suicides": 0.14,
+   "coins_share": 0.472
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 3.4667,
+    "coins": 3.1056,
+    "kills": 0.0722,
+    "suicides": 0.0556,
+    "coins_share": 0.3451
+   },
+   "mixed_neural": {
+    "score": 3.6333,
+    "coins": 2.7444,
+    "kills": 0.1778,
+    "suicides": 0.1778,
+    "coins_share": 0.3049
+   },
+   "mixed_weak": {
+    "score": 7.2889,
+    "coins": 4.3722,
+    "kills": 0.5833,
+    "suicides": 0.2278,
+    "coins_share": 0.4874
+   },
+   "noisyrb3": {
+    "score": 8.3056,
+    "coins": 7.0556,
+    "kills": 0.25,
+    "suicides": 0.0056,
+    "coins_share": 0.7927
+   },
+   "rb3": {
+    "score": 7.5889,
+    "coins": 3.8667,
+    "kills": 0.7444,
+    "suicides": 0.2333,
+    "coins_share": 0.4296
+   }
+  }
+ },
+ {
+  "run": "loo_drop1005_sel",
+  "arm": "loo_drop1005_sel",
+  "members": "?",
+  "boards": "?",
+  "mean_over_pools": {
+   "score": 5.97,
+   "coins": 4.2256,
+   "kills": 0.3489,
+   "suicides": 0.1456,
+   "coins_share": 0.473
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 3.5889,
+    "coins": 3.1444,
+    "kills": 0.0889,
+    "suicides": 0.0778,
+    "coins_share": 0.3494
+   },
+   "mixed_neural": {
+    "score": 3.3611,
+    "coins": 2.7778,
+    "kills": 0.1167,
+    "suicides": 0.1889,
+    "coins_share": 0.3086
+   },
+   "mixed_weak": {
+    "score": 7.0833,
+    "coins": 4.3056,
+    "kills": 0.5556,
+    "suicides": 0.2167,
+    "coins_share": 0.4786
+   },
+   "noisyrb3": {
+    "score": 7.9333,
+    "coins": 6.8778,
+    "kills": 0.2111,
+    "suicides": 0.0444,
+    "coins_share": 0.7816
+   },
+   "rb3": {
+    "score": 7.8833,
+    "coins": 4.0222,
+    "kills": 0.7722,
+    "suicides": 0.2,
+    "coins_share": 0.4469
+   }
+  }
+ },
+ {
+  "run": "pool_eps0_latest",
+  "arm": "M3 epsilon-0",
+  "members": "single",
+  "boards": "selection",
+  "mean_over_pools": {
+   "score": 4.2622,
+   "coins": 3.6944,
+   "kills": 0.1136,
+   "suicides": 0.2489,
+   "coins_share": 0.4303
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 3.0611,
+    "coins": 2.7389,
+    "kills": 0.0644,
+    "suicides": 0.2189,
+    "coins_share": 0.3044
+   },
+   "mixed_neural": {
+    "score": 2.6989,
+    "coins": 2.5044,
+    "kills": 0.0389,
+    "suicides": 0.1856,
+    "coins_share": 0.2783
+   },
+   "mixed_weak": {
+    "score": 5.1078,
+    "coins": 3.9133,
+    "kills": 0.2389,
+    "suicides": 0.3056,
+    "coins_share": 0.4362
+   },
+   "noisyrb3": {
+    "score": 6.6156,
+    "coins": 5.9989,
+    "kills": 0.1233,
+    "suicides": 0.2567,
+    "coins_share": 0.7628
+   },
+   "rb3": {
+    "score": 3.8278,
+    "coins": 3.3167,
+    "kills": 0.1022,
+    "suicides": 0.2778,
+    "coins_share": 0.3696
+   }
+  }
+ },
+ {
+  "run": "pool_hybrid_r15000",
+  "arm": "M4 hybrid representation R09",
+  "members": "single",
+  "boards": "selection",
+  "mean_over_pools": {
+   "score": 3.096,
+   "coins": 2.5849,
+   "kills": 0.1022,
+   "suicides": 0.5476,
+   "coins_share": 0.3141
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 2.2311,
+    "coins": 1.7978,
+    "kills": 0.0867,
+    "suicides": 0.47,
+    "coins_share": 0.2
+   },
+   "mixed_neural": {
+    "score": 1.8933,
+    "coins": 1.5656,
+    "kills": 0.0656,
+    "suicides": 0.5844,
+    "coins_share": 0.174
+   },
+   "mixed_weak": {
+    "score": 3.2178,
+    "coins": 2.4122,
+    "kills": 0.1611,
+    "suicides": 0.6433,
+    "coins_share": 0.2709
+   },
+   "noisyrb3": {
+    "score": 5.6644,
+    "coins": 5.1811,
+    "kills": 0.0967,
+    "suicides": 0.3544,
+    "coins_share": 0.706
+   },
+   "rb3": {
+    "score": 2.4733,
+    "coins": 1.9678,
+    "kills": 0.1011,
+    "suicides": 0.6856,
+    "coins_share": 0.2197
+   }
+  }
+ },
+ {
+  "run": "pool_m3kc1_rep",
+  "arm": "M3 Rainbow kill-density C1 (CONTROL)",
+  "members": "single",
+  "boards": "report",
+  "mean_over_pools": {
+   "score": 3.8516,
+   "coins": 3.0749,
+   "kills": 0.1553,
+   "suicides": 0.4404,
+   "coins_share": 0.3719
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 2.9467,
+    "coins": 2.3411,
+    "kills": 0.1211,
+    "suicides": 0.3989,
+    "coins_share": 0.2603
+   },
+   "mixed_neural": {
+    "score": 2.5733,
+    "coins": 2.0622,
+    "kills": 0.1022,
+    "suicides": 0.43,
+    "coins_share": 0.2294
+   },
+   "mixed_weak": {
+    "score": 4.75,
+    "coins": 3.3111,
+    "kills": 0.2878,
+    "suicides": 0.5189,
+    "coins_share": 0.3694
+   },
+   "noisyrb3": {
+    "score": 5.6111,
+    "coins": 4.9389,
+    "kills": 0.1344,
+    "suicides": 0.3244,
+    "coins_share": 0.6972
+   },
+   "rb3": {
+    "score": 3.3767,
+    "coins": 2.7211,
+    "kills": 0.1311,
+    "suicides": 0.53,
+    "coins_share": 0.3032
+   }
+  }
+ },
+ {
+  "run": "pool_m3kc1_sel",
+  "arm": "pool_m3kc1_sel",
+  "members": "?",
+  "boards": "?",
+  "mean_over_pools": {
+   "score": 3.8173,
+   "coins": 3.0384,
+   "kills": 0.1558,
+   "suicides": 0.4478,
+   "coins_share": 0.3711
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 2.9711,
+    "coins": 2.2878,
+    "kills": 0.1367,
+    "suicides": 0.4133,
+    "coins_share": 0.2544
+   },
+   "mixed_neural": {
+    "score": 2.4089,
+    "coins": 1.9478,
+    "kills": 0.0922,
+    "suicides": 0.4122,
+    "coins_share": 0.2165
+   },
+   "mixed_weak": {
+    "score": 4.6933,
+    "coins": 3.2989,
+    "kills": 0.2789,
+    "suicides": 0.5267,
+    "coins_share": 0.3691
+   },
+   "noisyrb3": {
+    "score": 5.5433,
+    "coins": 4.9267,
+    "kills": 0.1233,
+    "suicides": 0.3622,
+    "coins_share": 0.7113
+   },
+   "rb3": {
+    "score": 3.47,
+    "coins": 2.7311,
+    "kills": 0.1478,
+    "suicides": 0.5244,
+    "coins_share": 0.3044
+   }
+  }
+ },
+ {
+  "run": "pool_m3kd1_rep",
+  "arm": "M3 Rainbow kill-density D1",
+  "members": "single",
+  "boards": "report",
+  "mean_over_pools": {
+   "score": 3.9558,
+   "coins": 3.118,
+   "kills": 0.1676,
+   "suicides": 0.3371,
+   "coins_share": 0.3745
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 2.9033,
+    "coins": 2.1644,
+    "kills": 0.1478,
+    "suicides": 0.3178,
+    "coins_share": 0.2408
+   },
+   "mixed_neural": {
+    "score": 2.46,
+    "coins": 2.0322,
+    "kills": 0.0856,
+    "suicides": 0.3878,
+    "coins_share": 0.2259
+   },
+   "mixed_weak": {
+    "score": 4.8611,
+    "coins": 3.2722,
+    "kills": 0.3178,
+    "suicides": 0.3344,
+    "coins_share": 0.3655
+   },
+   "noisyrb3": {
+    "score": 6.0389,
+    "coins": 5.4333,
+    "kills": 0.1211,
+    "suicides": 0.2722,
+    "coins_share": 0.7409
+   },
+   "rb3": {
+    "score": 3.5156,
+    "coins": 2.6878,
+    "kills": 0.1656,
+    "suicides": 0.3733,
+    "coins_share": 0.2993
+   }
+  }
+ },
+ {
+  "run": "pool_m3kd1_sel",
+  "arm": "pool_m3kd1_sel",
+  "members": "?",
+  "boards": "?",
+  "mean_over_pools": {
+   "score": 3.9338,
+   "coins": 3.1016,
+   "kills": 0.1664,
+   "suicides": 0.3429,
+   "coins_share": 0.3728
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 2.8256,
+    "coins": 2.1978,
+    "kills": 0.1256,
+    "suicides": 0.2956,
+    "coins_share": 0.2444
+   },
+   "mixed_neural": {
+    "score": 2.53,
+    "coins": 2.0411,
+    "kills": 0.0978,
+    "suicides": 0.3989,
+    "coins_share": 0.2269
+   },
+   "mixed_weak": {
+    "score": 4.6856,
+    "coins": 3.2467,
+    "kills": 0.2878,
+    "suicides": 0.3578,
+    "coins_share": 0.3626
+   },
+   "noisyrb3": {
+    "score": 6.0667,
+    "coins": 5.3667,
+    "kills": 0.14,
+    "suicides": 0.2933,
+    "coins_share": 0.7341
+   },
+   "rb3": {
+    "score": 3.5611,
+    "coins": 2.6556,
+    "kills": 0.1811,
+    "suicides": 0.3689,
+    "coins_share": 0.2959
+   }
+  }
+ },
+ {
+  "run": "pool_m4kc1_rep",
+  "arm": "M4 kill-density C1 (rb+2 evader, CONTROL)",
+  "members": "single",
+  "boards": "report",
+  "mean_over_pools": {
+   "score": 4.0373,
+   "coins": 3.2107,
+   "kills": 0.1653,
+   "suicides": 0.3618,
+   "coins_share": 0.3687
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 2.6067,
+    "coins": 2.09,
+    "kills": 0.1033,
+    "suicides": 0.2633,
+    "coins_share": 0.2324
+   },
+   "mixed_neural": {
+    "score": 2.5056,
+    "coins": 1.9722,
+    "kills": 0.1067,
+    "suicides": 0.4867,
+    "coins_share": 0.2192
+   },
+   "mixed_weak": {
+    "score": 4.7444,
+    "coins": 3.2556,
+    "kills": 0.2978,
+    "suicides": 0.4278,
+    "coins_share": 0.3639
+   },
+   "noisyrb3": {
+    "score": 6.9867,
+    "coins": 6.2256,
+    "kills": 0.1522,
+    "suicides": 0.1044,
+    "coins_share": 0.7476
+   },
+   "rb3": {
+    "score": 3.3433,
+    "coins": 2.51,
+    "kills": 0.1667,
+    "suicides": 0.5267,
+    "coins_share": 0.2806
+   }
+  }
+ },
+ {
+  "run": "pool_m4kc1_sel",
+  "arm": "pool_m4kc1_sel",
+  "members": "?",
+  "boards": "?",
+  "mean_over_pools": {
+   "score": 4.0742,
+   "coins": 3.1864,
+   "kills": 0.1776,
+   "suicides": 0.3607,
+   "coins_share": 0.3665
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 2.75,
+    "coins": 2.1778,
+    "kills": 0.1144,
+    "suicides": 0.2278,
+    "coins_share": 0.242
+   },
+   "mixed_neural": {
+    "score": 2.5078,
+    "coins": 1.8689,
+    "kills": 0.1278,
+    "suicides": 0.4789,
+    "coins_share": 0.2077
+   },
+   "mixed_weak": {
+    "score": 4.6311,
+    "coins": 3.1144,
+    "kills": 0.3033,
+    "suicides": 0.45,
+    "coins_share": 0.3487
+   },
+   "noisyrb3": {
+    "score": 6.9489,
+    "coins": 6.1656,
+    "kills": 0.1567,
+    "suicides": 0.1167,
+    "coins_share": 0.7433
+   },
+   "rb3": {
+    "score": 3.5333,
+    "coins": 2.6056,
+    "kills": 0.1856,
+    "suicides": 0.53,
+    "coins_share": 0.2906
+   }
+  }
+ },
+ {
+  "run": "pool_m4kcont_rep",
+  "arm": "M4 continuation on a kill-dense table",
+  "members": "single",
+  "boards": "report",
+  "mean_over_pools": {
+   "score": 3.9938,
+   "coins": 3.1671,
+   "kills": 0.1653,
+   "suicides": 0.3489,
+   "coins_share": 0.3631
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 2.6833,
+    "coins": 2.1611,
+    "kills": 0.1044,
+    "suicides": 0.2589,
+    "coins_share": 0.2401
+   },
+   "mixed_neural": {
+    "score": 2.4844,
+    "coins": 1.9178,
+    "kills": 0.1133,
+    "suicides": 0.39,
+    "coins_share": 0.2132
+   },
+   "mixed_weak": {
+    "score": 4.5378,
+    "coins": 3.0933,
+    "kills": 0.2889,
+    "suicides": 0.4344,
+    "coins_share": 0.3456
+   },
+   "noisyrb3": {
+    "score": 7.1033,
+    "coins": 6.2033,
+    "kills": 0.18,
+    "suicides": 0.1233,
+    "coins_share": 0.7419
+   },
+   "rb3": {
+    "score": 3.16,
+    "coins": 2.46,
+    "kills": 0.14,
+    "suicides": 0.5378,
+    "coins_share": 0.2745
+   }
+  }
+ },
+ {
+  "run": "pool_m4kcont_sel",
+  "arm": "pool_m4kcont_sel",
+  "members": "?",
+  "boards": "?",
+  "mean_over_pools": {
+   "score": 4.0171,
+   "coins": 3.2027,
+   "kills": 0.1629,
+   "suicides": 0.3349,
+   "coins_share": 0.3678
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 2.7222,
+    "coins": 2.1556,
+    "kills": 0.1133,
+    "suicides": 0.2411,
+    "coins_share": 0.2396
+   },
+   "mixed_neural": {
+    "score": 2.4544,
+    "coins": 1.91,
+    "kills": 0.1089,
+    "suicides": 0.38,
+    "coins_share": 0.2123
+   },
+   "mixed_weak": {
+    "score": 4.6056,
+    "coins": 3.1389,
+    "kills": 0.2933,
+    "suicides": 0.4144,
+    "coins_share": 0.3507
+   },
+   "noisyrb3": {
+    "score": 7.09,
+    "coins": 6.3011,
+    "kills": 0.1578,
+    "suicides": 0.1378,
+    "coins_share": 0.7567
+   },
+   "rb3": {
+    "score": 3.2133,
+    "coins": 2.5078,
+    "kills": 0.1411,
+    "suicides": 0.5011,
+    "coins_share": 0.2795
+   }
+  }
+ },
+ {
+  "run": "pool_m4kctrl_rep",
+  "arm": "M4 continuation, seam CONTROL",
+  "members": "single",
+  "boards": "report",
+  "mean_over_pools": {
+   "score": 3.9684,
+   "coins": 3.1929,
+   "kills": 0.1551,
+   "suicides": 0.3384,
+   "coins_share": 0.3673
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 2.7344,
+    "coins": 2.1011,
+    "kills": 0.1267,
+    "suicides": 0.27,
+    "coins_share": 0.2336
+   },
+   "mixed_neural": {
+    "score": 2.5544,
+    "coins": 1.8933,
+    "kills": 0.1322,
+    "suicides": 0.3978,
+    "coins_share": 0.2105
+   },
+   "mixed_weak": {
+    "score": 4.4411,
+    "coins": 3.1967,
+    "kills": 0.2489,
+    "suicides": 0.43,
+    "coins_share": 0.3571
+   },
+   "noisyrb3": {
+    "score": 6.8744,
+    "coins": 6.1689,
+    "kills": 0.1411,
+    "suicides": 0.1244,
+    "coins_share": 0.7451
+   },
+   "rb3": {
+    "score": 3.2378,
+    "coins": 2.6044,
+    "kills": 0.1267,
+    "suicides": 0.47,
+    "coins_share": 0.2902
+   }
+  }
+ },
+ {
+  "run": "pool_m4kctrl_sel",
+  "arm": "pool_m4kctrl_sel",
+  "members": "?",
+  "boards": "?",
+  "mean_over_pools": {
+   "score": 3.9058,
+   "coins": 3.1302,
+   "kills": 0.1551,
+   "suicides": 0.3267,
+   "coins_share": 0.3613
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 2.6433,
+    "coins": 2.1378,
+    "kills": 0.1011,
+    "suicides": 0.2333,
+    "coins_share": 0.2377
+   },
+   "mixed_neural": {
+    "score": 2.4756,
+    "coins": 1.8422,
+    "kills": 0.1267,
+    "suicides": 0.3956,
+    "coins_share": 0.2048
+   },
+   "mixed_weak": {
+    "score": 4.3222,
+    "coins": 3.1056,
+    "kills": 0.2433,
+    "suicides": 0.4067,
+    "coins_share": 0.3471
+   },
+   "noisyrb3": {
+    "score": 6.8389,
+    "coins": 6.0111,
+    "kills": 0.1656,
+    "suicides": 0.1256,
+    "coins_share": 0.7322
+   },
+   "rb3": {
+    "score": 3.2489,
+    "coins": 2.5544,
+    "kills": 0.1389,
+    "suicides": 0.4722,
+    "coins_share": 0.2848
+   }
+  }
+ },
+ {
+  "run": "pool_m4kd1_rep",
+  "arm": "M4 kill-density D1 (rb+2 peaceful)",
+  "members": "single",
+  "boards": "report",
+  "mean_over_pools": {
+   "score": 3.9364,
+   "coins": 3.1009,
+   "kills": 0.1671,
+   "suicides": 0.3496,
+   "coins_share": 0.3583
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 2.6444,
+    "coins": 2.0889,
+    "kills": 0.1111,
+    "suicides": 0.2533,
+    "coins_share": 0.2322
+   },
+   "mixed_neural": {
+    "score": 2.36,
+    "coins": 1.8656,
+    "kills": 0.0989,
+    "suicides": 0.4244,
+    "coins_share": 0.2075
+   },
+   "mixed_weak": {
+    "score": 4.6522,
+    "coins": 3.0022,
+    "kills": 0.33,
+    "suicides": 0.4256,
+    "coins_share": 0.3362
+   },
+   "noisyrb3": {
+    "score": 6.8889,
+    "coins": 6.0944,
+    "kills": 0.1589,
+    "suicides": 0.1378,
+    "coins_share": 0.7418
+   },
+   "rb3": {
+    "score": 3.1367,
+    "coins": 2.4533,
+    "kills": 0.1367,
+    "suicides": 0.5067,
+    "coins_share": 0.2738
+   }
+  }
+ },
+ {
+  "run": "pool_m4kd1_sel",
+  "arm": "pool_m4kd1_sel",
+  "members": "?",
+  "boards": "?",
+  "mean_over_pools": {
+   "score": 3.9824,
+   "coins": 3.128,
+   "kills": 0.1709,
+   "suicides": 0.3333,
+   "coins_share": 0.3612
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 2.6233,
+    "coins": 2.0622,
+    "kills": 0.1122,
+    "suicides": 0.22,
+    "coins_share": 0.2294
+   },
+   "mixed_neural": {
+    "score": 2.5589,
+    "coins": 1.9367,
+    "kills": 0.1244,
+    "suicides": 0.4133,
+    "coins_share": 0.2153
+   },
+   "mixed_weak": {
+    "score": 4.5522,
+    "coins": 3.0189,
+    "kills": 0.3067,
+    "suicides": 0.4411,
+    "coins_share": 0.3375
+   },
+   "noisyrb3": {
+    "score": 6.9344,
+    "coins": 6.0956,
+    "kills": 0.1678,
+    "suicides": 0.1267,
+    "coins_share": 0.7418
+   },
+   "rb3": {
+    "score": 3.2433,
+    "coins": 2.5267,
+    "kills": 0.1433,
+    "suicides": 0.4656,
+    "coins_share": 0.2822
+   }
+  }
+ },
+ {
+  "run": "pool_m4kd2_rep",
+  "arm": "M4 kill-density D2 (3 peaceful)",
+  "members": "single",
+  "boards": "report",
+  "mean_over_pools": {
+   "score": 3.8169,
+   "coins": 2.538,
+   "kills": 0.2558,
+   "suicides": 0.5491,
+   "coins_share": 0.3054
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 2.8978,
+    "coins": 1.5756,
+    "kills": 0.2644,
+    "suicides": 0.5244,
+    "coins_share": 0.1755
+   },
+   "mixed_neural": {
+    "score": 2.0922,
+    "coins": 1.3867,
+    "kills": 0.1411,
+    "suicides": 0.6622,
+    "coins_share": 0.1545
+   },
+   "mixed_weak": {
+    "score": 4.7822,
+    "coins": 2.3489,
+    "kills": 0.4867,
+    "suicides": 0.6178,
+    "coins_share": 0.2657
+   },
+   "noisyrb3": {
+    "score": 6.5778,
+    "coins": 5.6444,
+    "kills": 0.1867,
+    "suicides": 0.21,
+    "coins_share": 0.7371
+   },
+   "rb3": {
+    "score": 2.7344,
+    "coins": 1.7344,
+    "kills": 0.2,
+    "suicides": 0.7311,
+    "coins_share": 0.1942
+   }
+  }
+ },
+ {
+  "run": "pool_m4kd2_sel",
+  "arm": "pool_m4kd2_sel",
+  "members": "?",
+  "boards": "?",
+  "mean_over_pools": {
+   "score": 3.8716,
+   "coins": 2.5227,
+   "kills": 0.2698,
+   "suicides": 0.55,
+   "coins_share": 0.3038
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 2.7822,
+    "coins": 1.5767,
+    "kills": 0.2411,
+    "suicides": 0.5256,
+    "coins_share": 0.1755
+   },
+   "mixed_neural": {
+    "score": 2.1167,
+    "coins": 1.3944,
+    "kills": 0.1444,
+    "suicides": 0.6722,
+    "coins_share": 0.1551
+   },
+   "mixed_weak": {
+    "score": 4.9811,
+    "coins": 2.4089,
+    "kills": 0.5144,
+    "suicides": 0.62,
+    "coins_share": 0.2731
+   },
+   "noisyrb3": {
+    "score": 6.69,
+    "coins": 5.5567,
+    "kills": 0.2267,
+    "suicides": 0.2156,
+    "coins_share": 0.7274
+   },
+   "rb3": {
+    "score": 2.7878,
+    "coins": 1.6767,
+    "kills": 0.2222,
+    "suicides": 0.7167,
+    "coins_share": 0.1878
+   }
+  }
+ },
+ {
+  "run": "pool_noisytrue_latest",
+  "arm": "M3 true-noisy R02_12",
+  "members": "single",
+  "boards": "selection",
+  "mean_over_pools": {
+   "score": 3.4451,
+   "coins": 2.754,
+   "kills": 0.1382,
+   "suicides": 0.5633,
+   "coins_share": 0.3446
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 2.5767,
+    "coins": 2.06,
+    "kills": 0.1033,
+    "suicides": 0.4933,
+    "coins_share": 0.2291
+   },
+   "mixed_neural": {
+    "score": 2.3244,
+    "coins": 1.8522,
+    "kills": 0.0944,
+    "suicides": 0.6778,
+    "coins_share": 0.2059
+   },
+   "mixed_weak": {
+    "score": 4.0667,
+    "coins": 2.8556,
+    "kills": 0.2422,
+    "suicides": 0.6033,
+    "coins_share": 0.3211
+   },
+   "noisyrb3": {
+    "score": 5.16,
+    "coins": 4.5322,
+    "kills": 0.1256,
+    "suicides": 0.39,
+    "coins_share": 0.6904
+   },
+   "rb3": {
+    "score": 3.0978,
+    "coins": 2.47,
+    "kills": 0.1256,
+    "suicides": 0.6522,
+    "coins_share": 0.2764
+   }
+  }
+ },
+ {
+  "run": "pool_oppbc_r10000",
+  "arm": "M4 opponents+BC",
+  "members": "single",
+  "boards": "selection",
+  "mean_over_pools": {
+   "score": 4.4447,
+   "coins": 3.7558,
+   "kills": 0.1378,
+   "suicides": 0.1127,
+   "coins_share": 0.4301
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 3.1989,
+    "coins": 2.7489,
+    "kills": 0.09,
+    "suicides": 0.09,
+    "coins_share": 0.3055
+   },
+   "mixed_neural": {
+    "score": 2.9244,
+    "coins": 2.5244,
+    "kills": 0.08,
+    "suicides": 0.1267,
+    "coins_share": 0.2806
+   },
+   "mixed_weak": {
+    "score": 5.1944,
+    "coins": 3.9722,
+    "kills": 0.2444,
+    "suicides": 0.1311,
+    "coins_share": 0.4426
+   },
+   "noisyrb3": {
+    "score": 6.8356,
+    "coins": 6.18,
+    "kills": 0.1311,
+    "suicides": 0.0556,
+    "coins_share": 0.7482
+   },
+   "rb3": {
+    "score": 4.07,
+    "coins": 3.3533,
+    "kills": 0.1433,
+    "suicides": 0.16,
+    "coins_share": 0.3735
+   }
+  }
+ },
+ {
+  "run": "pool_rainbow_latest",
+  "arm": "M3 Rainbow",
+  "members": "single",
+  "boards": "selection",
+  "mean_over_pools": {
+   "score": 4.6691,
+   "coins": 3.3158,
+   "kills": 0.2707,
+   "suicides": 0.2584,
+   "coins_share": 0.4064
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 3.1689,
+    "coins": 2.7133,
+    "kills": 0.0911,
+    "suicides": 0.1822,
+    "coins_share": 0.3018
+   },
+   "mixed_neural": {
+    "score": 3.1222,
+    "coins": 2.3222,
+    "kills": 0.16,
+    "suicides": 0.2822,
+    "coins_share": 0.2582
+   },
+   "mixed_weak": {
+    "score": 5.9011,
+    "coins": 3.6844,
+    "kills": 0.4433,
+    "suicides": 0.2856,
+    "coins_share": 0.4123
+   },
+   "noisyrb3": {
+    "score": 5.3489,
+    "coins": 4.6822,
+    "kills": 0.1333,
+    "suicides": 0.22,
+    "coins_share": 0.7056
+   },
+   "rb3": {
+    "score": 5.8044,
+    "coins": 3.1767,
+    "kills": 0.5256,
+    "suicides": 0.3222,
+    "coins_share": 0.354
+   }
+  }
+ },
+ {
+  "run": "pool_rbpool_r10000",
+  "arm": "M3 Rainbow on a mixed table @10000",
+  "members": "single",
+  "boards": "selection",
+  "mean_over_pools": {
+   "score": 3.1033,
+   "coins": 2.4433,
+   "kills": 0.132,
+   "suicides": 0.4002,
+   "coins_share": 0.32
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 2.5078,
+    "coins": 1.9856,
+    "kills": 0.1044,
+    "suicides": 0.2756,
+    "coins_share": 0.2208
+   },
+   "mixed_neural": {
+    "score": 2.2922,
+    "coins": 1.7922,
+    "kills": 0.1,
+    "suicides": 0.3456,
+    "coins_share": 0.1993
+   },
+   "mixed_weak": {
+    "score": 3.7978,
+    "coins": 2.6422,
+    "kills": 0.2311,
+    "suicides": 0.4256,
+    "coins_share": 0.299
+   },
+   "noisyrb3": {
+    "score": 3.9267,
+    "coins": 3.46,
+    "kills": 0.0933,
+    "suicides": 0.4789,
+    "coins_share": 0.6188
+   },
+   "rb3": {
+    "score": 2.9922,
+    "coins": 2.3367,
+    "kills": 0.1311,
+    "suicides": 0.4756,
+    "coins_share": 0.262
+   }
+  }
+ },
+ {
+  "run": "pool_rbpool_r15000",
+  "arm": "pool_rbpool_r15000",
+  "members": "?",
+  "boards": "?",
+  "mean_over_pools": {
+   "score": 3.1045,
+   "coins": 2.484,
+   "kills": 0.1241,
+   "suicides": 0.3849,
+   "coins_share": 0.3225
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 2.5233,
+    "coins": 1.9844,
+    "kills": 0.1078,
+    "suicides": 0.2922,
+    "coins_share": 0.2206
+   },
+   "mixed_neural": {
+    "score": 2.2922,
+    "coins": 1.7867,
+    "kills": 0.1011,
+    "suicides": 0.3444,
+    "coins_share": 0.1987
+   },
+   "mixed_weak": {
+    "score": 3.7678,
+    "coins": 2.6844,
+    "kills": 0.2167,
+    "suicides": 0.43,
+    "coins_share": 0.3025
+   },
+   "noisyrb3": {
+    "score": 4.13,
+    "coins": 3.7522,
+    "kills": 0.0756,
+    "suicides": 0.4011,
+    "coins_share": 0.6432
+   },
+   "rb3": {
+    "score": 2.8093,
+    "coins": 2.212,
+    "kills": 0.1194,
+    "suicides": 0.4565,
+    "coins_share": 0.2473
+   }
+  }
+ },
+ {
+  "run": "pool_rbpool_r15000b",
+  "arm": "M3 Rainbow on a mixed table",
+  "members": "single",
+  "boards": "selection",
+  "mean_over_pools": {
+   "score": 3.1256,
+   "coins": 2.4956,
+   "kills": 0.126,
+   "suicides": 0.3729,
+   "coins_share": 0.3215
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 2.4956,
+    "coins": 1.9233,
+    "kills": 0.1144,
+    "suicides": 0.2867,
+    "coins_share": 0.2138
+   },
+   "mixed_neural": {
+    "score": 2.2256,
+    "coins": 1.7533,
+    "kills": 0.0944,
+    "suicides": 0.36,
+    "coins_share": 0.195
+   },
+   "mixed_weak": {
+    "score": 3.6478,
+    "coins": 2.6256,
+    "kills": 0.2044,
+    "suicides": 0.4289,
+    "coins_share": 0.2962
+   },
+   "noisyrb3": {
+    "score": 4.3856,
+    "coins": 3.8689,
+    "kills": 0.1033,
+    "suicides": 0.34,
+    "coins_share": 0.6449
+   },
+   "rb3": {
+    "score": 2.8733,
+    "coins": 2.3067,
+    "kills": 0.1133,
+    "suicides": 0.4489,
+    "coins_share": 0.2578
+   }
+  }
+ },
+ {
+  "run": "report_eps0_latest",
+  "arm": "M3 epsilon-0",
+  "members": "single",
+  "boards": "report",
+  "mean_over_pools": {
+   "score": 4.2284,
+   "coins": 3.6407,
+   "kills": 0.1176,
+   "suicides": 0.2551,
+   "coins_share": 0.4227
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 3.1567,
+    "coins": 2.7178,
+    "kills": 0.0878,
+    "suicides": 0.1956,
+    "coins_share": 0.3021
+   },
+   "mixed_neural": {
+    "score": 2.7189,
+    "coins": 2.4689,
+    "kills": 0.05,
+    "suicides": 0.1911,
+    "coins_share": 0.2744
+   },
+   "mixed_weak": {
+    "score": 5.1522,
+    "coins": 3.9467,
+    "kills": 0.2411,
+    "suicides": 0.3189,
+    "coins_share": 0.44
+   },
+   "noisyrb3": {
+    "score": 6.45,
+    "coins": 5.9,
+    "kills": 0.11,
+    "suicides": 0.2722,
+    "coins_share": 0.7434
+   },
+   "rb3": {
+    "score": 3.6644,
+    "coins": 3.17,
+    "kills": 0.0989,
+    "suicides": 0.2978,
+    "coins_share": 0.3535
+   }
+  }
+ },
+ {
+  "run": "report_oppbc_r10000",
+  "arm": "M4 opponents+BC",
+  "members": "single",
+  "boards": "report",
+  "mean_over_pools": {
+   "score": 4.4369,
+   "coins": 3.7491,
+   "kills": 0.1376,
+   "suicides": 0.1204,
+   "coins_share": 0.4293
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 3.2578,
+    "coins": 2.7856,
+    "kills": 0.0944,
+    "suicides": 0.0989,
+    "coins_share": 0.3095
+   },
+   "mixed_neural": {
+    "score": 2.8867,
+    "coins": 2.5033,
+    "kills": 0.0767,
+    "suicides": 0.1122,
+    "coins_share": 0.2782
+   },
+   "mixed_weak": {
+    "score": 5.07,
+    "coins": 3.9033,
+    "kills": 0.2333,
+    "suicides": 0.1611,
+    "coins_share": 0.435
+   },
+   "noisyrb3": {
+    "score": 7.0433,
+    "coins": 6.2489,
+    "kills": 0.1589,
+    "suicides": 0.0522,
+    "coins_share": 0.7561
+   },
+   "rb3": {
+    "score": 3.9267,
+    "coins": 3.3044,
+    "kills": 0.1244,
+    "suicides": 0.1778,
+    "coins_share": 0.3677
+   }
+  }
+ },
+ {
+  "run": "report_rainbow_latest",
+  "arm": "M3 Rainbow",
+  "members": "single",
+  "boards": "report",
+  "mean_over_pools": {
+   "score": 4.7318,
+   "coins": 3.3329,
+   "kills": 0.2798,
+   "suicides": 0.2693,
+   "coins_share": 0.4074
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 3.0956,
+    "coins": 2.6567,
+    "kills": 0.0878,
+    "suicides": 0.1922,
+    "coins_share": 0.2953
+   },
+   "mixed_neural": {
+    "score": 3.2333,
+    "coins": 2.3722,
+    "kills": 0.1722,
+    "suicides": 0.2944,
+    "coins_share": 0.2636
+   },
+   "mixed_weak": {
+    "score": 6.08,
+    "coins": 3.7078,
+    "kills": 0.4744,
+    "suicides": 0.2867,
+    "coins_share": 0.4145
+   },
+   "noisyrb3": {
+    "score": 5.4344,
+    "coins": 4.7122,
+    "kills": 0.1444,
+    "suicides": 0.2533,
+    "coins_share": 0.7052
+   },
+   "rb3": {
+    "score": 5.8156,
+    "coins": 3.2156,
+    "kills": 0.52,
+    "suicides": 0.32,
+    "coins_share": 0.3586
+   }
+  }
+ },
+ {
+  "run": "report_rbpool_r15000",
+  "arm": "M3 Rainbow on a mixed table",
+  "members": "single",
+  "boards": "report",
+  "mean_over_pools": {
+   "score": 3.1456,
+   "coins": 2.5133,
+   "kills": 0.1264,
+   "suicides": 0.3873,
+   "coins_share": 0.3242
+  },
+  "per_pool": {
+   "coin3": {
+    "score": 2.46,
+    "coins": 1.9044,
+    "kills": 0.1111,
+    "suicides": 0.3189,
+    "coins_share": 0.2119
+   },
+   "mixed_neural": {
+    "score": 2.3756,
+    "coins": 1.8033,
+    "kills": 0.1144,
+    "suicides": 0.3467,
+    "coins_share": 0.2006
+   },
+   "mixed_weak": {
+    "score": 3.7289,
+    "coins": 2.6511,
+    "kills": 0.2156,
+    "suicides": 0.46,
+    "coins_share": 0.2993
+   },
+   "noisyrb3": {
+    "score": 4.39,
+    "coins": 3.9622,
+    "kills": 0.0856,
+    "suicides": 0.3556,
+    "coins_share": 0.6578
+   },
+   "rb3": {
+    "score": 2.7733,
+    "coins": 2.2456,
+    "kills": 0.1056,
+    "suicides": 0.4556,
+    "coins_share": 0.2512
+   }
+  }
+ }
+]
